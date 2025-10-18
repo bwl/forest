@@ -7,8 +7,8 @@ export type ScoreComponents = {
   titleSimilarity: number;
 };
 
-const DEFAULT_AUTO_ACCEPT = 0.72;
-const DEFAULT_SUGGESTION_THRESHOLD = 0.3;
+const DEFAULT_AUTO_ACCEPT = 0.5;
+const DEFAULT_SUGGESTION_THRESHOLD = 0.15;
 
 export function getAutoAcceptThreshold(): number {
   return process.env.FOREST_AUTO_ACCEPT ? Number(process.env.FOREST_AUTO_ACCEPT) : DEFAULT_AUTO_ACCEPT;
@@ -25,7 +25,7 @@ export function computeScore(a: NodeRecord, b: NodeRecord): { score: number; com
   const tokenSimilarity = cosineSimilarity(a.tokenCounts, b.tokenCounts);
   const titleSimilarity = titleCosine(a.title, b.title);
 
-  const score = 0.45 * tokenSimilarity + 0.35 * tagOverlap + 0.2 * titleSimilarity;
+  const score = 0.6 * tokenSimilarity + 0.25 * tagOverlap + 0.15 * titleSimilarity;
   return { score, components: { tagOverlap, tokenSimilarity, titleSimilarity } };
 }
 

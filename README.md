@@ -33,22 +33,24 @@ forest capture --no-preview        # skip the post-capture explore view
 forest capture --no-auto-link      # store the note without scoring links
 ```
 
+When you skip explicit `--tags`, Forest infers a handful of keywords from the title/body so that new notes still participate in tagging and link scoring. Inline `#tags` take precedence if you include them.
+
 Link scoring:
 
-- Scores ≥ 0.72 become accepted edges immediately.
-- Scores between 0.30 and 0.72 are stored as suggestions for later review (`forest insights list`).
+- Scores ≥ 0.50 become accepted edges immediately.
+- Scores between 0.15 and 0.50 are stored as suggestions for later review (`forest insights list`).
 - Lower scores are discarded.
 
 Adjust thresholds with environment variables:
 
 ```
-export FOREST_AUTO_ACCEPT=0.8
-export FOREST_SUGGESTION_THRESHOLD=0.5
+export FOREST_AUTO_ACCEPT=0.6
+export FOREST_SUGGESTION_THRESHOLD=0.2
 ```
 
 ### `forest explore`
 
-Search for a note and inspect its graph neighborhood in one command. Without flags the first match is selected automatically; use `--select` to choose a different result or `--include-suggestions` to show pending links.
+Search for a note and inspect its graph neighborhood in one command. Without flags the first match is selected automatically when you provide a search term; use `--select` to choose a different result or `--include-suggestions` to show pending links. The matches list shows up to six entries by default and respects any `--search-limit` or `--limit` you pass. Run `forest explore --limit N` with no term to get a quick ranked list without focusing on a node.
 
 ```
 forest explore context
@@ -61,13 +63,15 @@ Output includes scored matches, node metadata, accepted edges, and (optionally) 
 
 ### `forest read`
 
-Retrieve the full body of a note (plus metadata) for piping to editors or agents.
+Retrieve the full body of a note (plus metadata) for piping to editors or agents. Add `--meta` to print only the metadata/edge overview that `forest explore` shows.
 
 ```
-forest read context
-forest read --id 9b7faf2d-fa86-4e7f-a971-68f9f8078fb6 --long-ids
-forest read "Agent journaling" --select 1 --json
+forest read 7178ccee
+forest read fb1d5402 --meta
+forest read 9b7faf2d-fa86-4e7f-a971-68f9f8078fb6 --json
 ```
+
+Pass either the full UUID or a unique short id (the one shown in other commands). If you omit the argument, the command will remind you to supply an id.
 
 ### `forest insights`
 
@@ -75,12 +79,14 @@ Manage suggested edges produced by auto-linking.
 
 ```
 forest insights list --limit 20
+forest insights list --json
 forest insights promote --min-score 0.6
-forest insights accept <edge-id>
-forest insights reject <edge-id>
+forest insights accept 1
+forest insights accept 9b7faf2d::e70f6e2c
+forest insights reject 2
 ```
 
-Use `--json` to feed suggestions into automated review workflows.
+`forest insights list` now prints a numbered column plus a short `source::target` pair, so you can accept or reject a suggestion via its index or the composite short id. Use `--json` to feed suggestions into automated review workflows, or add `--long-ids` for full UUIDs.
 
 ### `forest doctor`
 

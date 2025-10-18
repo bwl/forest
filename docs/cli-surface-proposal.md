@@ -96,7 +96,7 @@ forest explore --json 'context heuristics'
 
 **Interactive text flow (default):**
 
-1. **Search stage:** show scored matches ordered by similarity (shared scoring currently used in `nodes`). Each entry lists: `score shortId title [tags] updatedAt`.
+1. **Search stage:** show scored matches ordered by similarity (shared scoring currently used in `nodes`). Each entry lists: `score shortId title [tags] updatedAt`. Display up to six matches by default, expanding to any value provided via `--search-limit` or `--limit`. When invoked without a search term the command stops here, acting as a quick ranked listing.
 2. If multiple matches and user passed a search term, prompt: "Pick a node [1-5] or 0 to cancel". Provide `--select <n>` for non-interactive automation.
 3. **Graph stage:** display summary for chosen node:
    - Header: `shortId Title [tags] (score if from search)`.
@@ -128,8 +128,9 @@ forest insights accept <edge-id>
 
 **Changes from current `suggestions`:**
 
-- `list` sorts by score and prints source/destination in the new `score shortId title` format.
-- Add `accept` alias for `promote` targeting a single id.
+- `list` sorts by score, prints an index, and shows a short `source::target` pair alongside the titles.
+- `accept` targets a single suggestion using either the index, the short pair, or the full edge id.
+- `reject` mirrors the new reference syntax so cleanup is consistent.
 - Provide `--json` output to feed into agent auto-review loops.
 - Integrate with `explore` (the command should cross-reference pending edges for displayed node).
 
@@ -167,23 +168,21 @@ forest doctor --json
 
 ```
 forest read 7178ccee
-forest read --id <uuid>
-forest read --json context heuristics
-forest read context --select 2
+forest read fb1d5402 --meta
+forest read 9b7faf2d-fa86-4e7f-a971-68f9f8078fb6 --json
 ```
 
 **Behavior:**
 
-- Mirrors the search stage of `forest explore` to resolve the target node by term/short id.
-- Prints full body text with optional metadata header (title, tags, timestamps).
+- Requires either the full UUID or a unique short id shown in other commands.
+- Prints full body text with metadata header (title, tags, timestamps), plus accepted edges context.
 - Supports piping to editors or other tooling (`forest read id > note.md`).
+- `--meta` emits only the metadata summary (matching the `explore` overview) without the body text.
 - When used with `--json`, returns `{ node: {…}, body: string }` so agents get direct access.
 
 **Flags:**
 
-- `--select <n>` (choose nth match, same semantics as `explore`).
-- `--id`, `--title` pass-through like other commands.
-- `--header-only` (future) to print metadata without body.
+- `--meta` to suppress the body output.
 - `--json` for machine output.
 
 ### 6. `forest export`

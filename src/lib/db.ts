@@ -143,6 +143,28 @@ export async function updateNodeTokens(id: string, tokenCounts: Record<string, n
   await markDirtyAndPersist();
 }
 
+export async function updateNodeIndexData(
+  id: string,
+  tags: string[],
+  tokenCounts: Record<string, number>
+): Promise<void> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `UPDATE nodes
+     SET tags = :tags, token_counts = :tokenCounts, updated_at = :updatedAt
+     WHERE id = :id`
+  );
+  stmt.bind({
+    ':tags': JSON.stringify(tags),
+    ':tokenCounts': JSON.stringify(tokenCounts),
+    ':updatedAt': new Date().toISOString(),
+    ':id': id,
+  });
+  stmt.step();
+  stmt.free();
+  await markDirtyAndPersist();
+}
+
 export async function listNodes(): Promise<NodeRecord[]> {
   const db = await ensureDatabase();
   const stmt = db.prepare('SELECT * FROM nodes');
@@ -295,6 +317,20 @@ export async function listEdges(status: EdgeStatus | 'all' = 'all'): Promise<Edg
   }
   stmt.free();
   return edges;
+}
+
+export async function deleteEdgeBetween(sourceId: string, targetId: string): Promise<boolean> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(`DELETE FROM edges WHERE source_id = :source AND target_id = :target`);
+  stmt.bind({ ':source': sourceId, ':target': targetId });
+  stmt.step();
+  const changes = db.getRowsModified();
+  stmt.free();
+  if (changes > 0) {
+    await markDirtyAndPersist();
+    return true;
+  }
+  return false;
 }
 
 export async function promoteSuggestions(minScore: number): Promise<number> {

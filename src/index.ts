@@ -30,8 +30,9 @@ import {
 } from './lib/scoring';
 
 const SHORT_ID_LENGTH = 8;
-const DEFAULT_SEARCH_LIMIT = 10;
-const MATCH_DISPLAY_LIMIT = 5;
+const DEFAULT_SEARCH_LIMIT = 6;
+const DEFAULT_NEIGHBORHOOD_LIMIT = 25;
+const DEFAULT_MATCH_DISPLAY_LIMIT = 6;
 
 const program = new Command();
 program
@@ -60,13 +61,14 @@ program
       }
 
       const title = pickTitle(body, options.title);
+      const combinedText = `${title}\n${body}`;
+      const tokenCounts = tokenize(combinedText);
       const tags = options.tags
         ? options.tags
             .split(',')
             .map((tag: string) => tag.trim())
             .filter((tag: string) => tag.length > 0)
-        : extractTags(`${title}\n${body}`);
-      const tokenCounts = tokenize(`${title}\n${body}`);
+        : extractTags(combinedText, tokenCounts);
 
       const newNode: NodeRecord = {
         id: randomUUID(),
@@ -110,6 +112,7 @@ program
         const selection: SelectionResult = {
           selected: { node: newNode, score: 1 },
           matches: [{ node: newNode, score: 1 }],
+          limit: 1,
         };
         await printExplore({
           selection,
@@ -119,6 +122,7 @@ program
           longIds: false,
           json: false,
           showMatches: false,
+          focusSelected: true,
         });
       }
     } catch (error) {
@@ -133,32 +137,51 @@ program
   .option('--id <id>', 'Node id to focus on')
   .option('--title <title>', 'Node title to match (case-insensitive)')
   .option('--select <index>', '1-based index of the match to explore', (value) => Number(value))
-  .option('--search-limit <count>', 'Maximum matches to consider', toNumber, DEFAULT_SEARCH_LIMIT)
+  .option('--search-limit <count>', 'Maximum matches to consider', toNumber)
   .option('-d, --depth <depth>', 'Neighborhood depth', toNumber, 1)
-  .option('-l, --limit <limit>', 'Maximum number of nodes in neighborhood', toNumber, 25)
+  .option('-l, --limit <limit>', 'Maximum number of nodes in neighborhood', toNumber)
   .option('--include-suggestions', 'Include suggested edges in the neighborhood output')
   .option('--long-ids', 'Display full ids in human-readable output')
   .option('--json', 'Emit JSON instead of text output')
   .option('--interactive', 'Prompt to choose a match')
   .action(async (term, options) => {
     try {
+      const neighborhoodLimit =
+        typeof options.limit === 'number' && !Number.isNaN(options.limit) ? options.limit : DEFAULT_NEIGHBORHOOD_LIMIT;
+      const searchLimit =
+        typeof options.searchLimit === 'number' && !Number.isNaN(options.searchLimit)
+          ? options.searchLimit
+          : typeof options.limit === 'number' && !Number.isNaN(options.limit)
+          ? options.limit
+          : DEFAULT_SEARCH_LIMIT;
+
+      const termValue = typeof term === 'string' ? term : undefined;
       const selection = await selectNode({
         id: options.id,
         title: options.title,
-        term: typeof term === 'string' ? term : undefined,
-        limit: options.searchLimit,
+        term: termValue,
+        limit: searchLimit,
         select: options.select,
         interactive: Boolean(options.interactive),
       });
 
+      const hasSearchTerm = typeof termValue === 'string' && termValue.trim().length > 0;
+      const focusSelected =
+        Boolean(options.id) ||
+        Boolean(options.title) ||
+        typeof options.select === 'number' ||
+        hasSearchTerm;
+
       await printExplore({
         selection,
-        limit: options.limit,
+        limit: neighborhoodLimit,
+        matchLimit: searchLimit,
         depth: options.depth,
         includeSuggestions: Boolean(options.includeSuggestions),
         longIds: Boolean(options.longIds),
         json: Boolean(options.json),
         showMatches: !Boolean(options.json),
+        focusSelected: focusSelected || Boolean(options.json),
       });
     } catch (error) {
       handleError(error);
@@ -171,6 +194,7 @@ insights
   .command('list')
   .description('List suggested links ordered by score')
   .option('--limit <limit>', 'Limit number of suggestions returned', toNumber, 10)
+  .option('--long-ids', 'Display full identifiers in output')
   .option('--json', 'Emit JSON output')
   .action(async (options) => {
     try {
@@ -178,13 +202,25 @@ insights
         .sort((a, b) => b.score - a.score)
         .slice(0, options.limit);
 
+      if (edges.length === 0) {
+        console.log('No suggestions ready.');
+        return;
+      }
+
+      const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
+      const longIds = Boolean(options.longIds);
+
       if (options.json) {
         console.log(
           JSON.stringify(
-            edges.map((edge) => ({
+            edges.map((edge, index) => ({
+              index: index + 1,
               id: edge.id,
+              shortId: describeSuggestion(edge, nodeMap, { longIds }).shortId,
               sourceId: edge.sourceId,
               targetId: edge.targetId,
+              sourceTitle: nodeMap.get(edge.sourceId)?.title ?? null,
+              targetTitle: nodeMap.get(edge.targetId)?.title ?? null,
               score: edge.score,
               metadata: edge.metadata,
             })),
@@ -195,19 +231,13 @@ insights
         return;
       }
 
-      if (edges.length === 0) {
-        console.log('No suggestions ready.');
-        return;
-      }
-
-      const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
-      for (const edge of edges) {
-        const source = nodeMap.get(edge.sourceId);
-        const target = nodeMap.get(edge.targetId);
+      edges.forEach((edge, index) => {
+        const desc = describeSuggestion(edge, nodeMap, { longIds });
+        const indexLabel = String(index + 1).padStart(2, ' ');
         console.log(
-          `${edge.id}  score=${edge.score.toFixed(2)}  ${source?.title ?? edge.sourceId} ↔ ${target?.title ?? edge.targetId}`
+          `${indexLabel}. ${desc.edgeId}  score=${edge.score.toFixed(2)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`
         );
-      }
+      });
     } catch (error) {
       handleError(error);
     }
@@ -228,23 +258,33 @@ insights
 
 insights
   .command('accept')
-  .description('Promote a single suggestion by id')
-  .argument('<edgeId>', 'Edge id to accept')
-  .action(async (edgeId) => {
+  .description('Promote a single suggestion by index, short pair, or edge id')
+  .argument('<ref>', 'Suggestion index (1-based), short pair (abcd::efgh), or full edge id')
+  .action(async (ref) => {
     try {
-      const edge = (await listEdges('suggested')).find((candidate) => candidate.id === edgeId);
-      if (!edge) {
-        console.error('✖ No suggestion found with that id.');
+      const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
+      if (suggestions.length === 0) {
+        console.error('✖ No suggestions available.');
         process.exitCode = 1;
         return;
       }
+
+      const edge = resolveSuggestionReference(ref, suggestions);
+      if (!edge) {
+        console.error('✖ No suggestion matched that reference. Run `forest insights list` to see indexes.');
+        process.exitCode = 1;
+        return;
+      }
+
       const accepted: EdgeRecord = {
         ...edge,
         status: 'accepted',
         updatedAt: new Date().toISOString(),
       };
       await insertOrUpdateEdge(accepted);
-      console.log(`✔ Accepted suggestion ${edgeId}`);
+      console.log(
+        `✔ Accepted suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`
+      );
     } catch (error) {
       handleError(error);
     }
@@ -252,17 +292,33 @@ insights
 
 insights
   .command('reject')
-  .description('Reject and remove a suggestion by id')
-  .argument('<edgeId>', 'Edge id to reject')
-  .action(async (edgeId) => {
+  .description('Reject and remove a suggestion by index, short pair, or edge id')
+  .argument('<ref>', 'Suggestion index (1-based), short pair (abcd::efgh), or full edge id')
+  .action(async (ref) => {
     try {
-      const removed = await deleteSuggestion(edgeId);
-      if (removed === 0) {
-        console.error('✖ No suggestion found with that id.');
+      const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
+      if (suggestions.length === 0) {
+        console.error('✖ No suggestions available.');
         process.exitCode = 1;
         return;
       }
-      console.log('✔ Suggestion removed.');
+
+      const edge = resolveSuggestionReference(ref, suggestions);
+      if (!edge) {
+        console.error('✖ No suggestion matched that reference. Run `forest insights list` to see indexes.');
+        process.exitCode = 1;
+        return;
+      }
+
+      const removed = await deleteSuggestion(edge.id);
+      if (removed === 0) {
+        console.error('✖ Suggestion could not be removed.');
+        process.exitCode = 1;
+        return;
+      }
+      console.log(
+        `✔ Removed suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`
+      );
     } catch (error) {
       handleError(error);
     }
@@ -283,6 +339,8 @@ program
         edgesAccepted: edges.filter((edge) => edge.status === 'accepted').length,
         edgesSuggested: edges.filter((edge) => edge.status === 'suggested').length,
       };
+
+      const nodeMap = new Map(nodes.map((node) => [node.id, node]));
 
       const recent = [...nodes]
         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
@@ -316,12 +374,19 @@ program
                 title: entry.node.title,
                 degree: entry.degree,
               })),
-              suggestions: suggestions.map((edge) => ({
-                id: edge.id,
-                sourceId: edge.sourceId,
-                targetId: edge.targetId,
-                score: edge.score,
-              })),
+              suggestions: suggestions.map((edge, index) => {
+                const desc = describeSuggestion(edge, nodeMap, { longIds: true });
+                return {
+                  index: index + 1,
+                  id: edge.id,
+                  shortId: desc.shortId,
+                  score: edge.score,
+                  sourceId: edge.sourceId,
+                  targetId: edge.targetId,
+                  sourceTitle: desc.sourceTitle,
+                  targetTitle: desc.targetTitle,
+                };
+              }),
             },
             null,
             2
@@ -354,9 +419,13 @@ program
 
       if (suggestions.length > 0) {
         console.log('Top suggestions:');
-        for (const edge of suggestions) {
-          console.log(`  ${edge.id}  score=${edge.score.toFixed(2)}  ${edge.sourceId} ↔ ${edge.targetId}`);
-        }
+        suggestions.forEach((edge, index) => {
+          const desc = describeSuggestion(edge, nodeMap, { longIds: false });
+          const indexLabel = String(index + 1).padStart(2, ' ');
+          console.log(
+            `  ${indexLabel}. ${desc.shortId}  score=${edge.score.toFixed(2)}  ${desc.sourceTitle ?? desc.sourceLabel} ↔ ${desc.targetTitle ?? desc.targetLabel}`
+          );
+        });
         console.log('');
       }
 
@@ -371,26 +440,28 @@ program
 program
   .command('read')
   .description('Show the full content of a note')
-  .argument('[term]', 'Title, tag, or search phrase to locate the node')
-  .option('--id <id>', 'Node id to read')
-  .option('--title <title>', 'Node title to match (case-insensitive)')
-  .option('--select <index>', '1-based index of the match to read', (value) => Number(value))
-  .option('--search-limit <count>', 'Maximum matches to consider', toNumber, DEFAULT_SEARCH_LIMIT)
+  .argument('[id]', 'Node id or short id to read')
+  .option('--meta', 'Show metadata summary without the body text')
   .option('--json', 'Emit JSON output')
   .option('--long-ids', 'Display full ids in text output')
-  .action(async (term, options) => {
+  .action(async (idRef, options) => {
     try {
-      const selection = await selectNode({
-        id: options.id,
-        title: options.title,
-        term: typeof term === 'string' ? term : undefined,
-        limit: options.searchLimit,
-        select: options.select,
-        interactive: Boolean(options.interactive),
-      });
+      const ref = typeof idRef === 'string' ? idRef.trim() : '';
+      if (!ref) {
+        console.error('✖ Provide a node id or unique short id (run `forest explore` to discover ids).');
+        process.exitCode = 1;
+        return;
+      }
 
-      const node = selection.selected.node;
+      const node = await resolveNodeReference(ref);
+      if (!node) {
+        console.error('✖ No node found. Provide a full id or unique short id.');
+        process.exitCode = 1;
+        return;
+      }
+
       const longIds = Boolean(options.longIds);
+      const metaOnly = Boolean(options.meta);
 
       if (options.json) {
         console.log(
@@ -412,16 +483,12 @@ program
         return;
       }
 
-      printMatches(selection.matches, selection.selected, { longIds, label: 'Matches' });
-      console.log('');
-      console.log(`${formatId(node.id, { long: longIds })} ${node.title}`);
-      if (node.tags.length > 0) {
-        console.log(`tags: ${node.tags.join(', ')}`);
+      const { directEdges } = await buildNeighborhoodPayload(node.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
+      printNodeOverview(node, directEdges, { longIds });
+      if (!metaOnly) {
+        console.log('');
+        console.log(node.body);
       }
-      console.log(`created: ${node.createdAt}`);
-      console.log(`updated: ${node.updatedAt}`);
-      console.log('');
-      console.log(node.body);
     } catch (error) {
       handleError(error);
     }
@@ -433,11 +500,13 @@ type ExploreRenderOptions = {
   selection?: SelectionResult;
   id?: string;
   limit: number;
+  matchLimit?: number;
   depth: number;
   includeSuggestions: boolean;
   longIds: boolean;
   json: boolean;
   showMatches: boolean;
+  focusSelected: boolean;
 };
 
 async function printExplore(options: ExploreRenderOptions) {
@@ -451,6 +520,7 @@ async function printExplore(options: ExploreRenderOptions) {
 
   const match = selection.selected;
   const matches = selection.matches;
+  const focusSelected = options.focusSelected ?? true;
 
   const neighborhoodData = await buildNeighborhoodPayload(match.node.id, options.depth, options.limit);
   const suggestionData = await fetchSuggestionsForNode(match.node.id);
@@ -477,30 +547,24 @@ async function printExplore(options: ExploreRenderOptions) {
   }
 
   if (options.showMatches) {
-    printMatches(matches, match, { longIds: options.longIds, label: 'Matches' });
+    const matchLimit =
+      typeof options.matchLimit === 'number' && !Number.isNaN(options.matchLimit)
+        ? options.matchLimit
+        : typeof selection.limit === 'number'
+        ? selection.limit
+        : DEFAULT_MATCH_DISPLAY_LIMIT;
+    printMatches(matches, match, { longIds: options.longIds, label: 'Matches', limit: matchLimit });
+    if (!focusSelected) {
+      return;
+    }
     console.log('');
+  } else if (!focusSelected) {
+    return;
   }
-
-  const node = match.node;
-  console.log(`${formatId(node.id, { long: options.longIds })} ${node.title}`);
-  if (node.tags.length > 0) {
-    console.log(`tags: ${node.tags.join(', ')}`);
-  }
-  console.log(`created: ${node.createdAt}`);
-  console.log(`updated: ${node.updatedAt}`);
-  console.log('');
 
   const directEdges = neighborhoodData.directEdges;
-  if (directEdges.length > 0) {
-    console.log('accepted edges:');
-    for (const edge of directEdges) {
-      console.log(
-        `  ${formatScore(edge.score)}  ${formatId(edge.otherId, { long: options.longIds })}  ${edge.otherTitle}`
-      );
-    }
-  } else {
-    console.log('accepted edges: none');
-  }
+  const node = match.node;
+  printNodeOverview(node, directEdges, { longIds: options.longIds });
 
   if (options.includeSuggestions && suggestionData.length > 0) {
     console.log('');
@@ -513,16 +577,46 @@ async function printExplore(options: ExploreRenderOptions) {
   }
 }
 
-function printMatches(matches: SearchMatch[], selected: SearchMatch, options: { longIds: boolean; label: string }) {
+function printNodeOverview(
+  node: NodeRecord,
+  directEdges: Array<{ otherId: string; otherTitle: string; score: number }>,
+  options: { longIds: boolean }
+) {
+  console.log(`${formatId(node.id, { long: options.longIds })} ${node.title}`);
+  if (node.tags.length > 0) {
+    console.log(`tags: ${node.tags.join(', ')}`);
+  }
+  console.log(`created: ${node.createdAt}`);
+  console.log(`updated: ${node.updatedAt}`);
+  console.log('');
+
+  if (directEdges.length > 0) {
+    console.log('accepted edges:');
+    for (const edge of directEdges) {
+      console.log(
+        `  ${formatScore(edge.score)}  ${formatId(edge.otherId, { long: options.longIds })}  ${edge.otherTitle}`
+      );
+    }
+  } else {
+    console.log('accepted edges: none');
+  }
+}
+
+function printMatches(
+  matches: SearchMatch[],
+  _selected: SearchMatch,
+  options: { longIds: boolean; label: string; limit: number }
+) {
   if (matches.length === 0) return;
   console.log(options.label);
-  const limit = Math.min(matches.length, MATCH_DISPLAY_LIMIT);
+  const limit = Math.min(matches.length, options.limit ?? DEFAULT_MATCH_DISPLAY_LIMIT);
   for (let index = 0; index < limit; index += 1) {
     const entry = matches[index];
-    const marker = entry.node.id === selected.node.id ? '→' : ' ';
     const tags = entry.node.tags.length > 0 ? ` [${entry.node.tags.join(', ')}]` : '';
     console.log(
-      `${marker} ${index + 1}. ${formatScore(entry.score)}  ${formatId(entry.node.id, { long: options.longIds })}  ${entry.node.title}${tags}`
+      `${index + 1}. ${formatScore(entry.score)}  ${formatId(entry.node.id, { long: options.longIds })}  ${
+        entry.node.title
+      }${tags}`
     );
   }
   if (matches.length > limit) {
@@ -599,7 +693,63 @@ async function fetchSuggestionsForNode(nodeId: string) {
     .sort((a, b) => b.score - a.score);
 }
 
-type SelectionResult = { selected: SearchMatch; matches: SearchMatch[] };
+async function resolveNodeReference(ref: string): Promise<NodeRecord | null> {
+  if (!ref) return null;
+  if (isShortId(ref)) {
+    const prefix = await resolveByIdPrefix(ref);
+    if (prefix) return prefix;
+  }
+  const direct = await getNodeById(ref);
+  if (direct) return direct;
+  return null;
+}
+
+function describeSuggestion(
+  edge: EdgeRecord,
+  nodeMap: Map<string, NodeRecord>,
+  options: { longIds?: boolean }
+) {
+  const longIds = Boolean(options.longIds);
+  const sourceNode = nodeMap.get(edge.sourceId) ?? null;
+  const targetNode = nodeMap.get(edge.targetId) ?? null;
+  const shortSource = formatId(edge.sourceId);
+  const shortTarget = formatId(edge.targetId);
+  const sourceIdDisplay = formatId(edge.sourceId, { long: longIds });
+  const targetIdDisplay = formatId(edge.targetId, { long: longIds });
+  const edgeId = longIds ? edge.id : `${shortSource}::${shortTarget}`;
+  const sourceLabel = sourceNode?.title ?? (longIds ? edge.sourceId : sourceIdDisplay);
+  const targetLabel = targetNode?.title ?? (longIds ? edge.targetId : targetIdDisplay);
+  return {
+    edgeId,
+    shortId: `${shortSource}::${shortTarget}`,
+    sourceLabel,
+    targetLabel,
+    sourceTitle: sourceNode?.title ?? null,
+    targetTitle: targetNode?.title ?? null,
+  };
+}
+
+function resolveSuggestionReference(ref: string, suggestions: EdgeRecord[]): EdgeRecord | undefined {
+  const normalized = ref.trim();
+  if (normalized.length === 0) return undefined;
+
+  if (/^\d+$/.test(normalized)) {
+    const index = Number.parseInt(normalized, 10);
+    if (index >= 1 && index <= suggestions.length) {
+      return suggestions[index - 1];
+    }
+    return undefined;
+  }
+
+  const lowered = normalized.toLowerCase();
+  return suggestions.find((edge) => {
+    if (edge.id === normalized) return true;
+    const shortId = `${formatId(edge.sourceId)}::${formatId(edge.targetId)}`.toLowerCase();
+    return shortId === lowered;
+  });
+}
+
+type SelectionResult = { selected: SearchMatch; matches: SearchMatch[]; limit: number };
 
 type SelectionInput = {
   id?: string;
@@ -618,20 +768,20 @@ async function selectNode(input: SelectionInput): Promise<SelectionResult> {
     if (!node) {
       throw new Error(`Node with id ${input.id} not found.`);
     }
-    return { selected: { node, score: 1 }, matches: [{ node, score: 1 }] };
+    return { selected: { node, score: 1 }, matches: [{ node, score: 1 }], limit: 1 };
   }
 
   if (input.term && isShortId(input.term)) {
     const prefixMatch = await resolveByIdPrefix(input.term);
     if (prefixMatch) {
-      return { selected: { node: prefixMatch, score: 1 }, matches: [{ node: prefixMatch, score: 1 }] };
+      return { selected: { node: prefixMatch, score: 1 }, matches: [{ node: prefixMatch, score: 1 }], limit: 1 };
     }
   }
 
   if (input.title) {
     const titleMatch = await findNodeByTitle(input.title);
     if (titleMatch) {
-      return { selected: { node: titleMatch, score: 1 }, matches: [{ node: titleMatch, score: 1 }] };
+      return { selected: { node: titleMatch, score: 1 }, matches: [{ node: titleMatch, score: 1 }], limit: 1 };
     }
   }
 
@@ -650,11 +800,11 @@ async function selectNode(input: SelectionInput): Promise<SelectionResult> {
   }
 
   if (input.interactive && matches.length > 1) {
-    printMatches(matches, matches[index], { longIds: false, label: 'Matches' });
+    printMatches(matches, matches[index], { longIds: false, label: 'Matches', limit: searchLimit });
     console.log('Use --select <n> to choose a different match in automated workflows.');
   }
 
-  return { selected: matches[index], matches };
+  return { selected: matches[index], matches, limit: searchLimit };
 }
 
 async function resolveBody(bodyOption?: string, fileOption?: string, stdinOption?: boolean): Promise<string> {
@@ -696,9 +846,11 @@ async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRecord[]) 
   return { accepted, suggested };
 }
 
-function toNumber(value: string, defaultValue: number): number {
+function toNumber(value: string, defaultValue?: number): number {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : defaultValue;
+  if (Number.isFinite(parsed)) return parsed;
+  if (typeof defaultValue === 'number') return defaultValue;
+  return NaN;
 }
 
 async function readStdin(): Promise<string> {
