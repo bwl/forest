@@ -1,0 +1,34 @@
+{
+  "name": "forest-cli",
+  "version": "0.1.0",
+  "description": "Ingest unstructured ideas into a graph-first knowledge base.",
+  "bin": {
+    "forest": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "graph",
+    "cli",
+    "knowledge",
+    "zettelkasten"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "graphology": "^0.25.1",
+    "sql.js": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.20",
+    "@types/sql.js": "^1.4.9",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
