@@ -9,15 +9,23 @@ import {
   EdgeStatus,
   NodeRecord,
   SearchMatch,
+  getLastEdgeEventForPair,
+  logEdgeEvent,
+  markEdgeEventUndone,
+  listEdgeEvents,
   deleteSuggestion,
+  deleteEdgeBetween,
   findNodeByTitle,
   getNodeById,
+  deleteNode,
   insertNode,
   insertOrUpdateEdge,
   listEdges,
   listNodes,
   promoteSuggestions,
   searchNodes,
+  updateNode,
+  updateNodeIndexData,
 } from './lib/db';
 import { collectNeighborhood, buildGraph } from './lib/graph';
 import { extractTags, pickTitle, tokenize } from './lib/text';
@@ -51,6 +59,8 @@ program
   .option('--no-auto-link', 'Skip scoring/linking against existing nodes')
   .option('--preview', 'Force an explore preview after capture')
   .option('--no-preview', 'Skip the explore preview after capture')
+  .option('--preview-suggestions-only', 'In preview, only show suggestions (hide metadata and accepted edges)')
+  .option('--json', 'Emit JSON output for the capture summary')
   .action(async (options) => {
     try {
       const body = await resolveBody(options.body, options.file, options.stdin);
@@ -84,25 +94,63 @@ program
       await insertNode(newNode);
 
       let summary: { accepted: number; suggested: number } = { accepted: 0, suggested: 0 };
-      if (!options.noAutoLink) {
+      // Commander maps --no-auto-link to options.autoLink === false
+      if (options.autoLink !== false) {
         summary = await linkAgainstExisting(newNode, existingNodes);
       }
 
-      console.log(`✔ Captured idea: ${newNode.title}`);
-      console.log(`   id: ${newNode.id}`);
-      if (tags.length > 0) {
-        console.log(`   tags: ${tags.join(', ')}`);
-      }
-      if (!options.noAutoLink) {
+      if (options.json) {
+        const suggestions = await fetchSuggestionsForNode(newNode.id);
         console.log(
-          `   links: ${summary.accepted} accepted, ${summary.suggested} pending (thresholds auto=${getAutoAcceptThreshold().toFixed(
-            2
-          )}, suggest=${getSuggestionThreshold().toFixed(2)})`
+          JSON.stringify(
+            {
+              node: {
+                id: newNode.id,
+                title: newNode.title,
+                tags: newNode.tags,
+                createdAt: newNode.createdAt,
+                updatedAt: newNode.updatedAt,
+              },
+              body: newNode.body,
+              links: {
+                autoLinked: options.autoLink !== false,
+                accepted: summary.accepted,
+                suggested: summary.suggested,
+                thresholds: {
+                  auto: getAutoAcceptThreshold(),
+                  suggest: getSuggestionThreshold(),
+                },
+              },
+              suggestions: suggestions.map((s) => ({
+                id: s.id,
+                score: s.score,
+                otherId: s.otherId,
+                otherTitle: s.otherTitle,
+              })),
+            },
+            null,
+            2,
+          )
         );
+        return;
       } else {
-        console.log('   links: auto-linking skipped (--no-auto-link)');
+        console.log(`✔ Captured idea: ${newNode.title}`);
+        console.log(`   id: ${newNode.id}`);
+        if (tags.length > 0) {
+          console.log(`   tags: ${tags.join(', ')}`);
+        }
+        if (options.autoLink !== false) {
+          console.log(
+            `   links: ${summary.accepted} accepted, ${summary.suggested} pending (thresholds auto=${getAutoAcceptThreshold().toFixed(
+              2,
+            )}, suggest=${getSuggestionThreshold().toFixed(2)})`
+          );
+        } else {
+          console.log('   links: auto-linking skipped (--no-auto-link)');
+        }
       }
 
+      // Determine preview behavior
       let shouldPreview = true;
       if (options.noPreview) shouldPreview = false;
       if (options.preview) shouldPreview = true;
@@ -118,17 +166,21 @@ program
           selection,
           limit: 15,
           depth: 1,
-          includeSuggestions: false,
+          // If we performed auto-linking, include suggestions in the preview
+          includeSuggestions: options.autoLink !== false,
           longIds: false,
           json: false,
           showMatches: false,
           focusSelected: true,
+          suppressOverview: Boolean(options.previewSuggestionsOnly),
         });
       }
     } catch (error) {
       handleError(error);
     }
   });
+
+// parse argv after all commands are registered (moved to EOF)
 
 program
   .command('explore')
@@ -138,6 +190,12 @@ program
   .option('--title <title>', 'Node title to match (case-insensitive)')
   .option('--select <index>', '1-based index of the match to explore', (value) => Number(value))
   .option('--search-limit <count>', 'Maximum matches to consider', toNumber)
+  .option('--tag <tags>', 'Filter by notes containing all tags (comma-separated)')
+  .option('--any-tag <tags>', 'Filter by notes containing any of the tags (comma-separated)')
+  .option('--since <date>', 'Only include notes updated on/after this date (YYYY-MM-DD or ISO)')
+  .option('--before <date>', 'Only include notes updated before this date (YYYY-MM-DD or ISO)')
+  .option('--until <date>', 'Alias of --before')
+  .option('--sort <mode>', 'Sort matches: score|recent|degree')
   .option('-d, --depth <depth>', 'Neighborhood depth', toNumber, 1)
   .option('-l, --limit <limit>', 'Maximum number of nodes in neighborhood', toNumber)
   .option('--include-suggestions', 'Include suggested edges in the neighborhood output')
@@ -163,6 +221,11 @@ program
         limit: searchLimit,
         select: options.select,
         interactive: Boolean(options.interactive),
+        tagsAll: parseCsvList(options.tag),
+        tagsAny: parseCsvList(options.anyTag),
+        since: parseDate(options.since),
+        until: parseDate(options.before ?? options.until),
+        sort: normalizeSort(options.sort),
       });
 
       const hasSearchTerm = typeof termValue === 'string' && termValue.trim().length > 0;
@@ -183,6 +246,171 @@ program
         showMatches: !Boolean(options.json),
         focusSelected: focusSelected || Boolean(options.json),
       });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command('edit')
+  .description('Edit an existing note and optionally rescore links')
+  .argument('<id>', 'Node id or short id to edit')
+  .option('--title <title>', 'New title')
+  .option('--body <body>', 'New body content')
+  .option('--file <path>', 'Read new body from file')
+  .option('--stdin', 'Read new body from standard input')
+  .option('--tags <tags>', 'Comma-separated list of tags to set (overrides auto-detected tags)')
+  .option('--no-auto-link', 'Skip rescoring/linking against existing nodes')
+  .action(async (idRef, options) => {
+    try {
+      const node = await resolveNodeReference(String(idRef));
+      if (!node) {
+        console.error('✖ No node found. Provide a full id or unique short id.');
+        process.exitCode = 1;
+        return;
+      }
+
+      const nextTitle = typeof options.title === 'string' ? options.title : node.title;
+      let nextBody = node.body;
+      if (typeof options.body === 'string') {
+        nextBody = options.body;
+      } else if (options.file) {
+        const filePath = path.resolve(options.file);
+        nextBody = fs.readFileSync(filePath, 'utf-8');
+      } else if (options.stdin) {
+        nextBody = await readStdin();
+      }
+
+      const combinedText = `${nextTitle}\n${nextBody}`;
+      const tokenCounts = tokenize(combinedText);
+      const tags = options.tags
+        ? options.tags
+            .split(',')
+            .map((t: string) => t.trim())
+            .filter((t: string) => t.length > 0)
+        : extractTags(combinedText, tokenCounts);
+
+      await updateNode(node.id, {
+        title: nextTitle,
+        body: nextBody,
+        tags,
+        tokenCounts,
+      });
+
+      let accepted = 0;
+      let suggested = 0;
+      if (options.autoLink !== false) {
+        const all = await listNodes();
+        for (const other of all) {
+          if (other.id === node.id) continue;
+          const { score, components } = computeScore(
+            { ...node, title: nextTitle, body: nextBody, tags, tokenCounts },
+            other,
+          );
+          const status = classifyScore(score);
+          const [sourceId, targetId] = normalizeEdgePair(node.id, other.id);
+          if (status === 'discard') {
+            await deleteEdgeBetween(sourceId, targetId);
+            continue;
+          }
+          const edge: EdgeRecord = {
+            id: edgeIdentifier(sourceId, targetId),
+            sourceId,
+            targetId,
+            score,
+            status,
+            metadata: { components },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await insertOrUpdateEdge(edge);
+          if (status === 'accepted') accepted += 1;
+          if (status === 'suggested') suggested += 1;
+        }
+      }
+
+      console.log(`✔ Updated note: ${nextTitle}`);
+      console.log(`   id: ${node.id}`);
+      if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
+      if (options.autoLink !== false) {
+        console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+      } else {
+        console.log('   links: rescoring skipped (--no-auto-link)');
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command('delete')
+  .description('Delete a note and its edges')
+  .argument('<id>', 'Node id or short id to delete')
+  .option('--force', 'Do not prompt for confirmation (non-interactive mode)')
+  .action(async (idRef, options) => {
+    try {
+      const node = await resolveNodeReference(String(idRef));
+      if (!node) {
+        console.error('✖ No node found. Provide a full id or unique short id.');
+        process.exitCode = 1;
+        return;
+      }
+      // Non-interactive CLI: honor --force and proceed.
+      const result = await deleteNode(node.id);
+      if (!result.nodeRemoved) {
+        console.error('✖ Node could not be removed.');
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`✔ Deleted note ${formatId(node.id)} (${node.title})`);
+      console.log(`   removed ${result.edgesRemoved} associated edges`);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+program
+  .command('link')
+  .description('Manually create an edge between two notes')
+  .argument('<a>', 'Source node id or short id')
+  .argument('<b>', 'Target node id or short id')
+  .option('--score <score>', 'Override score value', parseFloat)
+  .option('--suggest', 'Create as a suggestion instead of accepted')
+  .option('--explain', 'Print scoring components')
+  .action(async (aRef, bRef, options) => {
+    try {
+      const a = await resolveNodeReference(String(aRef));
+      const b = await resolveNodeReference(String(bRef));
+      if (!a || !b) {
+        console.error('✖ Both endpoints must resolve to existing notes.');
+        process.exitCode = 1;
+        return;
+      }
+      const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
+      const usedScore = typeof options.score === 'number' ? options.score : computeScore(a, b).score;
+      const components = computeScore(a, b).components;
+      const status: EdgeStatus = options.suggest ? 'suggested' : 'accepted';
+      const edge: EdgeRecord = {
+        id: edgeIdentifier(sourceId, targetId),
+        sourceId,
+        targetId,
+        score: usedScore,
+        status,
+        metadata: { components },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await insertOrUpdateEdge(edge);
+      console.log(
+        `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  status=${status}  score=${usedScore.toFixed(2)}`
+      );
+      if (options.explain) {
+        console.log('components:');
+        for (const [k, v] of Object.entries(components)) {
+          if (typeof v === 'number') console.log(`  ${k}: ${v.toFixed(3)}`);
+          else console.log(`  ${k}: ${String(v)}`);
+        }
+      }
     } catch (error) {
       handleError(error);
     }
@@ -217,6 +445,7 @@ insights
               index: index + 1,
               id: edge.id,
               shortId: describeSuggestion(edge, nodeMap, { longIds }).shortId,
+              code: describeSuggestion(edge, nodeMap, { longIds }).code,
               sourceId: edge.sourceId,
               targetId: edge.targetId,
               sourceTitle: nodeMap.get(edge.sourceId)?.title ?? null,
@@ -235,7 +464,7 @@ insights
         const desc = describeSuggestion(edge, nodeMap, { longIds });
         const indexLabel = String(index + 1).padStart(2, ' ');
         console.log(
-          `${indexLabel}. ${desc.edgeId}  score=${edge.score.toFixed(2)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`
+          `${indexLabel}. [${desc.code}] ${desc.edgeId}  score=${edge.score.toFixed(2)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`
         );
       });
     } catch (error) {
@@ -281,6 +510,15 @@ insights
         status: 'accepted',
         updatedAt: new Date().toISOString(),
       };
+      // Log event for undo
+      await logEdgeEvent({
+        edgeId: edge.id,
+        sourceId: edge.sourceId,
+        targetId: edge.targetId,
+        prevStatus: edge.status,
+        nextStatus: 'accepted',
+        payload: { score: edge.score, metadata: edge.metadata },
+      });
       await insertOrUpdateEdge(accepted);
       console.log(
         `✔ Accepted suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`
@@ -310,6 +548,15 @@ insights
         return;
       }
 
+      // Log event with enough payload to undo by re-inserting
+      await logEdgeEvent({
+        edgeId: edge.id,
+        sourceId: edge.sourceId,
+        targetId: edge.targetId,
+        prevStatus: edge.status,
+        nextStatus: 'deleted',
+        payload: { score: edge.score, metadata: edge.metadata },
+      });
       const removed = await deleteSuggestion(edge.id);
       if (removed === 0) {
         console.error('✖ Suggestion could not be removed.');
@@ -319,6 +566,166 @@ insights
       console.log(
         `✔ Removed suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`
       );
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+insights
+  .command('sweep')
+  .description('Bulk-reject suggestions by index range or score')
+  .option('--range <spec>', 'Comma-separated indexes or ranges (e.g., 1-10,15)')
+  .option('--max-score <score>', 'Reject suggestions at or below this score', parseFloat)
+  .action(async (options) => {
+    try {
+      const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
+      if (suggestions.length === 0) {
+        console.log('No suggestions ready.');
+        return;
+      }
+      let targets = new Set<number>();
+      if (typeof options.range === 'string' && options.range.trim().length > 0) {
+        for (const part of String(options.range).split(',')) {
+          const trimmed = part.trim();
+          if (!trimmed) continue;
+          const m = trimmed.match(/^(\d+)-(\d+)$/);
+          if (m) {
+            const start = Number(m[1]);
+            const end = Number(m[2]);
+            for (let i = start; i <= end; i += 1) targets.add(i);
+          } else if (/^\d+$/.test(trimmed)) {
+            targets.add(Number(trimmed));
+          }
+        }
+      }
+      if (typeof options.maxScore === 'number') {
+        const eps = 1e-9;
+        suggestions.forEach((edge, idx) => {
+          if (edge.score <= options.maxScore + eps) targets.add(idx + 1);
+        });
+      }
+      const toDelete = [...targets]
+        .filter((n) => n >= 1 && n <= suggestions.length)
+        .sort((a, b) => a - b);
+      if (toDelete.length === 0) {
+        console.log('No matches to remove.');
+        return;
+      }
+      let removed = 0;
+      for (const n of toDelete) {
+        const edge = suggestions[n - 1];
+        const changes = await deleteSuggestion(edge.id);
+        if (changes > 0) removed += 1;
+      }
+      console.log(`✔ Removed ${removed} suggestions`);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+insights
+  .command('explain')
+  .description('Explain how a link was scored by id or short pair')
+  .argument('<ref>', 'Edge id or short pair (abcd::efgh)')
+  .option('--json', 'Emit JSON output')
+  .action(async (ref, options) => {
+    try {
+      const edges = await listEdges('all');
+      const match = resolveEdgeReference(ref, edges);
+      if (!match) {
+        console.error('✖ No edge matched that reference.');
+        process.exitCode = 1;
+        return;
+      }
+      const nodes = await listNodes();
+      const a = nodes.find((n) => n.id === match.sourceId)!;
+      const b = nodes.find((n) => n.id === match.targetId)!;
+      const components = (match.metadata as any)?.components ?? computeScore(a, b).components;
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              id: match.id,
+              sourceId: match.sourceId,
+              targetId: match.targetId,
+              code: edgeShortCode(match.sourceId, match.targetId),
+              score: match.score,
+              status: match.status,
+              components,
+            },
+            null,
+            2,
+          )
+        );
+        return;
+      }
+      const code = edgeShortCode(match.sourceId, match.targetId);
+      console.log(`${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  status=${match.status}  score=${match.score.toFixed(2)}`);
+      console.log('components:');
+      for (const [k, v] of Object.entries(components)) {
+        if (typeof v === 'number') console.log(`  ${k}: ${v.toFixed(3)}`);
+        else console.log(`  ${k}: ${String(v)}`);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+insights
+  .command('undo')
+  .description('Undo the last accept/reject action for a link')
+  .argument('<ref>', 'Edge id, short pair (abcd::efgh), or 4-char code')
+  .action(async (ref) => {
+    try {
+      const pair = await resolveEdgePairFromRef(ref);
+      if (!pair) {
+        console.error('✖ Could not resolve edge reference.');
+        process.exitCode = 1;
+        return;
+      }
+      const [sourceId, targetId] = pair;
+      const ev = await getLastEdgeEventForPair(sourceId, targetId);
+      if (!ev) {
+        console.error('✖ No prior action found to undo.');
+        process.exitCode = 1;
+        return;
+      }
+      if (ev.nextStatus === 'accepted') {
+        // Revert to suggested
+        const edge: EdgeRecord = {
+          id: `${sourceId}::${targetId}`,
+          sourceId,
+          targetId,
+          score: (ev.payload?.score as number) ?? 0,
+          status: 'suggested',
+          metadata: ev.payload?.metadata ?? null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await insertOrUpdateEdge(edge);
+        await markEdgeEventUndone(ev.id);
+        console.log(`✔ Undid accept: restored suggestion ${formatId(sourceId)}::${formatId(targetId)}`);
+        return;
+      }
+      if (ev.nextStatus === 'deleted') {
+        // Recreate suggestion that was rejected
+        const edge: EdgeRecord = {
+          id: `${sourceId}::${targetId}`,
+          sourceId,
+          targetId,
+          score: (ev.payload?.score as number) ?? 0,
+          status: 'suggested',
+          metadata: ev.payload?.metadata ?? null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await insertOrUpdateEdge(edge);
+        await markEdgeEventUndone(ev.id);
+        console.log(`✔ Undid reject: restored suggestion ${formatId(sourceId)}::${formatId(targetId)}`);
+        return;
+      }
+      console.error('✖ Nothing to undo for this edge.');
+      process.exitCode = 1;
     } catch (error) {
       handleError(error);
     }
@@ -380,6 +787,7 @@ program
                   index: index + 1,
                   id: edge.id,
                   shortId: desc.shortId,
+                  code: desc.code,
                   score: edge.score,
                   sourceId: edge.sourceId,
                   targetId: edge.targetId,
@@ -423,7 +831,7 @@ program
           const desc = describeSuggestion(edge, nodeMap, { longIds: false });
           const indexLabel = String(index + 1).padStart(2, ' ');
           console.log(
-            `  ${indexLabel}. ${desc.shortId}  score=${edge.score.toFixed(2)}  ${desc.sourceTitle ?? desc.sourceLabel} ↔ ${desc.targetTitle ?? desc.targetLabel}`
+            `  ${indexLabel}. [${desc.code}] ${desc.shortId}  score=${edge.score.toFixed(2)}  ${desc.sourceTitle ?? desc.sourceLabel} ↔ ${desc.targetTitle ?? desc.targetLabel}`
           );
         });
         console.log('');
@@ -432,6 +840,136 @@ program
       console.log('Next steps:');
       console.log('  - Run `forest insights list` to triage pending links.');
       console.log('  - Capture new ideas with `forest capture`.');
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+const tagsCmd = program.command('tags').description('Tag management');
+
+tagsCmd
+  .command('list')
+  .description('List tags with usage counts')
+  .option('--top <n>', 'Limit to top N', toNumber)
+  .option('--json', 'Emit JSON output')
+  .action(async (options) => {
+    try {
+      const nodes = await listNodes();
+      const counts = new Map<string, number>();
+      for (const node of nodes) {
+        for (const tag of node.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+      }
+      const items = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+      const limited = typeof options.top === 'number' && !Number.isNaN(options.top)
+        ? items.slice(0, options.top)
+        : items;
+      if (options.json) {
+        console.log(JSON.stringify(limited.map(([tag, count]) => ({ tag, count })), null, 2));
+        return;
+      }
+      if (limited.length === 0) {
+        console.log('No tags found.');
+        return;
+      }
+      limited.forEach(([tag, count]) => {
+        console.log(`${String(count).padStart(3, ' ')}  ${tag}`);
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+tagsCmd
+  .command('rename')
+  .description('Rename a tag across all notes')
+  .argument('<old>', 'Existing tag')
+  .argument('<next>', 'New tag')
+  .action(async (oldTag: string, nextTag: string) => {
+    try {
+      const nodes = await listNodes();
+      let changed = 0;
+      for (const node of nodes) {
+        if (!node.tags.includes(oldTag)) continue;
+        const next = Array.from(new Set(node.tags.map((t) => (t === oldTag ? nextTag : t))));
+        await updateNodeIndexData(node.id, next, node.tokenCounts);
+        changed += 1;
+      }
+      console.log(`✔ Renamed tag '${oldTag}' to '${nextTag}' on ${changed} notes`);
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+tagsCmd
+  .command('stats')
+  .description('Show tag co-occurrence statistics')
+  .option('--tag <tag>', 'Focus on a single tag and show co-occurring tags')
+  .option('--min-count <n>', 'Only show items with count >= N', toNumber, 0)
+  .option('--top <n>', 'Top N results to show', toNumber, 10)
+  .option('--json', 'Emit JSON output')
+  .action(async (options) => {
+    try {
+      const nodes = await listNodes();
+      const co = new Map<string, number>();
+      const counts = new Map<string, number>();
+      for (const n of nodes) {
+        const tags = Array.from(new Set(n.tags));
+        for (const t of tags) counts.set(t, (counts.get(t) ?? 0) + 1);
+        for (let i = 0; i < tags.length; i += 1) {
+          for (let j = i + 1; j < tags.length; j += 1) {
+            const a = tags[i];
+            const b = tags[j];
+            const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+            co.set(key, (co.get(key) ?? 0) + 1);
+          }
+        }
+      }
+      const min = typeof options.minCount === 'number' && Number.isFinite(options.minCount) ? options.minCount : 0;
+      if (typeof options.tag === 'string' && options.tag.trim().length > 0) {
+        const t = options.tag.trim();
+        const items: Array<{ tag: string; count: number }> = [];
+        for (const [pair, count] of co.entries()) {
+          const [a, b] = pair.split('::');
+          if (a === t) items.push({ tag: b, count });
+          else if (b === t) items.push({ tag: a, count });
+        }
+        const filtered = items.filter((it) => it.count >= min);
+        const top = filtered.sort((x, y) => y.count - x.count).slice(0, options.top);
+        if (options.json) {
+          console.log(JSON.stringify({ tag: t, coTags: top }, null, 2));
+          return;
+        }
+        if (top.length === 0) {
+          console.log(`No co-occurring tags for '${t}'.`);
+          return;
+        }
+        console.log(`Top co-occurring tags with '${t}':`);
+        top.forEach((it) => console.log(`  ${String(it.count).padStart(3, ' ')}  ${it.tag}`));
+        return;
+      }
+      const topPairs = [...co.entries()]
+        .filter(([, c]) => c >= min)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, options.top);
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              topTags: [...counts.entries()]
+                .filter(([, c]) => c >= min)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, options.top)
+                .map(([tag, count]) => ({ tag, count })),
+              topPairs: topPairs.map(([pair, count]) => ({ pair, count })),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      console.log('Top tag pairs:');
+      topPairs.forEach(([p, c]) => console.log(`  ${String(c).padStart(3, ' ')}  ${p.replace('::', ' + ')}`));
     } catch (error) {
       handleError(error);
     }
@@ -494,7 +1032,187 @@ program
     }
   });
 
-program.parseAsync(process.argv);
+const exportCmd = program.command('export').description('Export graph data');
+
+exportCmd
+  .command('graphviz')
+  .description('Export a Graphviz DOT for a node neighborhood')
+  .requiredOption('--id <id>', 'Center node id or short id')
+  .option('-d, --depth <depth>', 'Neighborhood depth', toNumber, 1)
+  .option('-l, --limit <limit>', 'Maximum nodes in neighborhood', toNumber, DEFAULT_NEIGHBORHOOD_LIMIT)
+  .option('--include-suggestions', 'Include suggestion edges from the center node')
+  .option('--file <path>', 'Write DOT output to a file instead of stdout')
+  .action(async (options) => {
+    try {
+      const selection = await selectNode({ id: options.id });
+      const center = selection.selected.node;
+      const { payload, directEdges } = await buildNeighborhoodPayload(center.id, options.depth, options.limit);
+      const nodes = await listNodes();
+      const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+      const suggestions = Boolean(options.includeSuggestions)
+        ? await fetchSuggestionsForNode(center.id)
+        : [];
+
+      const lines: string[] = [];
+      lines.push('graph forest {');
+      lines.push('  rankdir=LR;');
+      lines.push('  node [shape=box, fontname="Helvetica"];');
+
+      const defined = new Set<string>();
+      const defNode = (id: string) => {
+        if (defined.has(id)) return;
+        const title = nodeMap.get(id)?.title ?? id;
+        lines.push(`  "${id}" [label="${formatId(id)} ${escapeLabel(title)}"];`);
+        defined.add(id);
+      };
+
+      payload.nodes.forEach((n) => defNode(n.id));
+      // Accepted edges
+      payload.edges.forEach((e) => {
+        defNode(e.source);
+        defNode(e.target);
+        lines.push(`  "${e.source}" -- "${e.target}" [label="${e.score.toFixed(2)}"];`);
+      });
+      // Suggestions from center
+      for (const s of suggestions) {
+        defNode(center.id);
+        defNode(s.otherId);
+        lines.push(
+          `  "${center.id}" -- "${s.otherId}" [style=dotted, color=gray50, label="${s.score.toFixed(2)}"];`
+        );
+      }
+
+      lines.push('}');
+
+      const dot = lines.join('\n');
+      if (options.file) {
+        const filePath = path.resolve(String(options.file));
+        fs.writeFileSync(filePath, dot, 'utf-8');
+      } else {
+        console.log(dot);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+exportCmd
+  .command('json')
+  .description('Export the full database as JSON')
+  .option('--file <path>', 'Write JSON to a file instead of stdout')
+  .option('--no-body', 'Exclude note bodies from export')
+  .option('--no-edges', 'Exclude edges from export')
+  .action(async (options) => {
+    try {
+      const nodes = await listNodes();
+      const edges = await listEdges('all');
+      const payload = {
+        nodes: nodes.map((n) => ({
+          id: n.id,
+          title: n.title,
+          tags: n.tags,
+          body: options.body === false ? undefined : n.body,
+          tokenCounts: n.tokenCounts,
+          createdAt: n.createdAt,
+          updatedAt: n.updatedAt,
+        })),
+        edges: options.edges === false
+          ? []
+          : edges.map((e) => ({
+              id: e.id,
+              sourceId: e.sourceId,
+              targetId: e.targetId,
+              status: e.status,
+              score: e.score,
+              metadata: e.metadata,
+              createdAt: e.createdAt,
+              updatedAt: e.updatedAt,
+            })),
+      };
+      const json = JSON.stringify(payload, null, 2);
+      if (options.file) {
+        const filePath = path.resolve(String(options.file));
+        fs.writeFileSync(filePath, json, 'utf-8');
+      } else {
+        console.log(json);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
+
+// Register all commands above before parsing argv
+
+// Stats
+program
+  .command('stats')
+  .description('Show graph and tag statistics')
+  .option('--json', 'Emit JSON output')
+  .option('--top <n>', 'Top N tags/pairs to show', toNumber, 10)
+  .action(async (options) => {
+    try {
+      const nodes = await listNodes();
+      const edges = await listEdges('accepted');
+      const graph = await buildGraph();
+
+      const degrees = nodes.map((n) => (graph.hasNode(n.id) ? graph.degree(n.id) : 0));
+      const degSorted = [...degrees].sort((a, b) => a - b);
+      const sum = degrees.reduce((a, b) => a + b, 0);
+      const avg = degrees.length ? sum / degrees.length : 0;
+      const median = degSorted.length ? degSorted[Math.floor(degSorted.length / 2)] : 0;
+      const p90 = degSorted.length ? degSorted[Math.floor(degSorted.length * 0.9)] : 0;
+
+      const tagCounts = new Map<string, number>();
+      const pairCounts = new Map<string, number>();
+      for (const n of nodes) {
+        const tags = Array.from(new Set(n.tags));
+        for (const t of tags) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1);
+        for (let i = 0; i < tags.length; i += 1) {
+          for (let j = i + 1; j < tags.length; j += 1) {
+            const a = tags[i];
+            const b = tags[j];
+            const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+            pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+      const topTags = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, options.top);
+      const topPairs = [...pairCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, options.top);
+
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              counts: { nodes: nodes.length, edges: edges.length },
+              degree: { avg, median, p90, max: Math.max(0, ...degrees) },
+              tags: topTags.map(([tag, count]) => ({ tag, count })),
+              tagPairs: topPairs.map(([pair, count]) => ({ pair, count })),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      console.log('forest stats');
+      console.log(`Nodes: ${nodes.length}`);
+      console.log(`Accepted edges: ${edges.length}`);
+      console.log('');
+      console.log(`Degree — avg ${avg.toFixed(2)}  median ${median}  p90 ${p90}  max ${Math.max(0, ...degrees)}`);
+      console.log('');
+      if (topTags.length) {
+        console.log('Top tags:');
+        topTags.forEach(([t, c]) => console.log(`  ${String(c).padStart(3, ' ')}  ${t}`));
+        console.log('');
+      }
+      if (topPairs.length) {
+        console.log('Top tag pairs:');
+        topPairs.forEach(([p, c]) => console.log(`  ${String(c).padStart(3, ' ')}  ${p.replace('::', ' + ')}`));
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 type ExploreRenderOptions = {
   selection?: SelectionResult;
@@ -507,6 +1225,7 @@ type ExploreRenderOptions = {
   json: boolean;
   showMatches: boolean;
   focusSelected: boolean;
+  suppressOverview?: boolean;
 };
 
 async function printExplore(options: ExploreRenderOptions) {
@@ -564,14 +1283,20 @@ async function printExplore(options: ExploreRenderOptions) {
 
   const directEdges = neighborhoodData.directEdges;
   const node = match.node;
-  printNodeOverview(node, directEdges, { longIds: options.longIds });
+  if (!options.suppressOverview) {
+    printNodeOverview(node, directEdges, { longIds: options.longIds });
+  }
 
   if (options.includeSuggestions && suggestionData.length > 0) {
-    console.log('');
+    if (!options.suppressOverview) {
+      console.log('');
+    }
     console.log('suggested edges:');
     for (const suggestion of suggestionData) {
+      const [sa, sb] = normalizeEdgePair(node.id, suggestion.otherId);
+      const code = edgeShortCode(sa, sb);
       console.log(
-        `  ${formatScore(suggestion.score)}  ${formatId(suggestion.otherId, { long: options.longIds })}  ${suggestion.otherTitle}  (${suggestion.id})`
+        `  ${formatScore(suggestion.score)}  [${code}] ${formatId(suggestion.otherId, { long: options.longIds })}  ${suggestion.otherTitle}  (${suggestion.id})`
       );
     }
   }
@@ -719,9 +1444,11 @@ function describeSuggestion(
   const edgeId = longIds ? edge.id : `${shortSource}::${shortTarget}`;
   const sourceLabel = sourceNode?.title ?? (longIds ? edge.sourceId : sourceIdDisplay);
   const targetLabel = targetNode?.title ?? (longIds ? edge.targetId : targetIdDisplay);
+  const code = edgeShortCode(edge.sourceId, edge.targetId);
   return {
     edgeId,
     shortId: `${shortSource}::${shortTarget}`,
+    code,
     sourceLabel,
     targetLabel,
     sourceTitle: sourceNode?.title ?? null,
@@ -745,8 +1472,57 @@ function resolveSuggestionReference(ref: string, suggestions: EdgeRecord[]): Edg
   return suggestions.find((edge) => {
     if (edge.id === normalized) return true;
     const shortId = `${formatId(edge.sourceId)}::${formatId(edge.targetId)}`.toLowerCase();
-    return shortId === lowered;
+    if (shortId === lowered) return true;
+    const code = edgeShortCode(edge.sourceId, edge.targetId).toLowerCase();
+    return code === lowered && /[a-z]/.test(lowered);
   });
+}
+
+function resolveEdgeReference(ref: string, edges: EdgeRecord[]): EdgeRecord | undefined {
+  const normalized = ref.trim();
+  if (normalized.length === 0) return undefined;
+  const lowered = normalized.toLowerCase();
+  return edges.find((edge) => {
+    if (edge.id === normalized) return true;
+    const shortId = `${formatId(edge.sourceId)}::${formatId(edge.targetId)}`.toLowerCase();
+    if (shortId === lowered) return true;
+    const code = edgeShortCode(edge.sourceId, edge.targetId).toLowerCase();
+    return code === lowered && /[a-z]/.test(lowered);
+  });
+}
+
+async function resolveEdgePairFromRef(ref: string): Promise<[string, string] | null> {
+  const normalized = ref.trim();
+  if (!normalized) return null;
+  // Try existing edges first
+  const allEdges = await listEdges('all');
+  const viaEdges = resolveEdgeReference(normalized, allEdges);
+  if (viaEdges) return normalizeEdgePair(viaEdges.sourceId, viaEdges.targetId);
+
+  // Try short pair form abcd::efgh
+  if (normalized.includes('::')) {
+    const [a, b] = normalized.split('::', 2);
+    if (a && b) {
+      const aNode = (isShortId(a) ? await resolveByIdPrefix(a) : await getNodeById(a)) ?? null;
+      const bNode = (isShortId(b) ? await resolveByIdPrefix(b) : await getNodeById(b)) ?? null;
+      if (aNode && bNode) return normalizeEdgePair(aNode.id, bNode.id);
+    }
+  }
+
+  // Try 4-char code over edges and recent events
+  if (/^[a-z0-9]{1,4}$/i.test(normalized) && /[a-z]/i.test(normalized)) {
+    const codeLower = normalized.toLowerCase();
+    for (const e of allEdges) {
+      const code = edgeShortCode(e.sourceId, e.targetId).toLowerCase();
+      if (code === codeLower) return normalizeEdgePair(e.sourceId, e.targetId);
+    }
+    const events = await listEdgeEvents(1000);
+    for (const ev of events) {
+      const code = edgeShortCode(ev.sourceId, ev.targetId).toLowerCase();
+      if (code === codeLower) return normalizeEdgePair(ev.sourceId, ev.targetId);
+    }
+  }
+  return null;
 }
 
 type SelectionResult = { selected: SearchMatch; matches: SearchMatch[]; limit: number };
@@ -758,13 +1534,22 @@ type SelectionInput = {
   limit?: number;
   select?: number;
   interactive?: boolean;
+  tagsAll?: string[];
+  tagsAny?: string[];
+  since?: Date | null;
+  until?: Date | null;
+  sort?: 'score' | 'recent' | 'degree';
 };
 
 async function selectNode(input: SelectionInput): Promise<SelectionResult> {
   const searchLimit = input.limit ?? DEFAULT_SEARCH_LIMIT;
 
   if (input.id) {
-    const node = await getNodeById(input.id);
+    let node = await getNodeById(input.id);
+    if (!node && isShortId(input.id)) {
+      const byPrefix = await resolveByIdPrefix(input.id);
+      if (byPrefix) node = byPrefix;
+    }
     if (!node) {
       throw new Error(`Node with id ${input.id} not found.`);
     }
@@ -786,9 +1571,87 @@ async function selectNode(input: SelectionInput): Promise<SelectionResult> {
   }
 
   const term = input.title ?? input.term ?? '';
-  const matches = await searchNodes(term, searchLimit);
+  const hasFilters = Boolean(
+    (input.tagsAll && input.tagsAll.length) ||
+      (input.tagsAny && input.tagsAny.length) ||
+      input.since ||
+      input.until ||
+      (input.sort && input.sort !== 'score')
+  );
+
+  let matches: SearchMatch[] = [];
+  if (!hasFilters && term) {
+    matches = await searchNodes(term, searchLimit);
+  } else {
+    const all = await listNodes();
+    const filtered = all.filter((node) => {
+      if (input.tagsAll && input.tagsAll.length) {
+        for (const t of input.tagsAll) if (!node.tags.includes(t)) return false;
+      }
+      if (input.tagsAny && input.tagsAny.length) {
+        let ok = false;
+        for (const t of input.tagsAny) if (node.tags.includes(t)) ok = true;
+        if (!ok) return false;
+      }
+      if (input.since) {
+        const ts = new Date(node.updatedAt).getTime();
+        if (Number.isFinite(ts) && ts < input.since.getTime()) return false;
+      }
+      if (input.until) {
+        const ts = new Date(node.updatedAt).getTime();
+        if (Number.isFinite(ts) && ts >= input.until.getTime()) return false;
+      }
+      return true;
+    });
+
+    // If a term is provided, compute a simple score similar to searchNodes
+    let scored: SearchMatch[];
+    if (term) {
+      const normalized = term.trim().toLowerCase();
+      scored = filtered
+        .map((node) => {
+          const titleMatch = node.title.toLowerCase().includes(normalized);
+          const tagMatch = node.tags.some((tag) => tag.toLowerCase().includes(normalized));
+          const bodyMatch = node.body.toLowerCase().includes(normalized);
+          const score = (titleMatch ? 3 : 0) + (tagMatch ? 2 : 0) + (bodyMatch ? 1 : 0);
+          return { node, score } as SearchMatch;
+        })
+        .filter((e) => e.score > 0)
+        .map((e) => ({ node: e.node, score: Math.min(1, e.score / 6) }));
+    } else {
+      // No term: produce recency-based fallback scores
+      scored = filtered
+        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+        .map((node, index) => ({ node, score: Math.max(0.2, 1 - index / Math.max(1, filtered.length)) }));
+    }
+
+    // Sort
+    let sorted = scored;
+    if (input.sort === 'recent') {
+      sorted = [...scored].sort(
+        (a, b) => new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime(),
+      );
+    } else if (input.sort === 'degree') {
+      const graph = await buildGraph();
+      sorted = [...scored].sort((a, b) => {
+        const da = graph.hasNode(a.node.id) ? graph.degree(a.node.id) : 0;
+        const db = graph.hasNode(b.node.id) ? graph.degree(b.node.id) : 0;
+        if (db !== da) return db - da;
+        return new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime();
+      });
+    } else {
+      // 'score' or undefined: sort by score desc, then recency
+      sorted = [...scored].sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime();
+      });
+    }
+
+    matches = sorted.slice(0, searchLimit);
+  }
   if (matches.length === 0) {
-    throw new Error(term ? `No node matching "${term}".` : 'No nodes found. Capture ideas to populate the graph.');
+    const why = term ? `"${term}"` : 'filters';
+    throw new Error(`No node matching ${why}.`);
   }
 
   let index = 0;
@@ -880,6 +1743,18 @@ function formatScore(score: number): string {
   return clamped.toFixed(2);
 }
 
+function edgeShortCode(a: string, b: string): string {
+  // Stable 4-char base36 code derived from the normalized short pair
+  const pair = `${formatId(a)}::${formatId(b)}`;
+  let h = 0x811c9dc5 >>> 0; // FNV-1a 32-bit
+  for (let i = 0; i < pair.length; i += 1) {
+    h ^= pair.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0; // * 16777619
+  }
+  const base36 = h.toString(36);
+  return base36.slice(-4).padStart(4, '0');
+}
+
 function isShortId(term: string): boolean {
   return /^[0-9a-f]{6,}$/i.test(term) && term.length <= SHORT_ID_LENGTH;
 }
@@ -915,3 +1790,35 @@ function handleError(error: unknown) {
   }
   process.exitCode = 1;
 }
+
+function parseCsvList(value?: string): string[] | undefined {
+  if (typeof value !== 'string') return undefined;
+  const parts = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.length ? parts : undefined;
+}
+
+function parseDate(value?: string): Date | null {
+  if (typeof value !== 'string' || value.trim().length === 0) return null;
+  const v = value.trim();
+  // Allow YYYY-MM-DD shorthand
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00.000Z` : v;
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+function normalizeSort(value?: string): 'score' | 'recent' | 'degree' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const v = value.toLowerCase();
+  if (v === 'recent' || v === 'score' || v === 'degree') return v as any;
+  return undefined;
+}
+
+function escapeLabel(text: string): string {
+  return String(text).replace(/"/g, '\\"');
+}
+
+// Parse argv after all commands are defined
+program.parseAsync(process.argv);

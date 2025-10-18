@@ -100,6 +100,21 @@ function runMigrations(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_edges_status ON edges(status);
     CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
     CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+
+    CREATE TABLE IF NOT EXISTS edge_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      edge_id TEXT,
+      source_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      prev_status TEXT,
+      next_status TEXT NOT NULL,
+      payload TEXT,
+      created_at TEXT NOT NULL,
+      undone INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_edge_events_pair ON edge_events(source_id, target_id);
+    CREATE INDEX IF NOT EXISTS idx_edge_events_edge ON edge_events(edge_id);
   `);
 }
 
@@ -138,6 +153,38 @@ export async function updateNodeTokens(id: string, tokenCounts: Record<string, n
     ':updatedAt': new Date().toISOString(),
     ':id': id,
   });
+  stmt.step();
+  stmt.free();
+  await markDirtyAndPersist();
+}
+
+export async function updateNode(
+  id: string,
+  fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts'>>
+): Promise<void> {
+  const db = await ensureDatabase();
+  const sets: string[] = [];
+  const params: Record<string, unknown> = { ':id': id, ':updatedAt': new Date().toISOString() };
+  if (typeof fields.title === 'string') {
+    sets.push('title = :title');
+    params[':title'] = fields.title;
+  }
+  if (typeof fields.body === 'string') {
+    sets.push('body = :body');
+    params[':body'] = fields.body;
+  }
+  if (Array.isArray(fields.tags)) {
+    sets.push('tags = :tags');
+    params[':tags'] = JSON.stringify(fields.tags);
+  }
+  if (fields.tokenCounts) {
+    sets.push('token_counts = :tokenCounts');
+    params[':tokenCounts'] = JSON.stringify(fields.tokenCounts);
+  }
+  sets.push('updated_at = :updatedAt');
+  const sql = `UPDATE nodes SET ${sets.join(', ')} WHERE id = :id`;
+  const stmt = db.prepare(sql);
+  stmt.bind(params as any);
   stmt.step();
   stmt.free();
   await markDirtyAndPersist();
@@ -319,6 +366,111 @@ export async function listEdges(status: EdgeStatus | 'all' = 'all'): Promise<Edg
   return edges;
 }
 
+export type EdgeEvent = {
+  id: number;
+  edgeId: string | null;
+  sourceId: string;
+  targetId: string;
+  prevStatus: string | null;
+  nextStatus: string;
+  payload: any | null;
+  createdAt: string;
+  undone: boolean;
+};
+
+export async function logEdgeEvent(event: {
+  edgeId?: string | null;
+  sourceId: string;
+  targetId: string;
+  prevStatus?: string | null;
+  nextStatus: string;
+  payload?: any | null;
+}): Promise<number> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `INSERT INTO edge_events (edge_id, source_id, target_id, prev_status, next_status, payload, created_at, undone)
+     VALUES (:edgeId, :sourceId, :targetId, :prevStatus, :nextStatus, :payload, :createdAt, 0)`
+  );
+  const createdAt = new Date().toISOString();
+  stmt.bind({
+    ':edgeId': event.edgeId ?? null,
+    ':sourceId': event.sourceId,
+    ':targetId': event.targetId,
+    ':prevStatus': event.prevStatus ?? null,
+    ':nextStatus': event.nextStatus,
+    ':payload': event.payload ? JSON.stringify(event.payload) : null,
+    ':createdAt': createdAt,
+  });
+  stmt.step();
+  const rowId = db.exec('SELECT last_insert_rowid() as id')[0].values[0][0] as number;
+  stmt.free();
+  await markDirtyAndPersist();
+  return rowId;
+}
+
+export async function getLastEdgeEventForPair(
+  sourceId: string,
+  targetId: string
+): Promise<EdgeEvent | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT * FROM edge_events WHERE source_id = :source AND target_id = :target AND undone = 0 ORDER BY id DESC LIMIT 1`
+  );
+  stmt.bind({ ':source': sourceId, ':target': targetId });
+  const ev = stmt.step()
+    ? (() => {
+        const row = stmt.getAsObject();
+        return {
+          id: Number(row.id),
+          edgeId: row.edge_id ? String(row.edge_id) : null,
+          sourceId: String(row.source_id),
+          targetId: String(row.target_id),
+          prevStatus: row.prev_status ? String(row.prev_status) : null,
+          nextStatus: String(row.next_status),
+          payload: row.payload ? JSON.parse(String(row.payload)) : null,
+          createdAt: String(row.created_at),
+          undone: Number(row.undone) === 1,
+        } as EdgeEvent;
+      })()
+    : null;
+  stmt.free();
+  return ev;
+}
+
+export async function markEdgeEventUndone(id: number): Promise<void> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(`UPDATE edge_events SET undone = 1 WHERE id = :id`);
+  stmt.bind({ ':id': id });
+  stmt.step();
+  stmt.free();
+  await markDirtyAndPersist();
+}
+
+export async function listEdgeEvents(limit = 500): Promise<EdgeEvent[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT * FROM edge_events WHERE undone = 0 ORDER BY id DESC LIMIT :limit`
+  );
+  stmt.bind({ ':limit': limit });
+  const events: EdgeEvent[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    events.push({
+      id: Number(row.id),
+      edgeId: row.edge_id ? String(row.edge_id) : null,
+      sourceId: String(row.source_id),
+      targetId: String(row.target_id),
+      prevStatus: row.prev_status ? String(row.prev_status) : null,
+      nextStatus: String(row.next_status),
+      payload: row.payload ? JSON.parse(String(row.payload)) : null,
+      createdAt: String(row.created_at),
+      undone: Number(row.undone) === 1,
+    });
+  }
+  stmt.free();
+  return events;
+}
+
 export async function deleteEdgeBetween(sourceId: string, targetId: string): Promise<boolean> {
   const db = await ensureDatabase();
   const stmt = db.prepare(`DELETE FROM edges WHERE source_id = :source AND target_id = :target`);
@@ -331,6 +483,39 @@ export async function deleteEdgeBetween(sourceId: string, targetId: string): Pro
     return true;
   }
   return false;
+}
+
+export async function deleteNode(id: string): Promise<{ edgesRemoved: number; nodeRemoved: boolean }> {
+  const db = await ensureDatabase();
+  // Count edges first
+  let edgesRemoved = 0;
+  {
+    const countStmt = db.prepare('SELECT COUNT(1) as c FROM edges WHERE source_id = :id OR target_id = :id');
+    countStmt.bind({ ':id': id });
+    if (countStmt.step()) {
+      const row = countStmt.getAsObject();
+      edgesRemoved = Number(row.c) || 0;
+    }
+    countStmt.free();
+  }
+
+  // Delete edges
+  const delEdges = db.prepare('DELETE FROM edges WHERE source_id = :id OR target_id = :id');
+  delEdges.bind({ ':id': id });
+  delEdges.step();
+  delEdges.free();
+
+  // Delete node
+  const delNode = db.prepare('DELETE FROM nodes WHERE id = :id');
+  delNode.bind({ ':id': id });
+  delNode.step();
+  const nodeRemoved = db.getRowsModified() > 0;
+  delNode.free();
+
+  if (edgesRemoved > 0 || nodeRemoved) {
+    await markDirtyAndPersist();
+  }
+  return { edgesRemoved, nodeRemoved };
 }
 
 export async function promoteSuggestions(minScore: number): Promise<number> {
