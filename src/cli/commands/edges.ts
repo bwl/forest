@@ -24,138 +24,144 @@ import type { HandlerContext } from '@clerc/core';
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
 
-type InsightsListFlags = {
+type EdgesListFlags = {
   limit?: number;
   longIds?: boolean;
   json?: boolean;
 };
 
-type InsightsPromoteFlags = {
+type EdgesProposeFlags = {
+  limit?: number;
+  longIds?: boolean;
+  json?: boolean;
+};
+
+type EdgesPromoteFlags = {
   minScore?: number;
 };
 
-type InsightsSweepFlags = {
+type EdgesSweepFlags = {
   range?: string;
   maxScore?: number;
 };
 
-type InsightsExplainFlags = {
+type EdgesExplainFlags = {
   json?: boolean;
 };
 
-export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule) {
-  const listCommand = clerc.defineCommand(
-      {
-        name: 'insights list',
-        description: 'List suggested links ordered by score',
-        flags: {
-          limit: {
-            type: Number,
-            description: 'Limit number of suggestions returned',
-            default: 10,
-          },
-          longIds: {
-            type: Boolean,
-            description: 'Display full identifiers in output',
-          },
-          json: {
-            type: Boolean,
-            description: 'Emit JSON output',
-          },
+export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
+  const proposeCommand = clerc.defineCommand(
+    {
+      name: 'edges propose',
+      description: 'List suggested links ordered by score',
+      flags: {
+        limit: {
+          type: Number,
+          description: 'Limit number of suggestions returned',
+          default: 10,
+        },
+        longIds: {
+          type: Boolean,
+          description: 'Display full identifiers in output',
+        },
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
         },
       },
-      async ({ flags }: { flags: InsightsListFlags }) => {
-        try {
-          await runInsightsList(flags);
-        } catch (error) {
-          handleError(error);
-        }
-      },
-    );
-  cli.command(listCommand);
+    },
+    async ({ flags }: { flags: EdgesProposeFlags }) => {
+      try {
+        await runEdgesPropose(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(proposeCommand);
 
   const promoteCommand = clerc.defineCommand(
-      {
-        name: 'insights promote',
-        description: 'Promote suggestions above a score threshold to accepted edges',
-        flags: {
-          minScore: {
-            type: Number,
-            description: 'Minimum score to accept',
-            default: getAutoAcceptThreshold(),
-          },
+    {
+      name: 'edges promote',
+      description: 'Promote suggestions above a score threshold to accepted edges',
+      flags: {
+        minScore: {
+          type: Number,
+          description: 'Minimum score to accept',
+          default: getAutoAcceptThreshold(),
         },
       },
-      async ({ flags }: { flags: InsightsPromoteFlags }) => {
-        try {
-          await runInsightsPromote(flags);
-        } catch (error) {
-          handleError(error);
-        }
-      },
-    );
+    },
+    async ({ flags }: { flags: EdgesPromoteFlags }) => {
+      try {
+        await runEdgesPromote(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
   cli.command(promoteCommand);
 
   const acceptCommand = clerc.defineCommand(
-      {
-        name: 'insights accept',
-        description: 'Promote a single suggestion by progressive ID, short pair, or edge id',
-        parameters: ['<ref>'],
-      },
-      async ({ parameters }: { parameters: { ref?: string } }) => {
-        try {
-          await runInsightsAccept(parameters.ref);
-        } catch (error) {
-          handleError(error);
-        }
-      },
-    );
+    {
+      name: 'edges accept',
+      description: 'Promote a single suggestion by progressive ID, short pair, or edge id',
+      parameters: ['<ref>'],
+    },
+    async ({ parameters }: { parameters: { ref?: string } }) => {
+      try {
+        await runEdgesAccept(parameters.ref);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
   cli.command(acceptCommand);
 
   const rejectCommand = clerc.defineCommand(
-      {
-        name: 'insights reject',
-        description: 'Reject and remove a suggestion by progressive ID, short pair, or edge id',
-        parameters: ['<ref>'],
-      },
-      async ({ parameters }: { parameters: { ref?: string } }) => {
-        try {
-          await runInsightsReject(parameters.ref);
-        } catch (error) {
-          handleError(error);
-        }
-      },
-    );
+    {
+      name: 'edges reject',
+      description: 'Reject and remove a suggestion by progressive ID, short pair, or edge id',
+      parameters: ['<ref>'],
+    },
+    async ({ parameters }: { parameters: { ref?: string } }) => {
+      try {
+        await runEdgesReject(parameters.ref);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
   cli.command(rejectCommand);
 
   const sweepCommand = clerc.defineCommand(
-      {
-        name: 'insights sweep',
-        description: 'Bulk-reject suggestions by index range or score',
-        flags: {
-          range: {
-            type: String,
-            description: 'Comma-separated indexes or ranges (e.g., 1-10,15)',
-          },
-          maxScore: {
-            type: Number,
-            description: 'Reject suggestions at or below this score',
-          },
+    {
+      name: 'edges sweep',
+      description: 'Bulk-reject suggestions by index range or score',
+      flags: {
+        range: {
+          type: String,
+          description: 'Comma-separated indexes or ranges (e.g., 1-10,15)',
+        },
+        maxScore: {
+          type: Number,
+          description: 'Reject suggestions at or below this score',
         },
       },
-      async ({ flags }: { flags: InsightsSweepFlags }) => {
-        try {
-          await runInsightsSweep(flags);
-        } catch (error) {
-          handleError(error);
-        }
-      },
-    );
+    },
+    async ({ flags }: { flags: EdgesSweepFlags }) => {
+      try {
+        await runEdgesSweep(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
   cli.command(sweepCommand);
 
   const explainCommand = clerc.defineCommand(
     {
-      name: 'insights explain',
+      name: 'edges explain',
       description: 'Explain how a link was scored by id or short pair',
       parameters: ['<ref>'],
       flags: {
@@ -165,9 +171,9 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
         },
       },
     },
-    async ({ parameters, flags }: { parameters: { ref?: string }; flags: InsightsExplainFlags }) => {
+    async ({ parameters, flags }: { parameters: { ref?: string }; flags: EdgesExplainFlags }) => {
       try {
-        await runInsightsExplain(parameters.ref, flags);
+        await runEdgesExplain(parameters.ref, flags);
       } catch (error) {
         handleError(error);
       }
@@ -177,13 +183,13 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
 
   const undoCommand = clerc.defineCommand(
     {
-      name: 'insights undo',
+      name: 'edges undo',
       description: 'Undo the last accept/reject action for a link',
       parameters: ['<ref>'],
     },
     async ({ parameters }: { parameters: { ref?: string } }) => {
       try {
-        await runInsightsUndo(parameters.ref);
+        await runEdgesUndo(parameters.ref);
       } catch (error) {
         handleError(error);
       }
@@ -193,12 +199,29 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
 
   const baseCommand = clerc.defineCommand(
     {
-      name: 'insights',
-      description: 'Manage suggested edges',
+      name: 'edges',
+      description: 'View and manage edges between nodes',
+      flags: {
+        limit: {
+          type: Number,
+          description: 'Limit number of edges returned',
+          default: 10,
+        },
+        longIds: {
+          type: Boolean,
+          description: 'Display full identifiers in output',
+        },
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
+        },
+      },
       help: {
         notes: [
+          'When called without a subcommand, shows recent accepted edges.',
+          '',
           'Subcommands:',
-          '  list      List suggested links ordered by score',
+          '  propose   List suggested links ordered by score',
           '  promote   Promote suggestions above a score threshold',
           '  accept    Accept a single suggestion by reference',
           '  reject    Remove a single suggestion by reference',
@@ -206,17 +229,18 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
           '  explain   Explain scoring components for a link',
           '  undo      Undo the last accept/reject action',
           '',
-          'Use `forest insights <subcommand> --help` for flag details.',
+          'Use `forest edges <subcommand> --help` for flag details.',
         ],
         examples: [
-          ['$ forest insights list', 'Show top pending suggestions'],
-          ['$ forest insights accept 0L5a', 'Accept suggestion by progressive ID'],
+          ['$ forest edges', 'Show most recent accepted edges'],
+          ['$ forest edges propose', 'Show top pending suggestions'],
+          ['$ forest edges accept 0L5a', 'Accept suggestion by progressive ID'],
         ],
       },
     },
-    async (ctx: HandlerContext) => {
+    async ({ flags }: { flags: EdgesListFlags }) => {
       try {
-        await ctx.cli.parse({ argv: ['help', 'insights'], run: true });
+        await runEdgesList(flags);
       } catch (error) {
         handleError(error);
       }
@@ -225,7 +249,59 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
   cli.command(baseCommand);
 }
 
-async function runInsightsList(flags: InsightsListFlags) {
+async function runEdgesList(flags: EdgesListFlags) {
+  const limit =
+    typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
+  const edges = (await listEdges('accepted'))
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, limit);
+
+  if (edges.length === 0) {
+    console.log('No accepted edges found.');
+    return;
+  }
+
+  const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
+  const longIds = Boolean(flags.longIds);
+  const allEdges = await listEdges('all');
+
+  if (flags.json) {
+    console.log(
+      JSON.stringify(
+        edges.map((edge, index) => {
+          const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
+          return {
+            index: index + 1,
+            id: edge.id,
+            shortId: desc.shortId,
+            code: desc.code,
+            sourceId: edge.sourceId,
+            targetId: edge.targetId,
+            sourceTitle: desc.sourceTitle,
+            targetTitle: desc.targetTitle,
+            score: edge.score,
+            metadata: edge.metadata,
+            updatedAt: edge.updatedAt,
+          };
+        }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(`Recent accepted edges (${edges.length}):`);
+  edges.forEach((edge, index) => {
+    const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
+    const indexLabel = String(index + 1).padStart(2, ' ');
+    console.log(
+      `${indexLabel}. [${desc.code}] ${desc.edgeId}  score=${edge.score.toFixed(3)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`,
+    );
+  });
+}
+
+async function runEdgesPropose(flags: EdgesProposeFlags) {
   const limit =
     typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
   const edges = (await listEdges('suggested')).sort((a, b) => b.score - a.score).slice(0, limit);
@@ -237,8 +313,6 @@ async function runInsightsList(flags: InsightsListFlags) {
 
   const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
   const longIds = Boolean(flags.longIds);
-
-  // Fetch all edges for progressive ID calculation
   const allEdges = await listEdges('all');
 
   if (flags.json) {
@@ -266,6 +340,7 @@ async function runInsightsList(flags: InsightsListFlags) {
     return;
   }
 
+  console.log('Suggested edges (ordered by score):');
   edges.forEach((edge, index) => {
     const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
     const indexLabel = String(index + 1).padStart(2, ' ');
@@ -273,9 +348,14 @@ async function runInsightsList(flags: InsightsListFlags) {
       `${indexLabel}. [${desc.code}] ${desc.edgeId}  score=${edge.score.toFixed(3)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`,
     );
   });
+  console.log('');
+  console.log('To accept or reject suggestions:');
+  console.log('  forest edges accept <ref>   # ref can be index (1), code (0L5a), or short pair');
+  console.log('  forest edges reject <ref>');
+  console.log('  forest edges promote        # bulk accept above threshold');
 }
 
-async function runInsightsPromote(flags: InsightsPromoteFlags) {
+async function runEdgesPromote(flags: EdgesPromoteFlags) {
   const minScore =
     typeof flags.minScore === 'number' && !Number.isNaN(flags.minScore)
       ? flags.minScore
@@ -284,7 +364,7 @@ async function runInsightsPromote(flags: InsightsPromoteFlags) {
   console.log(`✔ Promoted ${changes} suggestions with score ≥ ${minScore.toFixed(3)}`);
 }
 
-async function runInsightsAccept(ref: string | undefined) {
+async function runEdgesAccept(ref: string | undefined) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
     process.exitCode = 1;
@@ -300,7 +380,7 @@ async function runInsightsAccept(ref: string | undefined) {
 
   const edge = resolveSuggestionReference(ref, suggestions);
   if (!edge) {
-    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest insights list`.');
+    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest edges propose`.');
     process.exitCode = 1;
     return;
   }
@@ -323,7 +403,7 @@ async function runInsightsAccept(ref: string | undefined) {
   console.log(`✔ Accepted suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`);
 }
 
-async function runInsightsReject(ref: string | undefined) {
+async function runEdgesReject(ref: string | undefined) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
     process.exitCode = 1;
@@ -339,7 +419,7 @@ async function runInsightsReject(ref: string | undefined) {
 
   const edge = resolveSuggestionReference(ref, suggestions);
   if (!edge) {
-    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest insights list`.');
+    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest edges propose`.');
     process.exitCode = 1;
     return;
   }
@@ -361,7 +441,7 @@ async function runInsightsReject(ref: string | undefined) {
   console.log(`✔ Removed suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`);
 }
 
-async function runInsightsSweep(flags: InsightsSweepFlags) {
+async function runEdgesSweep(flags: EdgesSweepFlags) {
   const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
   if (suggestions.length === 0) {
     console.log('No suggestions ready.');
@@ -414,7 +494,7 @@ async function runInsightsSweep(flags: InsightsSweepFlags) {
   console.log(`✔ Removed ${removed} suggestions`);
 }
 
-async function runInsightsExplain(ref: string | undefined, flags: InsightsExplainFlags) {
+async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
     process.exitCode = 1;
@@ -472,7 +552,7 @@ async function runInsightsExplain(ref: string | undefined, flags: InsightsExplai
   }
 }
 
-async function runInsightsUndo(ref: string | undefined) {
+async function runEdgesUndo(ref: string | undefined) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
     process.exitCode = 1;

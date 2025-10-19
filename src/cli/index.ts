@@ -1,15 +1,12 @@
 import { createCaptureCommand } from './commands/capture';
-import { createDeleteCommand } from './commands/delete';
-import { createEditCommand } from './commands/edit';
-import { createDoctorCommand } from './commands/doctor';
 import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings';
 import { createExploreCommand } from './commands/explore';
-import { createLinkCommand } from './commands/link';
 import { registerExportCommands } from './commands/export';
-import { registerInsightsCommands } from './commands/insights';
+import { registerEdgesCommands } from './commands/edges';
+import { registerNodeCommands } from './commands/node';
 import { registerTagsCommands } from './commands/tags';
-import { createReadCommand } from './commands/read';
 import { createStatsCommand } from './commands/stats';
+import { createHealthCommand } from './commands/health';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
 
 type ClercModule = typeof import('clerc');
@@ -42,15 +39,12 @@ export async function createForestCli() {
 
   cli.command(createCaptureCommand(clerc));
   cli.command(createExploreCommand(clerc));
-  cli.command(createEditCommand(clerc));
-  cli.command(createDeleteCommand(clerc));
-  cli.command(createLinkCommand(clerc));
-  cli.command(createAdminRecomputeEmbeddingsCommand(clerc));
-  cli.command(createDoctorCommand(clerc));
   cli.command(createStatsCommand(clerc));
-  cli.command(createReadCommand(clerc));
+  cli.command(createHealthCommand(clerc));
+  cli.command(createAdminRecomputeEmbeddingsCommand(clerc));
   cli.command(createVersionCommand(clerc));
-  registerInsightsCommands(cli, clerc);
+  registerNodeCommands(cli, clerc);
+  registerEdgesCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
   registerExportCommands(cli, clerc);
 
