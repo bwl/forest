@@ -5,15 +5,13 @@
  * the shortest unique prefix (minimum 4 chars, growing as needed to avoid collisions).
  */
 
-const BASE62_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-
 /**
  * Generate a stable, long hash ID for an edge pair.
- * Uses FNV-1a 64-bit hash encoded as base62 (16 chars).
+ * Uses FNV-1a 64-bit hash encoded as hex (16 chars).
  *
  * @param sourceId - First node ID (unnormalized)
  * @param targetId - Second node ID (unnormalized)
- * @returns 16-character base62 hash
+ * @returns 16-character hex hash (lowercase, like Git)
  */
 export function generateEdgeHash(sourceId: string, targetId: string): string {
   // Normalize pair order to ensure stability
@@ -32,28 +30,11 @@ export function generateEdgeHash(sourceId: string, targetId: string): string {
     h2 = Math.imul(h2, 0x01000193) >>> 0;
   }
 
-  // Combine into 64-bit number (as BigInt for precision)
-  const hash64 = (BigInt(h1) << 32n) | BigInt(h2);
+  // Encode as hex (8 chars each = 16 total)
+  const hex1 = h1.toString(16).padStart(8, '0');
+  const hex2 = h2.toString(16).padStart(8, '0');
 
-  // Encode as base62 (16 chars minimum)
-  return toBase62(hash64, 16);
-}
-
-/**
- * Convert a BigInt to base62 string with minimum length.
- */
-function toBase62(value: bigint, minLength: number): string {
-  if (value === 0n) return '0'.padStart(minLength, '0');
-
-  let result = '';
-  let num = value;
-  while (num > 0n) {
-    const remainder = Number(num % 62n);
-    result = BASE62_CHARS[remainder] + result;
-    num = num / 62n;
-  }
-
-  return result.padStart(minLength, '0');
+  return hex1 + hex2;
 }
 
 /**

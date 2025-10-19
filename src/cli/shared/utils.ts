@@ -40,10 +40,10 @@ export function getEdgePrefix(sourceId: string, targetId: string, allEdges: Edge
 }
 
 /**
- * Check if a string looks like a progressive edge ID (alphanumeric, 4+ chars).
+ * Check if a string looks like a progressive edge ID (hex chars, 4+ chars).
  */
 export function isProgressiveEdgeId(term: string): boolean {
-  return /^[0-9A-Za-z]{4,}$/.test(term);
+  return /^[0-9a-f]{4,}$/i.test(term);
 }
 
 export function isShortId(term: string): boolean {
