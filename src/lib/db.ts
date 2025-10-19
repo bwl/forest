@@ -8,6 +8,7 @@ export type NodeRecord = {
   body: string;
   tags: string[];
   tokenCounts: Record<string, number>;
+  embedding?: number[];
   createdAt: string;
   updatedAt: string;
 };
@@ -76,6 +77,7 @@ function runMigrations(db: Database) {
       body TEXT NOT NULL,
       tags TEXT NOT NULL,
       token_counts TEXT NOT NULL,
+      embedding TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -116,6 +118,18 @@ function runMigrations(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_edge_events_pair ON edge_events(source_id, target_id);
     CREATE INDEX IF NOT EXISTS idx_edge_events_edge ON edge_events(edge_id);
   `);
+
+  // Add embedding column if missing (for existing databases)
+  try {
+    const res = db.exec(`PRAGMA table_info(nodes);`);
+    const hasEmbedding = res.length > 0 && res[0].values.some((row) => String(row[1]) === 'embedding');
+    if (!hasEmbedding) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN embedding TEXT;`);
+      dirty = true;
+    }
+  } catch (_) {
+    // Best-effort; ignore if pragma not supported in this context
+  }
 }
 
 async function markDirtyAndPersist() {
@@ -126,8 +140,8 @@ async function markDirtyAndPersist() {
 export async function insertNode(record: NodeRecord): Promise<void> {
   const db = await ensureDatabase();
   const stmt = db.prepare(
-    `INSERT INTO nodes (id, title, body, tags, token_counts, created_at, updated_at)
-     VALUES (:id, :title, :body, :tags, :tokenCounts, :createdAt, :updatedAt)`
+    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at)
+     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt)`
   );
   stmt.bind({
     ':id': record.id,
@@ -135,6 +149,7 @@ export async function insertNode(record: NodeRecord): Promise<void> {
     ':body': record.body,
     ':tags': JSON.stringify(record.tags),
     ':tokenCounts': JSON.stringify(record.tokenCounts),
+    ':embedding': record.embedding ? JSON.stringify(record.embedding) : null,
     ':createdAt': record.createdAt,
     ':updatedAt': record.updatedAt,
   });
@@ -160,7 +175,7 @@ export async function updateNodeTokens(id: string, tokenCounts: Record<string, n
 
 export async function updateNode(
   id: string,
-  fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts'>>
+  fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts' | 'embedding'>>
 ): Promise<void> {
   const db = await ensureDatabase();
   const sets: string[] = [];
@@ -180,6 +195,10 @@ export async function updateNode(
   if (fields.tokenCounts) {
     sets.push('token_counts = :tokenCounts');
     params[':tokenCounts'] = JSON.stringify(fields.tokenCounts);
+  }
+  if (Array.isArray(fields.embedding)) {
+    sets.push('embedding = :embedding');
+    params[':embedding'] = JSON.stringify(fields.embedding);
   }
   sets.push('updated_at = :updatedAt');
   const sql = `UPDATE nodes SET ${sets.join(', ')} WHERE id = :id`;
@@ -224,6 +243,7 @@ export async function listNodes(): Promise<NodeRecord[]> {
       body: String(row.body),
       tags: JSON.parse(String(row.tags)),
       tokenCounts: JSON.parse(String(row.token_counts)),
+      embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     });
@@ -245,6 +265,7 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
           body: String(row.body),
           tags: JSON.parse(String(row.tags)),
           tokenCounts: JSON.parse(String(row.token_counts)),
+          embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
           createdAt: String(row.created_at),
           updatedAt: String(row.updated_at),
         } satisfies NodeRecord;
@@ -267,6 +288,7 @@ export async function findNodeByTitle(title: string): Promise<NodeRecord | null>
           body: String(row.body),
           tags: JSON.parse(String(row.tags)),
           tokenCounts: JSON.parse(String(row.token_counts)),
+          embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
           createdAt: String(row.created_at),
           updatedAt: String(row.updated_at),
         } satisfies NodeRecord;

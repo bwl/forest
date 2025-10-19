@@ -1,6 +1,6 @@
 # Forest CLI
 
-Capture unstructured ideas and stitch them into a graph-first knowledge base. Ideas are stored inside a single SQLite database (`forest.db` by default) along with auto-generated links derived from tags and lexical overlap.
+Capture unstructured ideas and stitch them into a graph-first knowledge base. Ideas are stored inside a single SQLite database (`forest.db` by default) along with auto-generated links derived from a hybrid of semantic embeddings and lexical overlap.
 
 ## Install & build
 
@@ -40,14 +40,49 @@ When you skip explicit `--tags`, Forest infers a handful of keywords from the ti
 Link scoring:
 
 - Scores ≥ 0.50 become accepted edges immediately.
-- Scores between 0.15 and 0.50 are stored as suggestions for later review (`forest insights list`).
+- Scores between 0.25 and 0.50 are stored as suggestions for later review (`forest insights list`).
 - Lower scores are discarded.
 
 Adjust thresholds with environment variables:
 
 ```
 export FOREST_AUTO_ACCEPT=0.6
-export FOREST_SUGGESTION_THRESHOLD=0.2
+export FOREST_SUGGESTION_THRESHOLD=0.25
+
+### Embeddings (semantic scoring)
+
+Forest augments lexical similarity with sentence embeddings.
+
+- Provider selection (`FOREST_EMBED_PROVIDER`): `local` (default), `openai`, `mock`, or `none`.
+- Local (offline) uses `@xenova/transformers` and downloads a compact model on first run.
+- OpenAI requires `OPENAI_API_KEY` and calls the embeddings API.
+
+Environment variables:
+
+```
+# Choose provider
+export FOREST_EMBED_PROVIDER=local     # or: openai | mock | none
+
+# Local provider (transformers.js)
+export TRANSFORMERS_CACHE=.cache/transformers
+export FOREST_EMBED_LOCAL_MODEL="Xenova/all-MiniLM-L6-v2"
+
+# OpenAI provider
+export OPENAI_API_KEY=...              # required if provider=openai
+export FOREST_EMBED_MODEL=text-embedding-3-small
+```
+
+Backfill embeddings for existing notes and optionally rescore links:
+
+```
+npm run build
+FOREST_EMBED_PROVIDER=local node dist/index.js admin:recompute-embeddings --rescore
+```
+
+Notes:
+
+- Scores display to 3 decimals to avoid rounding confusion near thresholds.
+- You can disable embeddings entirely with `FOREST_EMBED_PROVIDER=none` for fully lexical scoring.
 ```
 
 JSON output (capture --json):
