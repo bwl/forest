@@ -115,15 +115,34 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         ],
       },
     },
-    async (ctx: HandlerContext) => {
+    async (_ctx: HandlerContext) => {
       try {
-        await ctx.cli.parse({ argv: ['help', 'export'], run: true });
+        await runExportDashboard();
       } catch (error) {
         handleError(error);
       }
     },
   );
   cli.command(baseCommand);
+}
+
+async function runExportDashboard() {
+  const nodes = await listNodes();
+  const edges = await listEdges('all');
+
+  console.log('');
+  console.log(`Your graph: ${nodes.length} nodes, ${edges.length} edges`);
+  console.log('');
+  console.log('Available formats:');
+  console.log('');
+  console.log('  JSON       Export full database as structured JSON');
+  console.log('  Graphviz   Export node neighborhood as DOT graph');
+  console.log('');
+  console.log('Quick actions:');
+  console.log('  forest export json                    Export everything');
+  console.log('  forest export json --no-body          Export without note bodies');
+  console.log('  forest export graphviz --id <id>      Export neighborhood graph');
+  console.log('');
 }
 
 async function runExportGraphviz(flags: ExportGraphvizFlags) {

@@ -1,4 +1,4 @@
-import { NodeRecord, deleteNode, updateNode } from '../../lib/db';
+import { NodeRecord, deleteNode, updateNode, listNodes } from '../../lib/db';
 import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
@@ -192,15 +192,48 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         ],
       },
     },
-    async (ctx: HandlerContext) => {
+    async (_ctx: HandlerContext) => {
       try {
-        await ctx.cli.parse({ argv: ['help', 'node'], run: true });
+        await runNodeDashboard();
       } catch (error) {
         handleError(error);
       }
     },
   );
   cli.command(baseCommand);
+}
+
+async function runNodeDashboard() {
+  const nodes = await listNodes();
+  const totalNodes = nodes.length;
+
+  // Sort by creation date (most recent first)
+  const recentNodes = nodes
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5);
+
+  console.log('');
+  console.log(`Total nodes: ${totalNodes}`);
+  console.log('');
+
+  if (recentNodes.length > 0) {
+    console.log('Recent nodes:');
+    console.log('');
+    for (const node of recentNodes) {
+      const shortId = formatId(node.id);
+      const date = new Date(node.createdAt).toISOString().split('T')[0];
+      const tagStr = node.tags.length > 0 ? ` [${node.tags.slice(0, 3).join(', ')}]` : '';
+      console.log(`  ${shortId}  ${node.title}${tagStr}`);
+      console.log(`         created ${date}`);
+    }
+    console.log('');
+  }
+
+  console.log('Quick actions:');
+  console.log('  forest node read <id>        Read a note');
+  console.log('  forest node edit <id>        Edit a note');
+  console.log('  forest explore <term>        Search all notes');
+  console.log('');
 }
 
 async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {

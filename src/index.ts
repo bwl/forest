@@ -6,7 +6,7 @@ import { displayVersion, displayBriefInfo } from './cli/commands/version';
 const rawArgs = process.argv.slice(2);
 
 // Intercept version flags to show custom ASCII art
-if (rawArgs.includes('-v') || rawArgs.includes('--version')) {
+if (rawArgs.includes('-v') || rawArgs.includes('-V') || rawArgs.includes('--version')) {
   displayVersion();
   process.exit(0);
 }

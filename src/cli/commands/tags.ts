@@ -115,15 +115,45 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         ],
       },
     },
-    async (ctx: HandlerContext) => {
+    async (_ctx: HandlerContext) => {
       try {
-        await ctx.cli.parse({ argv: ['help', 'tags'], run: true });
+        await runTagsDashboard();
       } catch (error) {
         handleError(error);
       }
     },
   );
   cli.command(baseCommand);
+}
+
+async function runTagsDashboard() {
+  const nodes = await listNodes();
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    for (const tag of node.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+
+  const totalTags = counts.size;
+  const topTags = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+
+  console.log('');
+  console.log(`Total unique tags: ${totalTags}`);
+  console.log('');
+
+  if (topTags.length > 0) {
+    console.log('Top 10 tags:');
+    console.log('');
+    topTags.forEach(([tag, count]) => {
+      console.log(`  ${String(count).padStart(3, ' ')}  ${tag}`);
+    });
+    console.log('');
+  }
+
+  console.log('Quick actions:');
+  console.log('  forest tags list                 List all tags');
+  console.log('  forest tags stats                Tag co-occurrence stats');
+  console.log('  forest tags rename <old> <new>   Rename a tag');
+  console.log('');
 }
 
 async function runTagsList(flags: TagsListFlags) {
