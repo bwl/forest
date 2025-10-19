@@ -7,6 +7,7 @@ import { registerNodeCommands } from './commands/node';
 import { registerTagsCommands } from './commands/tags';
 import { createStatsCommand } from './commands/stats';
 import { createHealthCommand } from './commands/health';
+import { createServeCommand } from './commands/serve';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
 
 type ClercModule = typeof import('clerc');
@@ -41,6 +42,7 @@ export async function createForestCli() {
   cli.command(createExploreCommand(clerc));
   cli.command(createStatsCommand(clerc));
   cli.command(createHealthCommand(clerc));
+  cli.command(createServeCommand(clerc));
   cli.command(createAdminRecomputeEmbeddingsCommand(clerc));
   cli.command(createVersionCommand(clerc));
   registerNodeCommands(cli, clerc);
