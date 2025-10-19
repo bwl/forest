@@ -15,7 +15,7 @@ import {
   DEFAULT_SEARCH_LIMIT,
   formatId,
   formatScore,
-  edgeShortCode,
+  getEdgePrefix,
   isShortId,
   normalizeSort,
   parseCsvList,
@@ -315,11 +315,13 @@ export async function printExplore(options: ExploreRenderOptions) {
   if (!options.suppressOverview) {
     printNodeOverview(match.node, neighborhoodData.directEdges, { longIds: options.longIds });
     if (options.includeSuggestions && suggestionData.length > 0) {
+      // Fetch all edges for progressive ID calculation
+      const allEdges = await listEdges('all');
       console.log('');
       console.log('suggested edges:');
       for (const suggestion of suggestionData) {
         const [sa, sb] = suggestion.id.split('::');
-        const code = sa && sb ? edgeShortCode(sa, sb) : '????';
+        const code = sa && sb ? getEdgePrefix(sa, sb, allEdges) : '????';
         console.log(
           `  ${formatScore(suggestion.score)}  [${code}] ${formatId(suggestion.otherId, {
             long: options.longIds,

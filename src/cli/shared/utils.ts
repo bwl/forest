@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getNodeById, listNodes, NodeRecord } from '../../lib/db';
+import { getNodeById, listNodes, NodeRecord, EdgeRecord } from '../../lib/db';
+import { generateEdgeHash, buildPrefixMap } from '../../lib/progressive-id';
 
 export const SHORT_ID_LENGTH = 8;
 export const DEFAULT_SEARCH_LIMIT = 6;
@@ -20,15 +21,29 @@ export function formatScore(score: number): string {
   return clamped.toFixed(3);
 }
 
-export function edgeShortCode(a: string, b: string): string {
-  const pair = `${formatId(a)}::${formatId(b)}`;
-  let h = 0x811c9dc5 >>> 0; // FNV-1a 32-bit
-  for (let i = 0; i < pair.length; i += 1) {
-    h ^= pair.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0; // * 16777619
-  }
-  const base36 = h.toString(36);
-  return base36.slice(-4).padStart(4, '0');
+/**
+ * Get the full stable hash for an edge (Git-style long ID).
+ */
+export function getEdgeHash(sourceId: string, targetId: string): string {
+  return generateEdgeHash(sourceId, targetId);
+}
+
+/**
+ * Get the minimal unique prefix for an edge among all edges.
+ * Uses Git-style progressive abbreviation (min 4 chars, grows as needed).
+ */
+export function getEdgePrefix(sourceId: string, targetId: string, allEdges: EdgeRecord[]): string {
+  const hash = generateEdgeHash(sourceId, targetId);
+  const allHashes = allEdges.map(e => generateEdgeHash(e.sourceId, e.targetId));
+  const prefixMap = buildPrefixMap(allHashes, 4);
+  return prefixMap.get(hash) ?? hash.slice(0, 4);
+}
+
+/**
+ * Check if a string looks like a progressive edge ID (alphanumeric, 4+ chars).
+ */
+export function isProgressiveEdgeId(term: string): boolean {
+  return /^[0-9A-Za-z]{4,}$/.test(term);
 }
 
 export function isShortId(term: string): boolean {

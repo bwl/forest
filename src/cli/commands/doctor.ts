@@ -78,7 +78,7 @@ async function runDoctor(flags: DoctorFlags) {
             degree: entry.degree,
           })),
           suggestions: suggestions.map((edge, index) => {
-            const desc = describeSuggestion(edge, nodeMap, { longIds: true });
+            const desc = describeSuggestion(edge, nodeMap, { longIds: true, allEdges: edges });
             return {
               index: index + 1,
               id: edge.id,
@@ -124,7 +124,7 @@ async function runDoctor(flags: DoctorFlags) {
   if (suggestions.length > 0) {
     console.log('Top suggestions:');
     suggestions.forEach((edge, index) => {
-      const desc = describeSuggestion(edge, nodeMap, { longIds: false });
+      const desc = describeSuggestion(edge, nodeMap, { longIds: false, allEdges: edges });
       const indexLabel = String(index + 1).padStart(2, ' ');
       console.log(
         `  ${indexLabel}. [${desc.code}] ${desc.shortId}  score=${edge.score.toFixed(3)}  ${desc.sourceTitle ?? desc.sourceLabel} ↔ ${desc.targetTitle ?? desc.targetLabel}`,

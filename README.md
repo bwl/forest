@@ -1,3 +1,22 @@
+```
+
+    #o#
+  ####o#
+ #o# \#|_#,#
+###\ |/   #o#        forest v0.1.0
+ # {}{      #        A graph-native knowledge base CLI
+    }{{
+   ,'  `
+
+  Run `forest help` for full command list
+
+  Quick start:
+    forest capture --stdin    # Capture ideas from stdin
+    forest explore <term>     # Search and explore connections
+    forest insights list      # Review suggested links
+
+```
+
 # Forest CLI
 
 Capture unstructured ideas and stitch them into a graph-first knowledge base. Ideas are stored inside a single SQLite database (`forest.db` by default) along with auto-generated links derived from a hybrid of semantic embeddings and lexical overlap.

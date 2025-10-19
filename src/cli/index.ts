@@ -10,6 +10,7 @@ import { registerInsightsCommands } from './commands/insights';
 import { registerTagsCommands } from './commands/tags';
 import { createReadCommand } from './commands/read';
 import { createStatsCommand } from './commands/stats';
+import { createVersionCommand, displayVersion, getVersion } from './commands/version';
 
 type ClercModule = typeof import('clerc');
 
@@ -26,16 +27,14 @@ export async function createForestCli() {
     helpPlugin,
     notFoundPlugin,
     strictFlagsPlugin,
-    versionPlugin,
   } = clerc;
 
   const cli = Clerc.create()
     .name('forest')
     .scriptName('forest')
     .description('Graph-native knowledge base CLI')
-    .version('0.1.0')
+    .version(getVersion())
     .use(helpPlugin())
-    .use(versionPlugin())
     .use(friendlyErrorPlugin())
     .use(strictFlagsPlugin())
     .use(notFoundPlugin())
@@ -50,6 +49,7 @@ export async function createForestCli() {
   cli.command(createDoctorCommand(clerc));
   cli.command(createStatsCommand(clerc));
   cli.command(createReadCommand(clerc));
+  cli.command(createVersionCommand(clerc));
   registerInsightsCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
   registerExportCommands(cli, clerc);

@@ -17,7 +17,7 @@ import {
   resolveEdgeReference,
   resolveSuggestionReference,
 } from '../shared/edges';
-import { edgeShortCode, formatId, handleError } from '../shared/utils';
+import { formatId, handleError, getEdgePrefix } from '../shared/utils';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -99,7 +99,7 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
   const acceptCommand = clerc.defineCommand(
       {
         name: 'insights accept',
-        description: 'Promote a single suggestion by index, short pair, or edge id',
+        description: 'Promote a single suggestion by progressive ID, short pair, or edge id',
         parameters: ['<ref>'],
       },
       async ({ parameters }: { parameters: { ref?: string } }) => {
@@ -115,7 +115,7 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
   const rejectCommand = clerc.defineCommand(
       {
         name: 'insights reject',
-        description: 'Reject and remove a suggestion by index, short pair, or edge id',
+        description: 'Reject and remove a suggestion by progressive ID, short pair, or edge id',
         parameters: ['<ref>'],
       },
       async ({ parameters }: { parameters: { ref?: string } }) => {
@@ -210,7 +210,7 @@ export function registerInsightsCommands(cli: ClercInstance, clerc: ClercModule)
         ],
         examples: [
           ['$ forest insights list', 'Show top pending suggestions'],
-          ['$ forest insights accept 1', 'Accept the highest-scoring suggestion'],
+          ['$ forest insights accept 0L5a', 'Accept suggestion by progressive ID'],
         ],
       },
     },
@@ -238,11 +238,14 @@ async function runInsightsList(flags: InsightsListFlags) {
   const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
   const longIds = Boolean(flags.longIds);
 
+  // Fetch all edges for progressive ID calculation
+  const allEdges = await listEdges('all');
+
   if (flags.json) {
     console.log(
       JSON.stringify(
         edges.map((edge, index) => {
-          const desc = describeSuggestion(edge, nodeMap, { longIds });
+          const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
           return {
             index: index + 1,
             id: edge.id,
@@ -264,7 +267,7 @@ async function runInsightsList(flags: InsightsListFlags) {
   }
 
   edges.forEach((edge, index) => {
-    const desc = describeSuggestion(edge, nodeMap, { longIds });
+    const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
     const indexLabel = String(index + 1).padStart(2, ' ');
     console.log(
       `${indexLabel}. [${desc.code}] ${desc.edgeId}  score=${edge.score.toFixed(3)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`,
@@ -297,7 +300,7 @@ async function runInsightsAccept(ref: string | undefined) {
 
   const edge = resolveSuggestionReference(ref, suggestions);
   if (!edge) {
-    console.error('✖ No suggestion matched that reference. Run `forest insights list` to see indexes.');
+    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest insights list`.');
     process.exitCode = 1;
     return;
   }
@@ -336,7 +339,7 @@ async function runInsightsReject(ref: string | undefined) {
 
   const edge = resolveSuggestionReference(ref, suggestions);
   if (!edge) {
-    console.error('✖ No suggestion matched that reference. Run `forest insights list` to see indexes.');
+    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest insights list`.');
     process.exitCode = 1;
     return;
   }
@@ -436,6 +439,8 @@ async function runInsightsExplain(ref: string | undefined, flags: InsightsExplai
   }
 
   const components = (match.metadata as any)?.components ?? computeScore(a, b).components;
+  const code = getEdgePrefix(match.sourceId, match.targetId, edges);
+
   if (flags.json) {
     console.log(
       JSON.stringify(
@@ -443,7 +448,7 @@ async function runInsightsExplain(ref: string | undefined, flags: InsightsExplai
           id: match.id,
           sourceId: match.sourceId,
           targetId: match.targetId,
-          code: edgeShortCode(match.sourceId, match.targetId),
+          code,
           score: match.score,
           status: match.status,
           components,
@@ -455,7 +460,6 @@ async function runInsightsExplain(ref: string | undefined, flags: InsightsExplai
     return;
   }
 
-  const code = edgeShortCode(match.sourceId, match.targetId);
   console.log(
     `${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  status=${match.status}  score=${match.score.toFixed(
       3,
