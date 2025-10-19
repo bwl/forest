@@ -4,6 +4,10 @@ import { swagger } from '@elysiajs/swagger';
 
 import { healthRoutes } from './routes/health';
 import { statsRoutes } from './routes/stats';
+import { nodesRoutes } from './routes/nodes';
+import { tagsRoutes } from './routes/tags';
+import { edgesRoutes } from './routes/edges';
+import { websocketRoute } from './routes/websocket';
 
 const DEFAULT_PORT = 3000;
 
@@ -35,7 +39,11 @@ export function createServer(options: { port?: number } = {}) {
       documentation: '/swagger',
     }))
     .use(healthRoutes)
-    .use(statsRoutes);
+    .use(statsRoutes)
+    .use(nodesRoutes)
+    .use(edgesRoutes)
+    .use(tagsRoutes)
+    .use(websocketRoute);
 
   return { app, port };
 }
