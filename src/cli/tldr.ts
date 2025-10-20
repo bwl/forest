@@ -142,7 +142,9 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'stats',
       'health',
       'serve',
+      'config',
       'admin.recompute-embeddings',
+      'admin.retag-all',
       'version',
       'node.read',
       'node.edit',
@@ -290,6 +292,25 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     related: ['health', 'stats'],
   },
 
+  config: {
+    cmd: 'config',
+    purpose: 'Configure Forest settings interactively (embedding provider, API keys, models)',
+    inputs: ['ARGS(key,value)', 'INTERACTIVE'],
+    outputs: ['~/.forestrc config file', 'confirmation message'],
+    sideEffects: 'writes to ~/.forestrc config file',
+    flags: [
+      { name: 'show', type: 'BOOL', default: false, desc: 'show current configuration' },
+      { name: 'reset', type: 'BOOL', default: false, desc: 'reset config to defaults' },
+    ],
+    examples: [
+      'forest config',
+      'forest config --show',
+      'forest config --reset',
+      'forest config embedProvider openai',
+    ],
+    related: ['admin.recompute-embeddings', 'capture'],
+  },
+
   'admin.recompute-embeddings': {
     cmd: 'admin.recompute-embeddings',
     purpose: 'Recompute embeddings for all nodes and optionally rescore edges',
@@ -304,6 +325,26 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest admin:recompute-embeddings --rescore',
     ],
     related: ['health', 'edges.propose'],
+  },
+
+  'admin.retag-all': {
+    cmd: 'admin.retag-all',
+    purpose: 'Regenerate tags for all nodes using current tagging method (LLM or lexical)',
+    inputs: ['none'],
+    outputs: ['progress log', 'updated node records', 'cost estimate'],
+    sideEffects: 'updates tags for all nodes,may call LLM API',
+    flags: [
+      { name: 'dry-run', type: 'BOOL', default: false, desc: 'preview changes without saving' },
+      { name: 'limit', type: 'INT', desc: 'only retag first N nodes (for testing)' },
+      { name: 'skip-unchanged', type: 'BOOL', default: false, desc: 'skip nodes where tags would not change' },
+      { name: 'force', type: 'BOOL', default: false, desc: 'retag even if node has explicit #hashtags' },
+    ],
+    examples: [
+      'forest admin:retag-all --dry-run',
+      'forest admin:retag-all --limit 10',
+      'forest admin:retag-all --skip-unchanged',
+    ],
+    related: ['config', 'capture', 'tags.list'],
   },
 
   version: {

@@ -252,14 +252,15 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
     throw new Error('Node body cannot be empty');
   }
 
-  // Extract or use provided tags
+  // Pick title if not provided (needed for LLM tagging)
+  const title = data.title ?? pickTitle(body);
+
+  // Extract or use provided tags (use async version for LLM support)
   let tags = data.tags;
   if (!tags || tags.length === 0) {
-    tags = extractTags(`${data.title ?? ''}\n${body}`);
+    const { extractTagsAsync } = await import('../lib/text');
+    tags = await extractTagsAsync(`${title}\n${body}`, title);
   }
-
-  // Pick title if not provided
-  const title = data.title ?? pickTitle(body);
 
   // Tokenize
   const tokenCounts = tokenize(`${title}\n${body}`);

@@ -142,16 +142,34 @@ function tokenizeToList(text: string): string[] {
   return raw.map((t) => normalizeToken(t));
 }
 
+/**
+ * Extract tags from text - routes to LLM or lexical based on config
+ * NOTE: This is sync for backward compat - use extractTagsAsync for LLM support
+ */
 export function extractTags(
   text: string,
   tokenCounts?: Record<string, number>,
   limit = 5
 ): string[] {
+  // Check for explicit hashtags first
   const matches = text.match(/#[a-zA-Z0-9_-]+/g) ?? [];
   const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
   if (normalizedMatches.size > 0) {
     return [...normalizedMatches];
   }
+
+  // Fall through to lexical tagging (LLM requires async, so we use extractTagsLexical)
+  return extractTagsLexical(text, tokenCounts, limit);
+}
+
+/**
+ * Lexical tag extraction (frequency-based)
+ */
+export function extractTagsLexical(
+  text: string,
+  tokenCounts?: Record<string, number>,
+  limit = 5
+): string[] {
   // Build unigrams
   const counts = tokenCounts ?? tokenize(text);
   const unigramEntries = Object.entries(counts)
@@ -222,4 +240,41 @@ export function pickTitle(rawBody: string, providedTitle?: string): string {
     return firstLine.trim();
   }
   return rawBody.slice(0, 80).trim() || 'Untitled Idea';
+}
+
+/**
+ * Async tag extraction - routes to LLM or lexical based on config
+ */
+export async function extractTagsAsync(
+  text: string,
+  title?: string,
+  tokenCounts?: Record<string, number>,
+  limit = 7
+): Promise<string[]> {
+  // Check for explicit hashtags first
+  const matches = text.match(/#[a-zA-Z0-9_-]+/g) ?? [];
+  const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
+  if (normalizedMatches.size > 0) {
+    return [...normalizedMatches];
+  }
+
+  // Load config to determine tagging method
+  const { loadConfig } = await import('./config');
+  const config = loadConfig();
+
+  // Use LLM tagging if configured
+  if (config.taggingMethod === 'llm') {
+    try {
+      const { generateTagsLLM } = await import('./llm-tagger');
+      const result = await generateTagsLLM(title || '', text, limit);
+      return result.tags;
+    } catch (err) {
+      // Fallback to lexical on error
+      console.warn('LLM tagging failed, falling back to lexical:', err);
+      return extractTagsLexical(text, tokenCounts, limit);
+    }
+  }
+
+  // Default: lexical tagging
+  return extractTagsLexical(text, tokenCounts, limit);
 }
