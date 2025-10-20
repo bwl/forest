@@ -6,6 +6,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Forest is a graph-native knowledge base CLI that captures unstructured ideas and automatically links them using a hybrid scoring algorithm combining semantic embeddings and lexical similarity. All data is stored in a single SQLite database (`forest.db`).
 
+## Agent-First TLDR Standard
+
+Forest implements the **TLDR Standard (v0.1)** for agent ingestion - a minimal, parseable command metadata format designed for AI agents.
+
+### Quick Start for Agents
+
+```bash
+# Discover all commands
+forest --tldr
+
+# Get detailed command metadata (ASCII format)
+forest capture --tldr
+forest edges propose --tldr
+
+# Get JSON format for programmatic parsing
+forest --tldr=json
+forest search --tldr=json
+```
+
+### TLDR Format
+
+**ASCII mode** (default): Single-pass parseable KEY: value pairs
+```
+CMD: capture
+PURPOSE: Create a new note and optionally auto-link into the graph
+INPUTS: ARGS(title,body,tags),STDIN,FILE
+OUTPUTS: node record,edges summary,optional preview
+SIDE_EFFECTS: writes to SQLite DB,computes embeddings,creates/updates edges
+FLAGS: --title=STR|note title;--body=STR|note body;--stdin=BOOL=false|read entire stdin as body
+EXAMPLES: forest capture --stdin < note.md|forest capture --title "Idea" --body "Text"
+RELATED: explore,edges.propose,node.read
+```
+
+**JSON mode** (`--tldr=json`): Same data, structured format
+```json
+{
+  "CMD": "capture",
+  "PURPOSE": "Create a new note and optionally auto-link into the graph",
+  "INPUTS": ["ARGS(title,body,tags)", "STDIN", "FILE"],
+  "FLAGS": [{"name": "title", "type": "STR", "default": null, "desc": "note title"}],
+  ...
+}
+```
+
+### Implementation Details
+
+- **Location**: `src/cli/tldr.ts` - Central registry of all command metadata
+- **Discovery**: Every command accepts `--tldr` or `--tldr=json`
+- **Global index**: `forest --tldr` lists all available commands
+- **Per-command**: `forest <command> --tldr` shows detailed metadata
+
+### Benefits for Agents
+
+1. **Zero-shot discovery**: Learn entire CLI surface in one round-trip
+2. **Minimal tokens**: Compact format optimized for context windows
+3. **Predictable parsing**: Fixed schema, no free-form text
+4. **Self-documenting**: FLAGS includes types, defaults, and descriptions
+5. **Cross-reference**: RELATED field enables command discovery
+
+### TLDR Generators & Full Spec
+
+Forest implements TLDR v0.1 as a reference. Full spec and universal documentation generators available at:
+
+**`tldr-agent-spec/`** - Standalone repository with:
+- Complete specification (`docs/spec-v0.1.md`)
+- Three universal generators (bash, node, python)
+- Validation tools
+- Forest reference implementation
+
+**Quick validation**:
+```bash
+cd tldr-agent-spec
+./scripts/tldr-doc-gen.sh forest --validate
+```
+
+**For full TLDR documentation**: See `tldr-agent-spec/README.md`
+
 ## Development Commands
 
 ```bash
@@ -18,6 +95,12 @@ npm run dev          # Run from source with ts-node
 npm run dev -- capture --stdin < test.txt
 npm run dev -- health
 npm run dev -- stats
+
+# Running the API server
+bun run dev:server                    # Start on default port 3000 (dual-stack IPv4/IPv6)
+FOREST_PORT=8080 bun run dev:server   # Custom port
+FOREST_HOST=0.0.0.0 bun run dev:server # IPv4 only
+forest serve --port 3000 --host ::    # Via CLI (requires Bun)
 
 # After building
 forest <command>     # Uses the compiled dist/index.js
@@ -50,13 +133,14 @@ forest tags rename [old] [new]  # Rename a tag
 forest tags stats               # Tag statistics
 forest export graphviz          # Export as DOT
 forest export json              # Export as JSON
+forest search ["query"]         # Semantic search using embeddings
 forest stats                    # Graph statistics and health
 forest health                   # System health check
 forest admin:recompute-embeddings  # Recompute embeddings
 ```
 
 Commands are modular:
-- **Individual commands**: `src/cli/commands/{capture,explore,stats,health,admin-recompute-embeddings}.ts`
+- **Individual commands**: `src/cli/commands/{capture,explore,search,stats,health,admin-recompute-embeddings}.ts`
 - **Subcommand groups**: `node`, `edges`, `tags`, `export` use `register*Commands()` pattern
 
 Each command file exports a factory function:
@@ -70,6 +154,67 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
   // Register read, edit, delete, link subcommands
 }
 ```
+
+### 3-Layer Architecture: CLI/API Feature Parity
+
+Forest uses a **3-layer architecture** to maintain feature parity between the CLI and REST API:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  CLI Layer (src/cli/commands/)                      │
+│  • Parses command-line arguments                    │
+│  • Formats human-readable output                    │
+│  • Handles --json flag for machine output           │
+│  └──> Calls Core Layer                              │
+└─────────────────────────────────────────────────────┘
+                         ↓
+┌─────────────────────────────────────────────────────┐
+│  Core Layer (src/core/) ⭐ SINGLE SOURCE OF TRUTH   │
+│  • Pure business logic functions                    │
+│  • No I/O dependencies (no HTTP, no CLI formatting) │
+│  • Returns typed data structures                    │
+│  • Examples: semanticSearchCore(), createNodeCore() │
+└─────────────────────────────────────────────────────┘
+                         ↑
+┌─────────────────────────────────────────────────────┐
+│  API Layer (src/server/routes/)                     │
+│  • Handles HTTP requests and validation             │
+│  • Parses query params and request bodies           │
+│  • Formats JSON responses with envelope pattern     │
+│  └──> Calls Core Layer                              │
+└─────────────────────────────────────────────────────┘
+```
+
+**Key Principle**: Both CLI and API call the **same core functions**. This ensures:
+1. Features are available in both interfaces
+2. Business logic is never duplicated
+3. Bug fixes apply universally
+4. Testing can focus on core logic
+
+**Example - Semantic Search**:
+- ✅ `src/core/search.ts` - `semanticSearchCore(query, options)` - business logic
+- ✅ `src/cli/commands/search.ts` - Calls `semanticSearchCore()`, formats table output
+- ✅ `src/server/routes/search.ts` - Calls `semanticSearchCore()`, returns JSON
+
+**Example - Node Capture**:
+- ✅ `src/core/nodes.ts` - `createNodeCore(data)` - business logic
+- ⚠️  `src/cli/commands/capture.ts` - Currently reimplements logic (needs refactoring)
+- ✅ `src/server/routes/nodes.ts` - Calls `createNodeCore()`
+
+**Adding a New Feature - Checklist**:
+When implementing a new feature that should be available in both CLI and API:
+
+1. ✅ **Core logic first**: Implement in `src/core/*.ts` as a pure function
+2. ✅ **API route**: Create/update route in `src/server/routes/*.ts` that calls core function
+3. ✅ **CLI command**: Create/update command in `src/cli/commands/*.ts` that calls core function
+4. ✅ **Register routes**: Add to `src/server/index.ts` and `src/cli/index.ts`
+5. ✅ **Test both interfaces**: Verify identical behavior in CLI and API
+6. ✅ **Update docs**: Add command to CLAUDE.md command list
+
+**Anti-Pattern to Avoid**:
+❌ Implementing business logic directly in CLI commands or API routes
+❌ Copy-pasting logic between CLI and API
+❌ Having different behavior/validation in CLI vs API
 
 ### Database Layer (src/lib/db.ts)
 
@@ -155,6 +300,22 @@ FOREST_EMBED_PROVIDER=none forest capture --stdin < test.txt   # Lexical only
 FOREST_EMBED_PROVIDER=local forest capture --stdin < test.txt  # Local embeddings
 FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=... forest capture --stdin < test.txt
 ```
+
+**Server configuration via environment variables:**
+- `FOREST_PORT` - Server port (default: 3000)
+- `FOREST_HOST` - Server hostname (default: `::` for dual-stack IPv4/IPv6)
+  - `::` - Dual-stack mode, listens on both IPv4 and IPv6
+  - `0.0.0.0` - IPv4 only
+  - `localhost` - Localhost only (may prefer IPv4 or IPv6 depending on OS)
+- `FOREST_DB_PATH` - Database file path (default: `forest.db` in cwd)
+- `FOREST_EMBED_PROVIDER` - Embedding provider (default: `local`)
+
+**Network connectivity:**
+The server defaults to dual-stack mode (`::`) which accepts connections on both:
+- IPv4: `http://localhost:3000`, `http://127.0.0.1:3000`
+- IPv6: `http://[::1]:3000`
+
+This prevents connection delays when clients (like Bun's fetch) try IPv6 first.
 
 ## Database Schema
 
