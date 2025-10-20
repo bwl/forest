@@ -255,14 +255,14 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
   // Extract or use provided tags
   let tags = data.tags;
   if (!tags || tags.length === 0) {
-    tags = extractTags(data.title ?? '', body);
+    tags = extractTags(`${data.title ?? ''}\n${body}`);
   }
 
   // Pick title if not provided
   const title = data.title ?? pickTitle(body);
 
   // Tokenize
-  const tokenCounts = tokenize(title, body);
+  const tokenCounts = tokenize(`${title}\n${body}`);
 
   // Create node record
   const now = new Date().toISOString();
@@ -334,7 +334,7 @@ export async function updateNodeCore(
   const tags = data.tags ?? existing.tags;
 
   // Tokenize
-  const tokenCounts = tokenize(title, body);
+  const tokenCounts = tokenize(`${title}\n${body}`);
 
   // Update node
   await dbUpdateNode(nodeId, {

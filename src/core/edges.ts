@@ -461,11 +461,11 @@ export async function sweepEdgesCore(
   let toSweep = suggestions;
 
   if (options.minScore !== undefined) {
-    toSweep = toSweep.filter((edge) => edge.score >= options.minScore);
+    toSweep = toSweep.filter((edge) => edge.score >= options.minScore!);
   }
 
   if (options.maxScore !== undefined) {
-    toSweep = toSweep.filter((edge) => edge.score <= options.maxScore);
+    toSweep = toSweep.filter((edge) => edge.score <= options.maxScore!);
   }
 
   // Sort by score ascending (lowest first)

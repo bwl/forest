@@ -1,5 +1,4 @@
 import { listEdges, listNodes, NodeRecord } from '../lib/db';
-import { buildGraph } from '../lib/graph';
 import { describeSuggestion } from '../cli/shared/edges';
 
 export type StatsResult = {
@@ -48,10 +47,16 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   const nodes = await listNodes();
   const edges = await listEdges('accepted');
   const allEdges = await listEdges('all');
-  const graph = await buildGraph();
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
 
-  const degrees = nodes.map((node) => (graph.hasNode(node.id) ? graph.degree(node.id) : 0));
+  // Compute degree stats from edge counts (faster than graph.degree())
+  const nodeDegrees = new Map<string, number>();
+  for (const edge of edges) {
+    nodeDegrees.set(edge.sourceId, (nodeDegrees.get(edge.sourceId) ?? 0) + 1);
+    nodeDegrees.set(edge.targetId, (nodeDegrees.get(edge.targetId) ?? 0) + 1);
+  }
+
+  const degrees = nodes.map((node) => nodeDegrees.get(node.id) ?? 0);
   const sortedDegrees = [...degrees].sort((a, b) => a - b);
   const sumDegrees = degrees.reduce((acc, value) => acc + value, 0);
   const avg = degrees.length ? sumDegrees / degrees.length : 0;
@@ -100,7 +105,7 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   const highDegree = nodes
     .map((node) => ({
       node,
-      degree: graph.hasNode(node.id) ? graph.degree(node.id) : 0,
+      degree: nodeDegrees.get(node.id) ?? 0,
     }))
     .sort((a, b) => b.degree - a.degree)
     .slice(0, 5);

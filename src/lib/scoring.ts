@@ -6,6 +6,7 @@ export type ScoreComponents = {
   tokenSimilarity: number;
   titleSimilarity: number;
   embeddingSimilarity: number;
+  penalty: number;
 };
 
 const DEFAULT_AUTO_ACCEPT = 0.5;
@@ -36,8 +37,9 @@ export function computeScore(a: NodeRecord, b: NodeRecord): { score: number; com
     0.15 * tagOverlap +
     0.05 * titleSimilarity;
   // Penalize pairs with zero lexical/title overlap to avoid purely semantic weak links flooding suggestions
-  if (tagOverlap === 0 && titleSimilarity === 0) score *= 0.9;
-  return { score, components: { tagOverlap, tokenSimilarity, titleSimilarity, embeddingSimilarity } };
+  const penalty = (tagOverlap === 0 && titleSimilarity === 0) ? 0.9 : 1.0;
+  score *= penalty;
+  return { score, components: { tagOverlap, tokenSimilarity, titleSimilarity, embeddingSimilarity, penalty } };
 }
 
 export function classifyScore(score: number): EdgeStatus | 'discard' {
@@ -111,7 +113,7 @@ function titleCosine(a: string, b: string): number {
   return denom === 0 ? 0 : overlap / denom;
 }
 
-function cosineEmbeddings(a?: number[], b?: number[]): number {
+export function cosineEmbeddings(a?: number[], b?: number[]): number {
   if (!a || !b || a.length === 0 || b.length === 0) return 0;
   const dim = Math.min(a.length, b.length);
   let dot = 0;
