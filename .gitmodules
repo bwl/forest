@@ -1,0 +1,3 @@
+[submodule "packages/camper"]
+	path = packages/camper
+	url = git@github.com:bwl/camper.git
