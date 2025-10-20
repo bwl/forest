@@ -1,3 +1,5 @@
+import chalk from 'chalk';
+
 import {
   EdgeRecord,
   deleteSuggestion,
@@ -385,6 +387,15 @@ async function runEdgesList(flags: EdgesListFlags) {
   });
 }
 
+/**
+ * Format score component as 2-digit integer (0-99 scale)
+ */
+function formatScoreComponent(value: number): string {
+  const scaled = Math.floor(value * 100);
+  const clamped = Math.max(0, Math.min(99, scaled));
+  return clamped.toString().padStart(2, '0');
+}
+
 async function runEdgesPropose(flags: EdgesProposeFlags) {
   const limit =
     typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
@@ -424,19 +435,113 @@ async function runEdgesPropose(flags: EdgesProposeFlags) {
     return;
   }
 
-  console.log('Suggested edges (ordered by score):');
-  edges.forEach((edge, index) => {
-    const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
-    const indexLabel = String(index + 1).padStart(2, ' ');
-    console.log(
-      `${indexLabel}. [${desc.code}] ${desc.edgeId}  score=${edge.score.toFixed(3)}  ${desc.sourceLabel} ↔ ${desc.targetLabel}`,
-    );
-  });
+  // New header format
+  console.log('Top identified links sorted by aggregate score.');
+  console.log('/forest edges accept/reject [ref]');
   console.log('');
-  console.log('To accept or reject suggestions:');
-  console.log('  forest edges accept <ref>   # ref can be index (1), code (0L5a), or short pair');
-  console.log('  forest edges reject <ref>');
-  console.log('  forest edges promote        # bulk accept above threshold');
+
+  // Helper to convert HSL to RGB (used for headers)
+  const hslToRgb = (h: number, s: number, l: number): [number, number, number] => {
+    s /= 100;
+    l /= 100;
+    const k = (n: number) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
+  };
+
+  // Header styling
+  const makeHeaderColor = (hue: number) => {
+    const [r, g, b] = hslToRgb(hue + 10, 45, 40);  // 40% brightness, hue twist +10°
+    return chalk.rgb(r, g, b);
+  };
+
+  const headerLine =
+    '◌ ' +
+    chalk.grey('ref') + ' ' +
+    makeHeaderColor(35)('ag') + ' ' +
+    makeHeaderColor(120)('em') + ' ' +
+    makeHeaderColor(100)('tk') + ' ' +
+    makeHeaderColor(45)('ti') + ' ' +
+    makeHeaderColor(10)('tg') + '                                   ' +
+    chalk.hex('#A8C5DD')('nodeA') +
+    chalk.grey('::') +
+    chalk.hex('#A8DDB5')('nodeB');
+
+  console.log(headerLine);
+
+  // Cap maximum display width to prevent excessive gaps on wide terminals
+  const MAX_DISPLAY_WIDTH = 100;
+  const terminalWidth = Math.min(process.stdout.columns || 120, MAX_DISPLAY_WIDTH);
+
+  // Fixed column widths for consistent alignment (fits perfectly under nodeA::nodeB)
+  const TITLE_A_WIDTH = 29;  // Fixed width for titleA
+  const TITLE_B_WIDTH = 29;  // Fixed width for titleB
+
+  // Helper to colorize score value based on magnitude (gradient heat map)
+  const colorizeScore = (value: number, hue: number): string => {
+    const formattedValue = formatScoreComponent(value);
+
+    // Gradient from dark (low) to bright (high)
+    // HSL interpolation: consistent hue, varying lightness & saturation
+    const t = Math.max(0, Math.min(1, value)); // Clamp to [0, 1]
+
+    // Dark muted -> bright vibrant
+    const lightness = 20 + t * 50;  // 20% to 70%
+    const saturation = 25 + t * 45; // 25% to 70%
+
+    const [r, g, b] = hslToRgb(hue, saturation, lightness);
+    return chalk.rgb(r, g, b)(formattedValue);
+  };
+
+  // Helper to color node IDs with subtle per-character hue variation
+  const colorNodeId = (id: string): string => {
+    return id
+      .split('')
+      .map((char, i) => {
+        const hueOffset = (i * 13) % 30;  // Subtle variation
+        const [r, g, b] = hslToRgb(200 + hueOffset, 10, 65);  // Light grey with slight hue shift
+        return chalk.rgb(r, g, b)(char);
+      })
+      .join('');
+  };
+
+  edges.forEach((edge) => {
+    const nodeA = nodeMap.get(edge.sourceId);
+    const nodeB = nodeMap.get(edge.targetId);
+    if (!nodeA || !nodeB) return;
+
+    // Get or compute scoring components
+    const components = (edge.metadata as any)?.components ?? computeScore(nodeA, nodeB).components;
+
+    // Format score columns with distinct forest hues
+    const ag = colorizeScore(edge.score, 35);                           // Amber/bark brown
+    const em = colorizeScore(components.embeddingSimilarity, 120);      // Forest green
+    const tk = colorizeScore(components.tokenSimilarity, 100);          // Moss/lime green
+    const ti = colorizeScore(components.titleSimilarity, 45);           // Autumn gold/yellow
+    const tg = colorizeScore(components.tagOverlap, 10);                // Clay red/rust
+
+    // Get edge code and pad to 5 chars - color orange, no ◌ prefix
+    const code = getEdgePrefix(edge.sourceId, edge.targetId, allEdges).padEnd(5, ' ');
+    const coloredCode = chalk.hex('#FF8C00')(code);
+
+    // Simple fixed-width truncation (no balancing complexity)
+    const truncA = nodeA.title.length > TITLE_A_WIDTH
+      ? nodeA.title.slice(0, TITLE_A_WIDTH - 1) + '…'
+      : nodeA.title;
+    const truncB = nodeB.title.length > TITLE_B_WIDTH
+      ? nodeB.title.slice(0, TITLE_B_WIDTH - 1) + '…'
+      : nodeB.title;
+
+    // Pad titleA to fixed width for perfect :: alignment
+    const titleAPadded = truncA.padEnd(TITLE_A_WIDTH, ' ');
+
+    // Format node IDs with subtle color variation
+    const idA = colorNodeId(formatId(edge.sourceId));
+    const idB = colorNodeId(formatId(edge.targetId));
+
+    console.log(`${coloredCode} ${ag} ${em} ${tk} ${ti} ${tg}  ${titleAPadded} ${idA}${chalk.grey('::')}${idB} ${truncB}`);
+  });
 }
 
 async function runEdgesPromote(flags: EdgesPromoteFlags) {

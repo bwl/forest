@@ -254,9 +254,11 @@ export async function listNodes(): Promise<NodeRecord[]> {
 
 export async function getNodeById(id: string): Promise<NodeRecord | null> {
   const db = await ensureDatabase();
-  const stmt = db.prepare('SELECT * FROM nodes WHERE id = :id LIMIT 1');
+
+  // Try exact match first (fast path)
+  let stmt = db.prepare('SELECT * FROM nodes WHERE id = :id LIMIT 1');
   stmt.bind({ ':id': id });
-  const node = stmt.step()
+  let node = stmt.step()
     ? (() => {
         const row = stmt.getAsObject();
         return {
@@ -272,7 +274,39 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
       })()
     : null;
   stmt.free();
-  return node;
+
+  if (node) return node;
+
+  // If not found and looks like a short ID (hex chars, 6-8 chars), try prefix match
+  const isShortId = /^[0-9a-f]{6,8}$/i.test(id);
+  if (!isShortId) return null;
+
+  // Git-style prefix search
+  const normalized = id.toLowerCase();
+  stmt = db.prepare('SELECT * FROM nodes WHERE lower(id) LIKE :prefix');
+  stmt.bind({ ':prefix': `${normalized}%` });
+
+  const matches: NodeRecord[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    matches.push({
+      id: String(row.id),
+      title: String(row.title),
+      body: String(row.body),
+      tags: JSON.parse(String(row.tags)),
+      tokenCounts: JSON.parse(String(row.token_counts)),
+      embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    } satisfies NodeRecord);
+  }
+  stmt.free();
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  // Ambiguous short ID
+  throw new Error(`Ambiguous short ID '${id}': matches ${matches.length} nodes. Use a longer prefix.`);
 }
 
 export async function findNodeByTitle(title: string): Promise<NodeRecord | null> {
