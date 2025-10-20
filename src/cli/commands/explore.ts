@@ -7,6 +7,7 @@ import {
   parseDate,
 } from '../shared/utils';
 import { printExplore, selectNode } from '../shared/explore';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
@@ -84,10 +85,19 @@ export function createExploreCommand(clerc: ClercModule) {
         type: Boolean,
         description: 'Prompt to choose a match',
       },
+      tldr: {
+        type: String,
+        description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+      },
     },
     },
     async ({ flags, parameters }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.explore, jsonMode);
+        }
         const limitFlag =
           typeof flags.limit === 'number' && !Number.isNaN(flags.limit) ? flags.limit : undefined;
         const neighborhoodLimit = limitFlag ?? DEFAULT_NEIGHBORHOOD_LIMIT;

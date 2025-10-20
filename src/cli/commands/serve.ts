@@ -1,14 +1,16 @@
 import { handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
 type ServeFlags = {
   port?: number;
   host?: string;
+  tldr?: string;
 };
 
 const DEFAULT_PORT = 3000;
-const DEFAULT_HOST = 'localhost';
+const DEFAULT_HOST = '::'; // Dual-stack: IPv4 and IPv6
 
 export function createServeCommand(clerc: ClercModule) {
   return clerc.defineCommand(
@@ -23,13 +25,22 @@ export function createServeCommand(clerc: ClercModule) {
         },
         host: {
           type: String,
-          description: 'Host to bind to',
+          description: 'Host to bind to (:: for dual-stack IPv4/IPv6, 0.0.0.0 for IPv4 only)',
           default: DEFAULT_HOST,
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
         },
       },
     },
     async ({ flags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.serve, jsonMode);
+        }
         await runServe(flags as ServeFlags);
       } catch (error) {
         handleError(error);
@@ -40,7 +51,7 @@ export function createServeCommand(clerc: ClercModule) {
 
 async function runServe(flags: ServeFlags) {
   // Check if running under Bun
-  if (typeof Bun === 'undefined') {
+  if (typeof (globalThis as any).Bun === 'undefined') {
     console.error('❌ Error: forest serve requires Bun runtime');
     console.error('');
     console.error('To start the Forest server:');
@@ -51,8 +62,9 @@ async function runServe(flags: ServeFlags) {
   }
 
   const port = flags.port ?? DEFAULT_PORT;
+  const hostname = flags.host ?? DEFAULT_HOST;
 
   // Dynamically import the server (only works with Bun)
   const { startServer } = await import('../../server/index.js');
-  await startServer({ port });
+  await startServer({ port, hostname });
 }

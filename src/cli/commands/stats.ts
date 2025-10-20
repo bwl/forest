@@ -1,11 +1,13 @@
 import { getStats } from '../../core/stats';
 import { formatId, handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
 type StatsFlags = {
   json?: boolean;
   top?: number;
+  tldr?: string;
 };
 
 export function createStatsCommand(clerc: ClercModule) {
@@ -23,10 +25,19 @@ export function createStatsCommand(clerc: ClercModule) {
           description: 'Top N tags/pairs to show',
           default: 10,
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.stats, jsonMode);
+        }
         await runStats(flags as StatsFlags);
       } catch (error) {
         handleError(error);

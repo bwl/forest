@@ -4,6 +4,7 @@ import path from 'path';
 import { listEdges, listNodes } from '../../lib/db';
 import { buildNeighborhoodPayload, fetchSuggestionsForNode, selectNode } from '../shared/explore';
 import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -16,12 +17,14 @@ type ExportGraphvizFlags = {
   limit?: number;
   includeSuggestions?: boolean;
   file?: string;
+  tldr?: string;
 };
 
 type ExportJsonFlags = {
   file?: string;
   body?: boolean;
   edges?: boolean;
+  tldr?: string;
 };
 
 export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
@@ -54,10 +57,19 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
           type: String,
           description: 'Write DOT output to a file instead of stdout',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: ExportGraphvizFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['export.graphviz'], jsonMode);
+        }
         await runExportGraphviz(flags);
       } catch (error) {
         handleError(error);
@@ -85,10 +97,19 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
           description: 'Include edges in export (use --no-edges to omit)',
           default: true,
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: ExportJsonFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['export.json'], jsonMode);
+        }
         await runExportJson(flags);
       } catch (error) {
         handleError(error);
@@ -114,9 +135,20 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
           ['$ forest export json --no-body', 'Export metadata without note bodies'],
         ],
       },
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async (_ctx: HandlerContext) => {
+    async (ctx: HandlerContext) => {
       try {
+        // Handle TLDR request first
+        if ((ctx as any).flags?.tldr !== undefined) {
+          const jsonMode = (ctx as any).flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.export, jsonMode);
+        }
         await runExportDashboard();
       } catch (error) {
         handleError(error);

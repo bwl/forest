@@ -1,4 +1,5 @@
 import { handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
@@ -38,9 +39,20 @@ export function createVersionCommand(clerc: ClercModule) {
     {
       name: 'version',
       description: 'Show version information',
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async () => {
+    async ({ flags }: { flags?: { tldr?: string } }) => {
       try {
+        // Handle TLDR request first
+        if (flags?.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.version, jsonMode);
+        }
         displayVersion();
       } catch (error) {
         handleError(error);

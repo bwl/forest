@@ -1,10 +1,12 @@
 import { getHealthReport, isHealthy, HealthCheck } from '../../core/health';
 import { handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
 type HealthFlags = {
   json?: boolean;
+  tldr?: string;
 };
 
 export function createHealthCommand(clerc: ClercModule) {
@@ -17,10 +19,19 @@ export function createHealthCommand(clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.health, jsonMode);
+        }
         await runHealth(flags as HealthFlags);
       } catch (error) {
         handleError(error);

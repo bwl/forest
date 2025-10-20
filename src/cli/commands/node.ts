@@ -14,6 +14,7 @@ import {
   resolveNodeReference,
 } from '../shared/utils';
 import { rescoreNode } from '../shared/linking';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -24,6 +25,7 @@ type NodeReadFlags = {
   meta?: boolean;
   json?: boolean;
   longIds?: boolean;
+  tldr?: string;
 };
 
 type NodeEditFlags = {
@@ -33,16 +35,19 @@ type NodeEditFlags = {
   stdin?: boolean;
   tags?: string;
   autoLink?: boolean;
+  tldr?: string;
 };
 
 type NodeDeleteFlags = {
   force?: boolean;
+  tldr?: string;
 };
 
 type NodeLinkFlags = {
   score?: number;
   suggest?: boolean;
   explain?: boolean;
+  tldr?: string;
 };
 
 export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
@@ -64,10 +69,19 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Display full ids in text output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeReadFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['node.read'], jsonMode);
+        }
         await runNodeRead(parameters.id, flags);
       } catch (error) {
         handleError(error);
@@ -107,10 +121,19 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           description: 'Rescore/link against existing nodes',
           default: true,
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeEditFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['node.edit'], jsonMode);
+        }
         await runNodeEdit(parameters.id, flags);
       } catch (error) {
         handleError(error);
@@ -129,10 +152,19 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Do not prompt for confirmation (non-interactive mode)',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeDeleteFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['node.delete'], jsonMode);
+        }
         await runNodeDelete(parameters.id, flags);
       } catch (error) {
         handleError(error);
@@ -159,10 +191,19 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Print scoring components',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ parameters, flags }: { parameters: { a?: string; b?: string }; flags: NodeLinkFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['node.link'], jsonMode);
+        }
         await runNodeLink(parameters.a, parameters.b, flags);
       } catch (error) {
         handleError(error);
@@ -191,9 +232,20 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           ['$ forest node link abc123 def456', 'Create a link between two notes'],
         ],
       },
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async (_ctx: HandlerContext) => {
+    async (ctx: HandlerContext) => {
       try {
+        // Handle TLDR request first
+        if ((ctx as any).flags?.tldr !== undefined) {
+          const jsonMode = (ctx as any).flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.node, jsonMode);
+        }
         await runNodeDashboard();
       } catch (error) {
         handleError(error);

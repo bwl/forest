@@ -1,6 +1,7 @@
 import { listNodes, updateNodeIndexData } from '../../lib/db';
 
 import { handleError } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -10,6 +11,7 @@ type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
 type TagsListFlags = {
   top?: number;
   json?: boolean;
+  tldr?: string;
 };
 
 type TagsStatsFlags = {
@@ -17,6 +19,7 @@ type TagsStatsFlags = {
   minCount?: number;
   top?: number;
   json?: boolean;
+  tldr?: string;
 };
 
 export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
@@ -33,10 +36,19 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: TagsListFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['tags.list'], jsonMode);
+        }
         await runTagsList(flags);
       } catch (error) {
         handleError(error);
@@ -50,9 +62,20 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
       name: 'tags rename',
       description: 'Rename a tag across all notes',
       parameters: ['<old>', '<next>'],
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async ({ parameters }: { parameters: { old?: string; next?: string } }) => {
+    async ({ parameters, flags }: { parameters: { old?: string; next?: string }; flags?: { tldr?: string } }) => {
       try {
+        // Handle TLDR request first
+        if (flags?.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['tags.rename'], jsonMode);
+        }
         await runTagsRename(parameters.old, parameters.next);
       } catch (error) {
         handleError(error);
@@ -84,10 +107,19 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: TagsStatsFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['tags.stats'], jsonMode);
+        }
         await runTagsStats(flags);
       } catch (error) {
         handleError(error);
@@ -114,9 +146,20 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
           ['$ forest tags rename old new', 'Rename a tag across all notes'],
         ],
       },
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async (_ctx: HandlerContext) => {
+    async (ctx: HandlerContext) => {
       try {
+        // Handle TLDR request first
+        if ((ctx as any).flags?.tldr !== undefined) {
+          const jsonMode = (ctx as any).flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.tags, jsonMode);
+        }
         await runTagsDashboard();
       } catch (error) {
         handleError(error);

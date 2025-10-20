@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { runForestCli } from './cli';
 import { handleError } from './cli/shared/utils';
-import { displayVersion, displayBriefInfo } from './cli/commands/version';
+import { displayVersion, displayBriefInfo, getVersion } from './cli/commands/version';
+import { getGlobalTldr, emitTldrAndExit } from './cli/tldr';
 
 const rawArgs = process.argv.slice(2);
 
@@ -9,6 +10,16 @@ const rawArgs = process.argv.slice(2);
 if (rawArgs.includes('-v') || rawArgs.includes('-V') || rawArgs.includes('--version')) {
   displayVersion();
   process.exit(0);
+}
+
+// Intercept root-level TLDR flags
+const tldrIndex = rawArgs.findIndex((arg) => arg === '--tldr' || arg.startsWith('--tldr='));
+if (tldrIndex !== -1 && tldrIndex === 0) {
+  // --tldr at position 0 means root-level TLDR request
+  const tldrArg = rawArgs[tldrIndex];
+  const jsonMode = tldrArg === '--tldr=json';
+  const globalTldr = getGlobalTldr(getVersion());
+  emitTldrAndExit(globalTldr, jsonMode);
 }
 
 // Show brief info when no command is given

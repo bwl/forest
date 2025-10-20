@@ -12,6 +12,7 @@ import {
   printExplore,
 } from '../shared/explore';
 import { linkAgainstExisting } from '../shared/linking';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
 
@@ -26,6 +27,7 @@ type CaptureFlags = {
   noPreview?: boolean;
   previewSuggestionsOnly?: boolean;
   json?: boolean;
+  tldr?: string;
 };
 
 export function createCaptureCommand(clerc: ClercModule) {
@@ -78,10 +80,19 @@ export function createCaptureCommand(clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output for the capture summary',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.capture, jsonMode);
+        }
         await runCapture(flags as CaptureFlags);
       } catch (error) {
         handleError(error);
@@ -90,6 +101,9 @@ export function createCaptureCommand(clerc: ClercModule) {
   );
 }
 
+// TODO: Refactor to use createNodeCore() from src/core/nodes.ts
+// This function currently reimplements node creation logic that should be
+// in the core layer. See CLAUDE.md "3-Layer Architecture" section.
 async function runCapture(flags: CaptureFlags) {
   const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
   const body = bodyResult.value;

@@ -18,6 +18,7 @@ import {
   resolveSuggestionReference,
 } from '../shared/edges';
 import { formatId, handleError, getEdgePrefix } from '../shared/utils';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -28,25 +29,30 @@ type EdgesListFlags = {
   limit?: number;
   longIds?: boolean;
   json?: boolean;
+  tldr?: string;
 };
 
 type EdgesProposeFlags = {
   limit?: number;
   longIds?: boolean;
   json?: boolean;
+  tldr?: string;
 };
 
 type EdgesPromoteFlags = {
   minScore?: number;
+  tldr?: string;
 };
 
 type EdgesSweepFlags = {
   range?: string;
   maxScore?: number;
+  tldr?: string;
 };
 
 type EdgesExplainFlags = {
   json?: boolean;
+  tldr?: string;
 };
 
 export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
@@ -68,10 +74,19 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: EdgesProposeFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.propose'], jsonMode);
+        }
         await runEdgesPropose(flags);
       } catch (error) {
         handleError(error);
@@ -90,10 +105,19 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
           description: 'Minimum score to accept',
           default: getAutoAcceptThreshold(),
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: EdgesPromoteFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.promote'], jsonMode);
+        }
         await runEdgesPromote(flags);
       } catch (error) {
         handleError(error);
@@ -107,9 +131,20 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       name: 'edges accept',
       description: 'Promote a single suggestion by progressive ID, short pair, or edge id',
       parameters: ['<ref>'],
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async ({ parameters }: { parameters: { ref?: string } }) => {
+    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
       try {
+        // Handle TLDR request first
+        if (flags?.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.accept'], jsonMode);
+        }
         await runEdgesAccept(parameters.ref);
       } catch (error) {
         handleError(error);
@@ -123,9 +158,20 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       name: 'edges reject',
       description: 'Reject and remove a suggestion by progressive ID, short pair, or edge id',
       parameters: ['<ref>'],
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async ({ parameters }: { parameters: { ref?: string } }) => {
+    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
       try {
+        // Handle TLDR request first
+        if (flags?.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.reject'], jsonMode);
+        }
         await runEdgesReject(parameters.ref);
       } catch (error) {
         handleError(error);
@@ -147,10 +193,19 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Number,
           description: 'Reject suggestions at or below this score',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ flags }: { flags: EdgesSweepFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.sweep'], jsonMode);
+        }
         await runEdgesSweep(flags);
       } catch (error) {
         handleError(error);
@@ -169,10 +224,19 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
     },
     async ({ parameters, flags }: { parameters: { ref?: string }; flags: EdgesExplainFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.explain'], jsonMode);
+        }
         await runEdgesExplain(parameters.ref, flags);
       } catch (error) {
         handleError(error);
@@ -186,9 +250,20 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       name: 'edges undo',
       description: 'Undo the last accept/reject action for a link',
       parameters: ['<ref>'],
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
     },
-    async ({ parameters }: { parameters: { ref?: string } }) => {
+    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
       try {
+        // Handle TLDR request first
+        if (flags?.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.undo'], jsonMode);
+        }
         await runEdgesUndo(parameters.ref);
       } catch (error) {
         handleError(error);
@@ -215,6 +290,10 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output',
         },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
       },
       help: {
         notes: [
@@ -240,6 +319,11 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
     },
     async ({ flags }: { flags: EdgesListFlags }) => {
       try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.edges, jsonMode);
+        }
         await runEdgesList(flags);
       } catch (error) {
         handleError(error);
