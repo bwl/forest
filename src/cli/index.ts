@@ -1,6 +1,7 @@
 import { createCaptureCommand } from './commands/capture';
 import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings';
 import { createExploreCommand } from './commands/explore';
+import { createSearchCommand } from './commands/search';
 import { registerExportCommands } from './commands/export';
 import { registerEdgesCommands } from './commands/edges';
 import { registerNodeCommands } from './commands/node';
@@ -40,6 +41,7 @@ export async function createForestCli() {
 
   cli.command(createCaptureCommand(clerc));
   cli.command(createExploreCommand(clerc));
+  cli.command(createSearchCommand(clerc));
   cli.command(createStatsCommand(clerc));
   cli.command(createHealthCommand(clerc));
   cli.command(createServeCommand(clerc));
