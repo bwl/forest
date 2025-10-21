@@ -29,6 +29,7 @@ type NodeReadFlags = {
   meta?: boolean;
   json?: boolean;
   longIds?: boolean;
+  raw?: boolean;
   tldr?: string;
 };
 
@@ -106,6 +107,10 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         longIds: {
           type: Boolean,
           description: 'Display full ids in text output',
+        },
+        raw: {
+          type: Boolean,
+          description: 'Output only the raw markdown body (for piping to glow, bat, etc.)',
         },
         tldr: {
           type: String,
@@ -262,11 +267,11 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         },
         reasoning: {
           type: String,
-          description: 'Reasoning effort: minimal, low, medium, high (default: medium)',
+          description: 'Reasoning effort: minimal, low, medium, high (default: high)',
         },
         verbosity: {
           type: String,
-          description: 'Output verbosity: low, medium, high (default: medium)',
+          description: 'Output verbosity: low, medium, high (default: high)',
         },
         preview: {
           type: Boolean,
@@ -517,6 +522,16 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
 
   // Check if this node is part of a chunked document
   const reconstructed = await reconstructDocument(node);
+
+  // Raw mode: output only the markdown body (for piping to glow, bat, etc.)
+  if (flags.raw) {
+    if (reconstructed) {
+      console.log(reconstructed.fullBody);
+    } else {
+      console.log(node.body);
+    }
+    return;
+  }
 
   if (flags.json) {
     if (reconstructed) {
@@ -773,8 +788,8 @@ async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesiz
     console.error('');
     console.error('Options:');
     console.error('  --model=gpt-5|gpt-5-mini       Model to use (default: gpt-5)');
-    console.error('  --reasoning=minimal|low|medium|high  Reasoning effort (default: medium)');
-    console.error('  --verbosity=low|medium|high    Output detail (default: medium)');
+    console.error('  --reasoning=minimal|low|medium|high  Reasoning effort (default: high)');
+    console.error('  --verbosity=low|medium|high    Output detail (default: high)');
     console.error('  --preview                      Preview without saving');
     console.error('  --max-tokens=N                 Max output tokens (default: auto)');
     console.error('');
@@ -1101,21 +1116,21 @@ function validateModel(modelFlag: string | undefined): SynthesisModel {
 }
 
 function validateReasoning(reasoningFlag: string | undefined): ReasoningEffort {
-  if (!reasoningFlag) return 'medium';
+  if (!reasoningFlag) return 'high';
   const normalized = reasoningFlag.toLowerCase();
   if (['minimal', 'low', 'medium', 'high'].includes(normalized)) {
     return normalized as ReasoningEffort;
   }
-  console.error(`⚠ Invalid reasoning effort "${reasoningFlag}", using default: medium`);
-  return 'medium';
+  console.error(`⚠ Invalid reasoning effort "${reasoningFlag}", using default: high`);
+  return 'high';
 }
 
 function validateVerbosity(verbosityFlag: string | undefined): TextVerbosity {
-  if (!verbosityFlag) return 'medium';
+  if (!verbosityFlag) return 'high';
   const normalized = verbosityFlag.toLowerCase();
   if (['low', 'medium', 'high'].includes(normalized)) {
     return normalized as TextVerbosity;
   }
-  console.error(`⚠ Invalid verbosity "${verbosityFlag}", using default: medium`);
-  return 'medium';
+  console.error(`⚠ Invalid verbosity "${verbosityFlag}", using default: high`);
+  return 'high';
 }

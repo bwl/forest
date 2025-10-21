@@ -372,11 +372,13 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { name: 'meta', type: 'BOOL', default: false, desc: 'show metadata only (no body)' },
       { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
       { name: 'long-ids', type: 'BOOL', default: false, desc: 'display full UUIDs' },
+      { name: 'raw', type: 'BOOL', default: false, desc: 'output only raw markdown body (for piping)' },
     ],
     examples: [
       'forest node read abc123',
       'forest node read abc123 --meta',
       'forest node read abc123 --json',
+      'forest node read abc123 --raw | glow',
     ],
     related: ['explore', 'node.edit', 'capture'],
   },
