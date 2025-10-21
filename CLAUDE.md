@@ -155,6 +155,112 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
 }
 ```
 
+### Git-Style Node References
+
+Forest uses **Git-inspired progressive abbreviation** for node and edge IDs, optimizing for both brevity and backward compatibility.
+
+#### Display vs. Acceptance
+
+**What Forest displays** (optimized for current graph size):
+```bash
+$ forest explore
+  ID      TITLE              EDGES
+  7fa7    Optimize UUIDs     12      # Shows 4-7 chars (enough for uniqueness)
+  ef3a    Progressive IDs    8
+```
+
+**What Forest accepts** (any unique prefix):
+```bash
+$ forest node read 7fa7          # 4 chars ✅
+$ forest node read 7fa7acb2      # 8 chars ✅ (backward compatible!)
+$ forest node read 7fa7acb2-ed4a-4f3b-9c1e-8a2b3c4d5e6f  # full UUID ✅
+```
+
+All lengths work! Forest accepts **any unique prefix**, even if display shows shorter.
+
+#### Reference Types
+
+Forest supports multiple reference patterns (unified resolution in `src/cli/shared/utils.ts:resolveNodeReference()`):
+
+**1. UUID Prefixes** (case-insensitive, works with/without dashes):
+```bash
+forest node read 7fa7           # Short prefix
+forest node read 7fa7acb2       # 8-char prefix
+forest node read 7fa7acb2-ed4a  # Longer prefix
+```
+
+**2. Recency References** (Git-style `HEAD~N`):
+```bash
+forest node read @              # Last updated node (@ or @0)
+forest node read @1             # Second most recently updated
+forest node read @2             # Third most recently updated
+forest node link @ @1           # Link two recent nodes
+```
+
+**3. Tag Search** (exact match, finds unique node):
+```bash
+forest node read #typescript    # Node tagged with 'typescript'
+forest node read #api-design    # Node tagged with 'api-design'
+```
+
+**4. Title Search** (substring match, must be unique):
+```bash
+forest node read "UUID short"   # Finds node with "UUID short" in title
+forest node read "api"          # Finds node with "api" in title (if unique)
+```
+
+#### Disambiguation
+
+When a reference matches multiple nodes, Forest shows **Git-style disambiguation**:
+
+```bash
+$ forest node read 7fa
+✖ Ambiguous ID '7fa' matches 3 nodes:
+  7fa7acb2  "Optimize UUID shortcodes" (2025-10-21)
+  7fa2103e  "Add progressive IDs" (2025-10-20)
+  7fa8ef29  "Update scoring algorithm" (2025-10-19)
+
+Use a longer prefix to disambiguate.
+```
+
+Similar disambiguation for tag and title searches shows matching nodes with IDs for easy selection.
+
+#### Progressive Display
+
+**Node IDs**: Use `formatNodeIdProgressive()` in `src/cli/shared/utils.ts`
+- Minimum 4 chars, grows as needed to maintain uniqueness
+- Implementation: `src/lib/progressive-id.ts` with `buildNodePrefixMap()`
+
+**Edge IDs**: Already use progressive abbreviation (4+ chars)
+- Stable hash generation via FNV-1a
+- Minimal prefix display in `forest edges` output
+
+#### Backward Compatibility
+
+**Zero breaking changes**: All existing 8-char references continue to work!
+
+- External docs with `7fa7acb2` keep resolving correctly
+- Scripts using full UUIDs remain valid
+- API responses can return any length (recommended: 8 chars or full UUID)
+- `--long` flag available for full UUIDs when needed
+
+#### Tab Completion
+
+Shell completion scripts available in `completions/`:
+- `forest.bash` - Bash completion
+- `forest.zsh` - Zsh completion
+- Supports command, flag, and recency reference completion
+
+**Installation**:
+```bash
+# Bash
+source completions/forest.bash
+
+# Zsh (add to ~/.zshrc)
+fpath=(path/to/forest/completions $fpath)
+autoload -Uz compinit && compinit
+```
+
 ### 3-Layer Architecture: CLI/API Feature Parity
 
 Forest uses a **3-layer architecture** to maintain feature parity between the CLI and REST API:

@@ -1,8 +1,9 @@
 import { semanticSearchCore } from '../../core/search';
-import { handleError, formatId, parseCsvList } from '../shared/utils';
+import { handleError, formatId, formatNodeIdProgressive, parseCsvList } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { deduplicateChunks } from '../../lib/reconstruction';
+import { listNodes } from '../../lib/db';
 
 type ClercModule = typeof import('clerc');
 
@@ -12,6 +13,7 @@ type SearchFlags = {
   tags?: string;
   minScore?: number;
   json?: boolean;
+  longIds?: boolean;
   tldr?: string;
 };
 
@@ -46,6 +48,10 @@ export function createSearchCommand(clerc: ClercModule) {
         json: {
           type: Boolean,
           description: 'Output results as JSON',
+        },
+        longIds: {
+          type: Boolean,
+          description: 'Display full UUIDs instead of short prefixes',
         },
         tldr: {
           type: String,
@@ -143,15 +149,22 @@ async function runSearch(flags: SearchFlags, positionalQuery?: string) {
       })),
     }, null, 2));
   } else {
-    printTextResults(query, { nodes: deduplicatedResults, total: deduplicatedResults.length }, tags || [], minScore);
+    await printTextResults(
+      query,
+      { nodes: deduplicatedResults, total: deduplicatedResults.length },
+      tags || [],
+      minScore,
+      flags.longIds || false
+    );
   }
 }
 
-function printTextResults(
+async function printTextResults(
   query: string,
   result: { nodes: Array<{ node: any; similarity: number }>; total: number },
   tags: string[],
   minScore: number,
+  longIds: boolean,
 ) {
   console.log(`Semantic search: "${query}"`);
 
@@ -180,10 +193,15 @@ function printTextResults(
   console.log(`${'SCORE'.padEnd(scoreWidth)} ${'ID'.padEnd(idWidth)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(tagsWidth)}`);
   console.log('─'.repeat(scoreWidth + idWidth + maxTitleWidth + tagsWidth + 3));
 
+  // Use progressive IDs unless --long is specified
+  const allNodes = await listNodes();
+  const formatNodeId = (id: string) =>
+    longIds ? id : formatNodeIdProgressive(id, allNodes);
+
   // Print results
   for (const item of result.nodes) {
     const score = item.similarity.toFixed(3).padEnd(scoreWidth);
-    const shortId = formatId(item.node.id).padEnd(idWidth);
+    const shortId = formatNodeId(item.node.id).padEnd(idWidth);
     const title = truncate(item.node.title, maxTitleWidth).padEnd(maxTitleWidth);
     const tags = truncate(item.node.tags.join(', '), tagsWidth);
 
