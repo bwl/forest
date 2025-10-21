@@ -1,8 +1,11 @@
 /**
- * Progressive ID system for edges (Git-style minimal unique prefixes)
+ * Progressive ID system for nodes and edges (Git-style minimal unique prefixes)
  *
- * Instead of fixed 4-char codes, we generate stable long hashes and display
- * the shortest unique prefix (minimum 4 chars, growing as needed to avoid collisions).
+ * Instead of fixed-length codes, we display the shortest unique prefix
+ * (minimum 4 chars for edges, 4-8 for nodes, growing as needed to avoid collisions).
+ *
+ * For nodes: Uses UUID without dashes as the stable identifier
+ * For edges: Uses FNV-1a hash of normalized node pair
  */
 
 /**
@@ -67,15 +70,15 @@ export function findUniquePrefix(hash: string, allHashes: string[], minLength = 
 /**
  * Find all hashes that match a given prefix.
  *
- * @param prefix - The prefix to search for (case-sensitive)
+ * @param prefix - The prefix to search for (case-insensitive)
  * @param allHashes - All hashes in the system
  * @returns Array of matching hashes
  */
 export function findHashesByPrefix(prefix: string, allHashes: string[]): string[] {
   if (!prefix) return [];
 
-  const normalized = prefix;
-  return allHashes.filter((hash) => hash.startsWith(normalized));
+  const normalized = prefix.toLowerCase();
+  return allHashes.filter((hash) => hash.toLowerCase().startsWith(normalized));
 }
 
 /**
@@ -112,6 +115,49 @@ export function buildPrefixMap(edgeHashes: string[], minLength = 4): Map<string,
   for (const hash of edgeHashes) {
     const prefix = findUniquePrefix(hash, edgeHashes, minLength);
     map.set(hash, prefix);
+  }
+
+  return map;
+}
+
+/**
+ * Normalize a node UUID to a stable hash string (removes dashes, lowercase).
+ * For nodes, we use the UUID itself as the stable identifier.
+ *
+ * @param nodeId - UUID with or without dashes
+ * @returns Normalized hex string (32 chars for full UUID, or as provided)
+ */
+export function normalizeNodeId(nodeId: string): string {
+  return nodeId.toLowerCase().replace(/-/g, '');
+}
+
+/**
+ * Get the minimal unique prefix for a node ID among all nodes.
+ *
+ * @param nodeId - The node UUID to abbreviate
+ * @param allNodeIds - All node UUIDs in the system
+ * @param minLength - Minimum prefix length (default: 4)
+ * @returns Shortest unique prefix of the normalized node ID
+ */
+export function getNodePrefix(nodeId: string, allNodeIds: string[], minLength = 4): string {
+  const normalized = normalizeNodeId(nodeId);
+  const allNormalized = allNodeIds.map(normalizeNodeId);
+  return findUniquePrefix(normalized, allNormalized, minLength);
+}
+
+/**
+ * Build a map of all node IDs with their minimal unique prefixes.
+ *
+ * @param nodeIds - Array of node UUIDs
+ * @param minLength - Minimum prefix length (default: 4)
+ * @returns Map from original node ID to its minimal unique prefix
+ */
+export function buildNodePrefixMap(nodeIds: string[], minLength = 4): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const nodeId of nodeIds) {
+    const prefix = getNodePrefix(nodeId, nodeIds, minLength);
+    map.set(nodeId, prefix);
   }
 
   return map;

@@ -2,17 +2,47 @@ import fs from 'fs';
 import path from 'path';
 
 import { getNodeById, listNodes, NodeRecord, EdgeRecord } from '../../lib/db';
-import { generateEdgeHash, buildPrefixMap } from '../../lib/progressive-id';
+import { generateEdgeHash, buildPrefixMap, normalizeNodeId, findHashesByPrefix, buildNodePrefixMap } from '../../lib/progressive-id';
 
 export const SHORT_ID_LENGTH = 8;
+export const MIN_NODE_ID_LENGTH = 4;
 export const DEFAULT_SEARCH_LIMIT = 6;
 export const DEFAULT_NEIGHBORHOOD_LIMIT = 25;
 export const DEFAULT_MATCH_DISPLAY_LIMIT = 6;
 
+/**
+ * Format a node ID for display (legacy function - uses fixed 8-char length).
+ * For progressive display, use formatNodeIdProgressive() instead.
+ *
+ * @param id - Node UUID
+ * @param options - Formatting options
+ * @returns Formatted ID (full UUID if long=true, otherwise 8 chars)
+ */
 export function formatId(id: string, options: { long?: boolean } = {}): string {
   if (options.long) return id;
   const segment = id.split('-')[0] ?? id;
   return segment.slice(0, SHORT_ID_LENGTH);
+}
+
+/**
+ * Format a node ID using progressive abbreviation (Git-style).
+ * Shows the shortest unique prefix (minimum 4 chars, grows as needed).
+ *
+ * @param id - Node UUID
+ * @param allNodes - All nodes in the graph (for uniqueness checking)
+ * @param options - Formatting options
+ * @returns Shortest unique prefix or full UUID if long=true
+ */
+export function formatNodeIdProgressive(
+  id: string,
+  allNodes: NodeRecord[],
+  options: { long?: boolean } = {}
+): string {
+  if (options.long) return id;
+
+  const allIds = allNodes.map((n) => n.id);
+  const prefixMap = buildNodePrefixMap(allIds, MIN_NODE_ID_LENGTH);
+  return prefixMap.get(id) ?? normalizeNodeId(id).slice(0, MIN_NODE_ID_LENGTH);
 }
 
 export function formatScore(score: number): string {
@@ -51,26 +81,160 @@ export function isShortId(term: string): boolean {
 }
 
 export async function resolveByIdPrefix(prefix: string): Promise<NodeRecord | null> {
-  const normalized = prefix.toLowerCase();
   const nodes = await listNodes();
-  const matches = nodes.filter((node) => node.id.toLowerCase().startsWith(normalized));
+  const normalizedPrefix = prefix.toLowerCase().replace(/-/g, '');
+
+  // Find all nodes that match the prefix (case-insensitive, works with or without dashes)
+  const matches = nodes.filter((node) => {
+    const normalizedId = normalizeNodeId(node.id);
+    return normalizedId.startsWith(normalizedPrefix);
+  });
+
   if (matches.length === 1) {
     return matches[0];
   }
+
   if (matches.length > 1) {
-    console.warn(`⚠ Multiple nodes share prefix ${prefix}. Use --id with the full identifier.`);
+    // Rich disambiguation UI (Git-style)
+    console.error(`✖ Ambiguous ID '${prefix}' matches ${matches.length} nodes:`);
+    const sortedMatches = matches
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .slice(0, 10); // Show max 10
+
+    for (const match of sortedMatches) {
+      const shortId = normalizeNodeId(match.id).slice(0, 8);
+      const date = new Date(match.updatedAt).toISOString().split('T')[0];
+      const title = match.title ? `"${match.title}"` : '(untitled)';
+      console.error(`  ${shortId}  ${title} (${date})`);
+    }
+
+    if (matches.length > 10) {
+      console.error(`  ... and ${matches.length - 10} more`);
+    }
+    console.error('\nUse a longer prefix to disambiguate.');
   }
+
   return null;
 }
 
+/**
+ * Resolve recency references (@, @0, @1, etc.) to node records.
+ * @ or @0 = most recently updated node
+ * @1 = second most recently updated
+ * @2 = third most recently updated, etc.
+ *
+ * @param ref - Recency reference (e.g., '@', '@0', '@1')
+ * @returns Node record or null if invalid/out of range
+ */
+export async function resolveRecencyReference(ref: string): Promise<NodeRecord | null> {
+  const match = /^@(\d*)$/.exec(ref);
+  if (!match) return null;
+
+  const index = match[1] === '' ? 0 : Number.parseInt(match[1], 10);
+  if (!Number.isFinite(index) || index < 0) return null;
+
+  const nodes = await listNodes();
+  const sorted = nodes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+  return sorted[index] ?? null;
+}
+
+/**
+ * Resolve node references with Git-like patterns:
+ * - Short IDs: '7fa7acb2' (any length prefix)
+ * - Full UUIDs: '7fa7acb2-ed4a-4f3b-9c1e-8a2b3c4d5e6f'
+ * - Recency refs: '@' or '@0' (last updated), '@1' (second last), etc.
+ * - Tag search: '#typescript' (finds nodes tagged with 'typescript')
+ * - Title search: '"API design"' (finds nodes with matching title)
+ *
+ * @param ref - Node reference string
+ * @returns Node record or null if not found/ambiguous
+ */
 export async function resolveNodeReference(ref: string): Promise<NodeRecord | null> {
   if (!ref) return null;
-  if (isShortId(ref)) {
+
+  // Try recency reference first (@, @1, @2, etc.)
+  if (ref.startsWith('@')) {
+    return await resolveRecencyReference(ref);
+  }
+
+  // Try tag search (#tagname)
+  if (ref.startsWith('#')) {
+    const tagName = ref.slice(1).toLowerCase();
+    if (tagName) {
+      const nodes = await listNodes();
+      const matches = nodes.filter((node) =>
+        node.tags.some((tag) => tag.toLowerCase() === tagName)
+      );
+
+      if (matches.length === 1) {
+        return matches[0];
+      }
+
+      if (matches.length > 1) {
+        console.error(`✖ Tag '#${tagName}' matches ${matches.length} nodes. Use a more specific reference.`);
+        const recent = matches
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+          .slice(0, 5);
+
+        for (const match of recent) {
+          const shortId = normalizeNodeId(match.id).slice(0, 8);
+          const title = match.title ? `"${match.title}"` : '(untitled)';
+          console.error(`  ${shortId}  ${title}`);
+        }
+
+        if (matches.length > 5) {
+          console.error(`  ... and ${matches.length - 5} more`);
+        }
+      }
+
+      return null;
+    }
+  }
+
+  // Try title search ("title fragment")
+  if (ref.startsWith('"') && ref.endsWith('"')) {
+    const titleFragment = ref.slice(1, -1).toLowerCase();
+    if (titleFragment) {
+      const nodes = await listNodes();
+      const matches = nodes.filter((node) =>
+        node.title && node.title.toLowerCase().includes(titleFragment)
+      );
+
+      if (matches.length === 1) {
+        return matches[0];
+      }
+
+      if (matches.length > 1) {
+        console.error(`✖ Title search "${titleFragment}" matches ${matches.length} nodes. Use a more specific search.`);
+        const recent = matches
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+          .slice(0, 5);
+
+        for (const match of recent) {
+          const shortId = normalizeNodeId(match.id).slice(0, 8);
+          console.error(`  ${shortId}  "${match.title}"`);
+        }
+
+        if (matches.length > 5) {
+          console.error(`  ... and ${matches.length - 5} more`);
+        }
+      }
+
+      return null;
+    }
+  }
+
+  // Try short ID prefix (case-insensitive, works with/without dashes)
+  if (isShortId(ref) || /^[0-9a-f-]{4,}$/i.test(ref)) {
     const prefix = await resolveByIdPrefix(ref);
     if (prefix) return prefix;
   }
+
+  // Try exact match on full UUID
   const direct = await getNodeById(ref);
   if (direct) return direct;
+
   return null;
 }
 
