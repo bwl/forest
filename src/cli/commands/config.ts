@@ -1,5 +1,6 @@
 import * as clack from '@clack/prompts';
 import { loadConfig, saveConfig, getConfigPath, type ForestConfig } from '../../lib/config';
+import { DEFAULT_COLOR_SCHEME, listColorSchemes } from '../../lib/color-schemes';
 
 type ClercModule = typeof import('clerc');
 
@@ -228,6 +229,23 @@ async function runConfigWizard() {
 
     newConfig.llmTaggerModel = llmModel;
   }
+
+  const colorScheme = (await clack.select({
+    message: 'Color scheme',
+    options: listColorSchemes().map(({ value, label, description }) => ({
+      value,
+      label,
+      hint: description,
+    })),
+    initialValue: currentConfig.colorScheme || DEFAULT_COLOR_SCHEME,
+  })) as ForestConfig['colorScheme'];
+
+  if (clack.isCancel(colorScheme)) {
+    clack.cancel('Configuration cancelled');
+    return;
+  }
+
+  newConfig.colorScheme = colorScheme;
 
   // Save config
   saveConfig(newConfig);
