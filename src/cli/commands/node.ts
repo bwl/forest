@@ -83,7 +83,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     {
       name: 'node read',
       description: 'Show the full content of a note',
-      parameters: ['<id>'],
+      parameters: ['[id]'],
       flags: {
         meta: {
           type: Boolean,
@@ -122,7 +122,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     {
       name: 'node edit',
       description: 'Edit an existing note and optionally rescore links',
-      parameters: ['<id>'],
+      parameters: ['[id]'],
       flags: {
         title: {
           type: String,
@@ -174,7 +174,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     {
       name: 'node delete',
       description: 'Delete a note and its edges',
-      parameters: ['<id>'],
+      parameters: ['[id]'],
       flags: {
         force: {
           type: Boolean,
@@ -205,7 +205,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     {
       name: 'node link',
       description: 'Manually create an edge between two notes',
-      parameters: ['<a>', '<b>'],
+      parameters: ['[a]', '[b]'],
       flags: {
         score: {
           type: Number,
@@ -244,7 +244,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     {
       name: 'node synthesize',
       description: 'Use GPT-5 to synthesize a new article from 2+ existing notes',
-      parameters: ['<ids...>'],
+      parameters: ['[ids...]'],
       flags: {
         model: {
           type: String,
@@ -572,7 +572,21 @@ async function runNodeDelete(idRef: string | undefined, _flags: NodeDeleteFlags)
 
 async function runNodeLink(aRef: string | undefined, bRef: string | undefined, flags: NodeLinkFlags) {
   if (!aRef || !bRef) {
-    console.error('✖ Missing required parameters "<a>" and "<b>".');
+    console.error('✖ Provide two node IDs to link.');
+    console.error('');
+    console.error('Usage:');
+    console.error('  forest node link <id1> <id2>');
+    console.error('');
+    console.error('Example:');
+    console.error('  forest node link abc123 def456');
+    console.error('  forest node link abc123 def456 --score=0.8');
+    console.error('  forest node link abc123 def456 --suggest --explain');
+    console.error('');
+    console.error('Options:');
+    console.error('  --score=N        Override computed score (0.0-1.0)');
+    console.error('  --suggest        Create as suggestion instead of accepted');
+    console.error('  --explain        Show scoring components breakdown');
+    console.error('');
     process.exitCode = 1;
     return;
   }
@@ -640,7 +654,20 @@ function computeAutoLinkIntent(flags: NodeEditFlags) {
 async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
   if (!ids || ids.length < 2) {
     console.error('✖ Provide at least 2 node IDs to synthesize.');
-    console.error('   Usage: forest node synthesize <id1> <id2> [id3...]');
+    console.error('');
+    console.error('Usage:');
+    console.error('  forest node synthesize <id1> <id2> [id3...]');
+    console.error('');
+    console.error('Example:');
+    console.error('  forest node synthesize abc123 def456 --preview');
+    console.error('');
+    console.error('Options:');
+    console.error('  --model=gpt-5|gpt-5-mini       Model to use (default: gpt-5)');
+    console.error('  --reasoning=minimal|low|medium|high  Reasoning effort (default: medium)');
+    console.error('  --verbosity=low|medium|high    Output detail (default: medium)');
+    console.error('  --preview                      Preview without saving');
+    console.error('  --max-tokens=N                 Max output tokens (default: auto)');
+    console.error('');
     process.exitCode = 1;
     return;
   }

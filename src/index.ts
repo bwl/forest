@@ -36,7 +36,15 @@ function normalizeArgs(args: string[]): string[] {
   const normalized: string[] = [];
   for (const arg of args) {
     if (arg === '--no-auto-link') {
-      normalized.push('--auto-link=false');
+      normalized.push('--noAutoLink');
+      continue;
+    }
+    if (arg === '--no-parent') {
+      normalized.push('--noParent');
+      continue;
+    }
+    if (arg === '--no-sequential') {
+      normalized.push('--noSequential');
       continue;
     }
     normalized.push(arg);

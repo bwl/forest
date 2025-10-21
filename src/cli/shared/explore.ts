@@ -8,6 +8,7 @@ import {
   SearchMatch,
 } from '../../lib/db';
 import { collectNeighborhood, buildGraph } from '../../lib/graph';
+import { filterOutChunks } from '../../lib/reconstruction';
 
 import {
   DEFAULT_MATCH_DISPLAY_LIMIT,
@@ -37,6 +38,7 @@ export type SelectionInput = {
   since?: Date | null;
   until?: Date | null;
   sort?: 'score' | 'recent' | 'degree';
+  showChunks?: boolean;
 };
 
 export type ExploreRenderOptions = {
@@ -94,8 +96,14 @@ export async function selectNode(input: SelectionInput): Promise<SelectionResult
   let matches: SearchMatch[] = [];
   if (!hasFilters && term) {
     matches = await searchNodes(term, searchLimit);
+    // Filter out chunks unless explicitly requested
+    if (!input.showChunks) {
+      matches = matches.filter((m) => !m.node.isChunk);
+    }
   } else {
-    const all = await listNodes();
+    const allNodes = await listNodes();
+    // Filter out chunks unless explicitly requested
+    const all = input.showChunks ? allNodes : filterOutChunks(allNodes);
     const filtered = all.filter((node) => {
       if (input.tagsAll && input.tagsAll.length) {
         for (const t of input.tagsAll) if (!node.tags.includes(t)) return false;

@@ -85,6 +85,10 @@ export function createExploreCommand(clerc: ClercModule) {
         type: Boolean,
         description: 'Prompt to choose a match',
       },
+      showChunks: {
+        type: Boolean,
+        description: 'Include document chunks in results (default: false)',
+      },
       tldr: {
         type: String,
         description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
@@ -120,6 +124,7 @@ export function createExploreCommand(clerc: ClercModule) {
           since: parseDate(flags.since),
           until: parseDate(flags.before ?? flags.until),
           sort: normalizeSort(flags.sort),
+          showChunks: Boolean(flags.showChunks),
         });
 
         const hasSearchTerm = typeof termValue === 'string' && termValue.trim().length > 0;

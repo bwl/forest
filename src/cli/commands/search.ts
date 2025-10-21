@@ -1,6 +1,7 @@
 import { semanticSearchCore } from '../../core/search';
 import { handleError, formatId, parseCsvList } from '../shared/utils';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { deduplicateChunks } from '../../lib/reconstruction';
 
 type ClercModule = typeof import('clerc');
 
@@ -96,15 +97,41 @@ async function runSearch(flags: SearchFlags, positionalQuery?: string) {
     tags: tags && tags.length > 0 ? tags : undefined,
   });
 
+  // Deduplicate chunks - replace chunks with their parent documents
+  const deduplicatedNodes = await deduplicateChunks(result.nodes.map(item => item.node));
+
+  // Map back to include similarity scores
+  // For each deduplicated node, find the best matching similarity score from the original results
+  const deduplicatedResults = deduplicatedNodes.map(node => {
+    // Find all original results that match this node (either directly or as a parent)
+    const matchingScores = result.nodes
+      .filter(item => {
+        // Direct match
+        if (item.node.id === node.id) return true;
+        // This was a chunk whose parent is now the deduplicated node
+        if (item.node.isChunk && item.node.parentDocumentId === node.id) return true;
+        return false;
+      })
+      .map(item => item.similarity);
+
+    // Use the highest similarity score among matches
+    const similarity = matchingScores.length > 0 ? Math.max(...matchingScores) : 0;
+
+    return { node, similarity };
+  });
+
+  // Sort by similarity (highest first)
+  deduplicatedResults.sort((a, b) => b.similarity - a.similarity);
+
   // Output results
   if (flags.json) {
     console.log(JSON.stringify({
       query,
-      total: result.total,
+      total: deduplicatedResults.length,
       limit,
       minScore,
       tags: tags && tags.length > 0 ? tags : null,
-      results: result.nodes.map(item => ({
+      results: deduplicatedResults.map(item => ({
         id: item.node.id,
         title: item.node.title,
         tags: item.node.tags,
@@ -115,7 +142,7 @@ async function runSearch(flags: SearchFlags, positionalQuery?: string) {
       })),
     }, null, 2));
   } else {
-    printTextResults(query, result, tags || [], minScore);
+    printTextResults(query, { nodes: deduplicatedResults, total: deduplicatedResults.length }, tags || [], minScore);
   }
 }
 
