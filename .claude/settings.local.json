@@ -6,7 +6,9 @@
       "Bash(curl -s http://localhost:3000/api/v1/health)",
       "Bash(curl -s \"http://localhost:3000/api/v1/nodes?limit=5\")",
       "WebFetch(domain:platform.openai.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)"
     ],
     "deny": [],
     "ask": []

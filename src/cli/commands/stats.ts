@@ -2,6 +2,7 @@ import { getStats } from '../../core/stats';
 import { formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { colorize } from '../formatters';
 
 type ClercModule = typeof import('clerc');
 
@@ -70,15 +71,20 @@ async function runStats(flags: StatsFlags) {
   if (stats.recent.length > 0) {
     console.log('Recent captures:');
     for (const node of stats.recent) {
-      console.log(`  ${formatId(node.id)}  ${node.title}  (updated ${node.updatedAt})`);
+      const coloredId = colorize.nodeId(formatId(node.id));
+      console.log(`  ${coloredId}  ${node.title}  (updated ${node.updatedAt})`);
     }
     console.log('');
   }
 
   if (stats.highDegree.length > 0) {
     console.log('High-degree nodes:');
+    const maxDegree = stats.degree.max;
     for (const entry of stats.highDegree) {
-      console.log(`  ${formatId(entry.id)}  ${entry.title}  (degree ${entry.degree})`);
+      const coloredId = colorize.nodeId(formatId(entry.id));
+      const degreeRatio = maxDegree > 0 ? entry.degree / maxDegree : 0;
+      const coloredDegree = colorize.embeddingScore(degreeRatio);
+      console.log(`  ${coloredId}  ${entry.title}  (degree ${coloredDegree})`);
     }
     console.log('');
   }
@@ -98,8 +104,10 @@ async function runStats(flags: StatsFlags) {
     console.log('Top suggestions:');
     stats.topSuggestions.forEach((suggestion) => {
       const indexLabel = String(suggestion.index).padStart(2, ' ');
+      const coloredCode = colorize.edgeCode(suggestion.code);
+      const coloredScore = colorize.aggregateScore(suggestion.score);
       console.log(
-        `  ${indexLabel}. [${suggestion.code}] ${suggestion.shortId}  score=${suggestion.score.toFixed(3)}  ${suggestion.sourceTitle ?? formatId(suggestion.sourceId)} ↔ ${suggestion.targetTitle ?? formatId(suggestion.targetId)}`,
+        `  ${indexLabel}. [${coloredCode}] ${suggestion.shortId}  score=${coloredScore}  ${suggestion.sourceTitle ?? formatId(suggestion.sourceId)} ↔ ${suggestion.targetTitle ?? formatId(suggestion.targetId)}`,
       );
     });
   }

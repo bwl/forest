@@ -4,6 +4,7 @@ import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { deduplicateChunks } from '../../lib/reconstruction';
 import { listNodes } from '../../lib/db';
+import { colorize } from '../formatters';
 
 type ClercModule = typeof import('clerc');
 
@@ -200,8 +201,10 @@ async function printTextResults(
 
   // Print results
   for (const item of result.nodes) {
-    const score = item.similarity.toFixed(3).padEnd(scoreWidth);
-    const shortId = formatNodeId(item.node.id).padEnd(idWidth);
+    const coloredScore = colorize.embeddingScore(item.similarity);
+    const score = coloredScore.padEnd(scoreWidth + 10); // Add extra padding for ANSI codes
+    const coloredId = colorize.nodeId(formatNodeId(item.node.id));
+    const shortId = coloredId.padEnd(idWidth + 20); // Add extra padding for ANSI codes
     const title = truncate(item.node.title, maxTitleWidth).padEnd(maxTitleWidth);
     const tags = truncate(item.node.tags.join(', '), tagsWidth);
 
