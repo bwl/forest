@@ -1,4 +1,5 @@
 import { createCaptureCommand } from './commands/capture';
+import { createWriteCommand } from './commands/write';
 import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings';
 import { createAdminRetagAllCommand } from './commands/admin-retag-all';
 import { createExploreCommand } from './commands/explore';
@@ -42,6 +43,7 @@ export async function createForestCli() {
     .use(completionsPlugin());
 
   cli.command(createCaptureCommand(clerc));
+  cli.command(createWriteCommand(clerc));
   cli.command(createExploreCommand(clerc));
   cli.command(createSearchCommand(clerc));
   cli.command(createStatsCommand(clerc));

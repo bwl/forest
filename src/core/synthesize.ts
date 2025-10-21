@@ -57,9 +57,11 @@ export async function synthesizeNodesCore(
 
   // Set defaults
   const model = options.model || 'gpt-5';
-  const reasoning = options.reasoning || 'medium';
-  const verbosity = options.verbosity || 'medium';
-  const maxTokens = options.maxTokens || 9001; // It's over 9000!
+  const reasoning = options.reasoning || 'high'; // Default to high reasoning for quality synthesis
+  const verbosity = options.verbosity || 'high'; // Default to comprehensive synthesis
+
+  // Set realistic token limits based on verbosity if not explicitly provided
+  const maxTokens = options.maxTokens || getDefaultMaxTokens(verbosity);
 
   // Get API key
   const config = loadConfig();
@@ -71,7 +73,7 @@ export async function synthesizeNodesCore(
   }
 
   // Build synthesis prompt
-  const prompt = buildSynthesisPrompt(nodes);
+  const prompt = buildSynthesisPrompt(nodes, maxTokens, verbosity);
 
   // Call OpenAI Responses API
   const response = await fetch('https://api.openai.com/v1/responses', {
@@ -145,9 +147,43 @@ export async function synthesizeNodesCore(
 }
 
 /**
+ * Get default max tokens based on verbosity level
+ */
+function getDefaultMaxTokens(verbosity: TextVerbosity): number {
+  switch (verbosity) {
+    case 'low':
+      return 4096;
+    case 'medium':
+      return 8192;
+    case 'high':
+      return 16384;
+    default:
+      return 16384;
+  }
+}
+
+/**
+ * Get word count guidance based on verbosity
+ */
+function getWordCountGuidance(verbosity: TextVerbosity): string {
+  switch (verbosity) {
+    case 'low':
+      return '500-800 words';
+    case 'medium':
+      return '800-1200 words';
+    case 'high':
+      return '1200-2000 words';
+    default:
+      return '1200-2000 words';
+  }
+}
+
+/**
  * Build the synthesis prompt from source nodes
  */
-function buildSynthesisPrompt(nodes: NodeRecord[]): string {
+function buildSynthesisPrompt(nodes: NodeRecord[], maxTokens: number, verbosity: TextVerbosity): string {
+  const wordGuidance = getWordCountGuidance(verbosity);
+
   const nodeDescriptions = nodes
     .map((node, i) => {
       return `## Note ${i + 1}: ${node.title}
@@ -157,13 +193,21 @@ ${node.body}`;
     })
     .join('\n\n---\n\n');
 
-  return `You are synthesizing knowledge from a personal knowledge base.
+  return `You are synthesizing knowledge from a personal knowledge base, creating new insights by connecting existing notes.
 
-I will provide you with ${nodes.length} notes. Your task is to write a NEW article that:
-1. Explores connections and relationships between these notes
-2. Expands on ideas at the boundaries/edges of this knowledge
-3. Introduces novel perspectives or synthesis that emerge from combining these ideas
-4. Is comprehensive and well-structured (aim for 500-1500 words)
+I will provide you with ${nodes.length} notes. Your task is to write a NEW article that synthesizes these ideas.
+
+IMPORTANT: Your response MUST be under ${maxTokens} tokens. Keep your synthesis concise and well-structured.
+
+Requirements:
+1. Explore connections and relationships between the notes (${wordGuidance})
+2. Identify patterns, themes, and emergent ideas that span across the notes
+3. Expand on ideas at the boundaries/edges of this knowledge
+4. Introduce novel perspectives or insights that emerge from combining these ideas
+5. Use clear, engaging prose with proper markdown formatting
+6. Include section headers (## and ###) to organize your synthesis
+7. Be comprehensive yet focused - synthesize, don't just summarize
+8. CRITICAL: Stay under ${maxTokens} tokens - complete your JSON response properly
 
 Source notes:
 
@@ -171,14 +215,14 @@ ${nodeDescriptions}
 
 ---
 
-Based on these notes, write a synthesized article. Return your response as JSON:
+Based on these notes, write a synthesized article that reveals new insights. Return your response as JSON:
 {
-  "title": "A compelling title for the synthesized article",
-  "body": "The full article text (markdown formatted, 500-1500 words)",
-  "suggestedTags": ["tag1", "tag2", "tag3"]
+  "title": "A compelling, specific title for the synthesized article",
+  "body": "The full synthesis in markdown format (${wordGuidance}, well-structured with headers)",
+  "suggestedTags": ["3-5 relevant topic tags based on the synthesis themes and cross-cutting concepts"]
 }
 
-The article should reveal new insights that emerge from combining these notes. Focus on connections, patterns, and emergent ideas that aren't obvious from reading the notes individually.`;
+Focus on connections, patterns, and emergent ideas that aren't obvious from reading the notes individually. For tags, identify the key themes and concepts that emerge from the synthesis - not just the source note tags, but the new concepts that arise from combining them. This synthesis will become part of the knowledge base, so make it genuinely insightful.`;
 }
 
 /**
