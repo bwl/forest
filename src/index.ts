@@ -17,9 +17,17 @@ const tldrIndex = rawArgs.findIndex((arg) => arg === '--tldr' || arg.startsWith(
 if (tldrIndex !== -1 && tldrIndex === 0) {
   // --tldr at position 0 means root-level TLDR request
   const tldrArg = rawArgs[tldrIndex];
-  const jsonMode = tldrArg === '--tldr=json';
+
+  // Check for --tldr=all (output all commands)
+  if (tldrArg === '--tldr=all') {
+    const { formatAllCommandsTldr } = require('./cli/tldr');
+    console.log(formatAllCommandsTldr(getVersion()));
+    process.exit(0);
+  }
+
+  // Default: output global index
   const globalTldr = getGlobalTldr(getVersion());
-  emitTldrAndExit(globalTldr, jsonMode);
+  emitTldrAndExit(globalTldr, getVersion());
 }
 
 // Show brief info when no command is given

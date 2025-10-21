@@ -4,6 +4,7 @@ import path from 'path';
 import { listEdges, listNodes } from '../../lib/db';
 import { buildNeighborhoodPayload, fetchSuggestionsForNode, selectNode } from '../shared/explore';
 import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
@@ -68,7 +69,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['export.graphviz'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['export.graphviz'], getVersion());
         }
         await runExportGraphviz(flags);
       } catch (error) {
@@ -108,7 +109,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['export.json'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['export.json'], getVersion());
         }
         await runExportJson(flags);
       } catch (error) {
@@ -147,7 +148,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if ((ctx as any).flags?.tldr !== undefined) {
           const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.export, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.export, getVersion());
         }
         await runExportDashboard();
       } catch (error) {

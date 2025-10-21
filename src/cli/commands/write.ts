@@ -1,6 +1,7 @@
 import { writeArticleCore, WriteModel, WriteReasoningEffort, WriteVerbosity } from '../../core/write';
 import { createNodeCore } from '../../core/nodes';
 import { formatId, handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -58,7 +59,7 @@ export function createWriteCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.write, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.write, getVersion());
         }
         await runWrite(parameters.topic, flags);
       } catch (error) {

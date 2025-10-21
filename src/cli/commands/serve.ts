@@ -1,4 +1,5 @@
 import { handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -39,7 +40,7 @@ export function createServeCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.serve, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.serve, getVersion());
         }
         await runServe(flags as ServeFlags);
       } catch (error) {

@@ -10,6 +10,7 @@ import { computeEmbeddingForNode, embeddingsEnabled } from '../../lib/embeddings
 import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring';
 
 import { edgeIdentifier, handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -40,7 +41,7 @@ export function createAdminRecomputeEmbeddingsCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['admin.recompute-embeddings'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['admin.recompute-embeddings'], getVersion());
         }
         await runAdminRecomputeEmbeddings(flags as AdminRecomputeEmbeddingsFlags);
       } catch (error) {

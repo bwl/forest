@@ -1,0 +1,160 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║            Forest Command Surface Analysis                        ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════
+METADATA
+═══════════════════════════════════════════════════════════════════
+Generated:     2025-10-19 01:28:38
+Filter:        tags
+Commands:      4
+Forest:        No command given.
+
+[1mName:[22m     [31mforest[39m
+[1mVersion:[22m  [33m0.1.0[39m
+
+[1mDescription:[22m
+
+    Graph-native knowledge base CLI
+
+[1mUsage:[22m
+
+    [35m$ forest <command> [flags][39m
+
+[1mCommands:[22m
+
+    [36mforest help[39m                        [33m-[39m  Show help
+    [36mforest completions[39m                 [33m-[39m  Print shell completions to stdout
+    [36mforest capture[39m                     [33m-[39m  Capture a new idea and auto-link it into the graph
+    [36mforest explore[39m                     [33m-[39m  Search for a note and inspect its graph neighborhood
+    [36mforest stats[39m                       [33m-[39m  Show graph and tag statistics
+    [36mforest health[39m                      [33m-[39m  Check system health and configuration status
+    [36mforest admin:recompute-embeddings[39m  [33m-[39m  Compute embeddings for all notes; optionally rescore links
+    [36mforest version[39m                     [33m-[39m  Show version information
+    [36mforest node read[39m                   [33m-[39m  Show the full content of a note
+    [36mforest node edit[39m                   [33m-[39m  Edit an existing note and optionally rescore links
+    [36mforest node delete[39m                 [33m-[39m  Delete a note and its edges
+    [36mforest node link[39m                   [33m-[39m  Manually create an edge between two notes
+    [36mforest node[39m                        [33m-[39m  Manage individual nodes (notes)
+    [36mforest edges propose[39m               [33m-[39m  List suggested links ordered by score
+    [36mforest edges promote[39m               [33m-[39m  Promote suggestions above a score threshold to accepted edges
+    [36mforest edges accept[39m                [33m-[39m  Promote a single suggestion by progressive ID, short pair, or edge id
+    [36mforest edges reject[39m                [33m-[39m  Reject and remove a suggestion by progressive ID, short pair, or edge id
+    [36mforest edges sweep[39m                 [33m-[39m  Bulk-reject suggestions by index range or score
+    [36mforest edges explain[39m               [33m-[39m  Explain how a link was scored by id or short pair
+    [36mforest edges undo[39m                  [33m-[39m  Undo the last accept/reject action for a link
+    [36mforest edges[39m                       [33m-[39m  View and manage edges between nodes
+    [36mforest tags list[39m                   [33m-[39m  List tags with usage counts
+    [36mforest tags rename[39m                 [33m-[39m  Rename a tag across all notes
+    [36mforest tags stats[39m                  [33m-[39m  Show tag co-occurrence statistics
+    [36mforest tags[39m                        [33m-[39m  Tag management
+    [36mforest export graphviz[39m             [33m-[39m  Export a Graphviz DOT for a node neighborhood
+    [36mforest export json[39m                 [33m-[39m  Export the full database as JSON
+    [36mforest export[39m                      [33m-[39m  Export graph data
+
+[1mGlobal Flags:[22m
+
+    [34m--help, -h[39m    [33m-[39m  Show help  (Default: false)
+
+unknown
+═══════════════════════════════════════════════════════════════════
+
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  CATEGORY: TAGS
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+───────────────────────────────────────────────────────────────────
+COMMAND: forest tags
+───────────────────────────────────────────────────────────────────
+[1mName:[22m        [31mforest[39m
+[1mVersion:[22m     [33m0.1.0[39m
+[1mSubcommand:[22m  [32mforest tags[39m
+
+[1mDescription:[22m
+
+    Tag management
+
+[1mUsage:[22m
+
+    [35m$ forest tags[39m
+
+[1mGlobal Flags:[22m
+
+    [34m--help, -h[39m    [33m-[39m  Show help  (Default: false)
+
+[1mNotes:[22m
+
+    Subcommands:
+      list    List tags with usage counts
+      rename  Rename a tag across all notes
+      stats   Show tag co-occurrence statistics
+    
+    Use `forest tags <subcommand> --help` for flag details.
+
+[1mExamples:[22m
+
+    $ forest tags list            [33m-[39m  Show the most common tags
+    $ forest tags rename old new  [33m-[39m  Rename a tag across all notes
+
+───────────────────────────────────────────────────────────────────
+COMMAND: forest tags list
+───────────────────────────────────────────────────────────────────
+ 40  river
+ 32  canal
+ 28  from
+ 27  lake
+ 23  trail
+ 21  forest
+ 20  american
+ 20  lighthouse
+ 18  mushroom
+ 17  along
+ 16  can
+ 16  atlantic
+ 16  fish
+ 14  after
+ 12  specy
+ 12  route
+ 12  across
+ 12  spring
+ 11  graphs
+ 11  area
+... (truncated)
+
+───────────────────────────────────────────────────────────────────
+COMMAND: forest tags rename
+───────────────────────────────────────────────────────────────────
+ ERROR  Missing required parameter "old".
+
+───────────────────────────────────────────────────────────────────
+COMMAND: forest tags stats
+───────────────────────────────────────────────────────────────────
+Top tags:
+   40  river
+   32  canal
+   28  from
+   27  lake
+   23  trail
+   21  forest
+   20  american
+   20  lighthouse
+   18  mushroom
+   17  along
+
+Top tag pairs:
+    8  basin + lake
+    7  connecticut + river
+    6  flow + river
+    6  from + river
+    6  fish + river
+    6  canal + erie
+    5  great + lake
+    5  ice + lake
+    5  new + river
+    5  boat + canal
+
+
+═══════════════════════════════════════════════════════════════════
+End of command surface analysis
+═══════════════════════════════════════════════════════════════════

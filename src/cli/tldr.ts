@@ -1,126 +1,115 @@
 /**
- * TLDR Standard (v0.1) - Agent-First Command Metadata
+ * TLDR Standard (v0.2) - Agent-First Command Metadata
  *
- * Minimal, parseable command documentation for AI agents.
- * Wire format: ASCII KEY: value pairs (uppercase keys, no blank lines)
- * Optional JSON mode via --tldr=json
+ * NDJSON format with metadata headers and abbreviated keys
+ * Wire format: tool delimiter + metadata header + JSON objects (one per line)
  */
 
-export type FlagType = 'STR' | 'BOOL' | 'INT' | 'FLOAT' | 'FILE' | 'LIST' | 'STDIN';
+// Forest's condensed keymap - only the 12 keys we actually use
+export const FOREST_KEYMAP = {
+  cmd: 'command',
+  p: 'purpose',
+  in: 'inputs',
+  out: 'outputs',
+  fx: 'side_effects',
+  fl: 'flags',
+  n: 'name',
+  t: 'type',
+  d: 'default',
+  desc: 'description',
+  ex: 'examples',
+  rel: 'related',
+};
+
+export type FlagType = 'str' | 'bool' | 'int' | 'float' | 'file' | 'list';
 
 export interface TldrFlag {
-  name: string;
-  type: FlagType;
-  default?: string | number | boolean | null;
-  desc: string;
+  n: string;           // name
+  t: FlagType;         // type
+  d?: string | number | boolean | null;  // default
+  desc: string;        // description
 }
 
 export interface CommandTldr {
   cmd: string;
-  purpose: string;
-  inputs: string[];
-  outputs: string[];
-  sideEffects: string;
-  flags: TldrFlag[];
-  examples: string[];
-  related: string[];
-  schemaJson?: string;
+  p: string;           // purpose
+  in: string[];        // inputs
+  out: string[];       // outputs
+  fx: string;          // side_effects
+  fl: TldrFlag[];      // flags
+  ex: string[];        // examples
+  rel: string[];       // related
 }
 
 export interface GlobalTldr {
-  name: string;
+  tool: string;
   version: string;
   summary: string;
   commands: string[];
-  tldrCall: string;
 }
 
 /**
- * Format TLDR metadata as ASCII (KEY: value pairs)
+ * Format keymap for metadata header
  */
-export function formatTldrAscii(data: GlobalTldr | CommandTldr): string {
-  if ('commands' in data) {
+function formatKeymap(): string {
+  const pairs = Object.entries(FOREST_KEYMAP).map(([k, v]) => `${k}:${v}`);
+  return `{${pairs.join(',')}}`;
+}
+
+/**
+ * Format TLDR metadata as NDJSON v0.2
+ */
+export function formatTldrV02(data: GlobalTldr | CommandTldr, version: string): string {
+  const lines: string[] = [];
+
+  if ('tool' in data) {
     // Global index
-    return [
-      `NAME: ${data.name}`,
-      `VERSION: ${data.version}`,
-      `SUMMARY: ${data.summary}`,
-      `COMMANDS: ${data.commands.join(',')}`,
-      `TLDR_CALL: ${data.tldrCall}`,
-    ].join('\n');
-  }
+    lines.push('--- tool: forest ---');
+    lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
 
-  // Command-specific
-  const lines: string[] = [
-    `CMD: ${data.cmd}`,
-    `PURPOSE: ${data.purpose}`,
-    `INPUTS: ${data.inputs.join(',')}`,
-    `OUTPUTS: ${data.outputs.join(',')}`,
-    `SIDE_EFFECTS: ${data.sideEffects}`,
-  ];
+    // Global metadata object
+    lines.push(JSON.stringify({
+      tool: data.tool,
+      version: data.version,
+      summary: data.summary,
+      commands: data.commands,
+    }));
+  } else {
+    // Command-specific
+    lines.push('--- tool: forest ---');
+    lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
 
-  // Format flags: --flag[=TYPE][=DEFAULT]|desc
-  const flagStrings = data.flags.map((f) => {
-    const defaultPart = f.default !== undefined && f.default !== null ? `=${f.default}` : '';
-    return `--${f.name}=${f.type}${defaultPart}|${f.desc}`;
-  });
-  lines.push(`FLAGS: ${flagStrings.join(';')}`);
-
-  lines.push(`EXAMPLES: ${data.examples.join('|')}`);
-  lines.push(`RELATED: ${data.related.join(',')}`);
-
-  if (data.schemaJson) {
-    lines.push(`SCHEMA_JSON: ${data.schemaJson}`);
+    // Command object with abbreviated keys
+    lines.push(JSON.stringify(data));
   }
 
   return lines.join('\n');
 }
 
 /**
- * Format TLDR metadata as JSON
+ * Format all commands as NDJSON v0.2
+ * Outputs tool delimiter, metadata header, and all command objects
  */
-export function formatTldrJson(data: GlobalTldr | CommandTldr): string {
-  if ('commands' in data) {
-    return JSON.stringify(
-      {
-        NAME: data.name,
-        VERSION: data.version,
-        SUMMARY: data.summary,
-        COMMANDS: data.commands,
-        TLDR_CALL: data.tldrCall,
-      },
-      null,
-      2,
-    );
+export function formatAllCommandsTldr(version: string): string {
+  const lines: string[] = [];
+
+  // Tool delimiter and metadata header (once)
+  lines.push('--- tool: forest ---');
+  lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+
+  // All command objects as NDJSON (one per line)
+  for (const [_key, commandData] of Object.entries(COMMAND_TLDR)) {
+    lines.push(JSON.stringify(commandData));
   }
 
-  return JSON.stringify(
-    {
-      CMD: data.cmd,
-      PURPOSE: data.purpose,
-      INPUTS: data.inputs,
-      OUTPUTS: data.outputs,
-      SIDE_EFFECTS: data.sideEffects,
-      FLAGS: data.flags.map((f) => ({
-        name: f.name,
-        type: f.type,
-        default: f.default ?? null,
-        desc: f.desc,
-      })),
-      EXAMPLES: data.examples,
-      RELATED: data.related,
-      ...(data.schemaJson ? { SCHEMA_JSON: data.schemaJson } : {}),
-    },
-    null,
-    2,
-  );
+  return lines.join('\n');
 }
 
 /**
  * Emit TLDR and exit process
  */
-export function emitTldrAndExit(data: GlobalTldr | CommandTldr, jsonMode: boolean): never {
-  const output = jsonMode ? formatTldrJson(data) : formatTldrAscii(data);
+export function emitTldrAndExit(data: GlobalTldr | CommandTldr, version: string): never {
+  const output = formatTldrV02(data, version);
   console.log(output);
   process.exit(0);
 }
@@ -130,9 +119,9 @@ export function emitTldrAndExit(data: GlobalTldr | CommandTldr, jsonMode: boolea
  */
 export function getGlobalTldr(version: string): GlobalTldr {
   return {
-    name: 'forest',
+    tool: 'forest',
     version,
-    summary: 'Graph-native knowledge base CLI',
+    summary: 'Graph-native knowledge base CLI with semantic embeddings and auto-linking',
     commands: [
       'help',
       'completions',
@@ -171,7 +160,6 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'export.json',
       'export',
     ],
-    tldrCall: 'forest <command> --tldr',
   };
 }
 
@@ -181,528 +169,525 @@ export function getGlobalTldr(version: string): GlobalTldr {
 export const COMMAND_TLDR: Record<string, CommandTldr> = {
   capture: {
     cmd: 'capture',
-    purpose: 'Create a new note and optionally auto-link into the graph',
-    inputs: ['ARGS(title,body,tags)', 'STDIN', 'FILE'],
-    outputs: ['node record', 'edges summary', 'optional preview'],
-    sideEffects: 'writes to SQLite DB,computes embeddings,creates/updates edges',
-    flags: [
-      { name: 'title', type: 'STR', desc: 'note title' },
-      { name: 'body', type: 'STR', desc: 'note body' },
-      { name: 'stdin', type: 'BOOL', default: false, desc: 'read entire stdin as body' },
-      { name: 'file', type: 'FILE', desc: 'read body from file' },
-      { name: 'tags', type: 'LIST', desc: 'comma-separated tags' },
-      { name: 'no-preview', type: 'BOOL', default: false, desc: 'skip post-capture explore' },
-      { name: 'no-auto-link', type: 'BOOL', default: false, desc: 'disable immediate link scoring' },
-      {
-        name: 'preview-suggestions-only',
-        type: 'BOOL',
-        default: false,
-        desc: 'show suggestions only in preview',
-      },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'Create a new note and optionally auto-link into the graph',
+    in: ['args', 'stdin', 'file'],
+    out: ['node_record', 'edges_summary', 'preview'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'title', t: 'str', desc: 'note title' },
+      { n: 'body', t: 'str', desc: 'note body' },
+      { n: 'stdin', t: 'bool', d: false, desc: 'read entire stdin as body' },
+      { n: 'file', t: 'file', desc: 'read body from file' },
+      { n: 'tags', t: 'list', desc: 'comma-separated tags' },
+      { n: 'no-preview', t: 'bool', d: false, desc: 'skip post-capture explore' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'disable immediate link scoring' },
+      { n: 'preview-suggestions-only', t: 'bool', d: false, desc: 'show suggestions only in preview' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest capture --title "Named Idea" --body "Free-form text with #tags"',
       'forest capture --stdin < note.md',
       'forest capture --file captured.md --tags focus,ops',
       'forest capture --no-preview --json',
     ],
-    related: ['explore', 'edges.propose', 'node.read'],
-    schemaJson:
-      'emits {"node":{"id":STR,"title":STR,"tags":[STR]},"links":{"accepted":INT,"suggested":INT},"suggestions":[{"id":STR,"score":FLOAT}]}',
+    rel: ['explore', 'edges.propose', 'node.read'],
   },
 
   explore: {
     cmd: 'explore',
-    purpose: 'Interactive graph exploration via search/filter/navigation',
-    inputs: ['ARGS(query)', 'STDIN'],
-    outputs: ['node list', 'neighborhood graph', 'suggestions'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'query', type: 'STR', desc: 'search query (title/tag/text match)' },
-      { name: 'limit', type: 'INT', default: 15, desc: 'max neighbors per node' },
-      { name: 'match-limit', type: 'INT', default: 10, desc: 'max search matches to show' },
-      { name: 'depth', type: 'INT', default: 1, desc: 'neighborhood depth (1 or 2)' },
-      { name: 'suggestions', type: 'BOOL', default: false, desc: 'include pending suggestions' },
-      { name: 'long-ids', type: 'BOOL', default: false, desc: 'show full UUIDs' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'Interactive graph exploration via search/filter/navigation',
+    in: ['args', 'stdin'],
+    out: ['node_list', 'neighborhood_graph', 'suggestions'],
+    fx: 'none',
+    fl: [
+      { n: 'query', t: 'str', desc: 'search query (title/tag/text match)' },
+      { n: 'limit', t: 'int', d: 15, desc: 'max neighbors per node' },
+      { n: 'match-limit', t: 'int', d: 10, desc: 'max search matches to show' },
+      { n: 'depth', t: 'int', d: 1, desc: 'neighborhood depth (1 or 2)' },
+      { n: 'suggestions', t: 'bool', d: false, desc: 'include pending suggestions' },
+      { n: 'long-ids', t: 'bool', d: false, desc: 'show full UUIDs' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest explore',
       'forest explore "search term"',
       'forest explore --depth 2 --limit 20',
       'forest explore --suggestions --json',
     ],
-    related: ['search', 'node.read', 'edges.propose'],
+    rel: ['search', 'node.read', 'edges.propose'],
   },
 
   search: {
     cmd: 'search',
-    purpose: 'Semantic search using embeddings',
-    inputs: ['ARGS(query)', 'STDIN'],
-    outputs: ['ranked node list with similarity scores'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'limit', type: 'INT', default: 10, desc: 'max results to return' },
-      { name: 'min-score', type: 'FLOAT', default: 0.0, desc: 'minimum similarity threshold' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'Semantic search using embeddings',
+    in: ['args', 'stdin'],
+    out: ['ranked_node_list'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 10, desc: 'max results to return' },
+      { n: 'min-score', t: 'float', d: 0.0, desc: 'minimum similarity threshold' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest search "machine learning patterns"',
       'forest search --limit 20 --min-score 0.3 "async architecture"',
       'forest search --json "knowledge graphs"',
     ],
-    related: ['explore', 'capture'],
+    rel: ['explore', 'capture'],
   },
 
   stats: {
     cmd: 'stats',
-    purpose: 'Show graph statistics and health metrics',
-    inputs: ['none'],
-    outputs: ['node/edge counts', 'recent captures', 'top suggestions', 'high-degree nodes'],
-    sideEffects: 'none (read-only)',
-    flags: [{ name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' }],
-    examples: ['forest stats', 'forest stats --json'],
-    related: ['health', 'edges.propose'],
+    p: 'Show graph statistics and health metrics',
+    in: [],
+    out: ['node_counts', 'edge_counts', 'recent_captures', 'top_suggestions'],
+    fx: 'none',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: ['forest stats', 'forest stats --json'],
+    rel: ['health', 'edges.propose'],
   },
 
   health: {
     cmd: 'health',
-    purpose: 'System health check (DB, embeddings, graph integrity)',
-    inputs: ['none'],
-    outputs: ['health status', 'diagnostics', 'warnings'],
-    sideEffects: 'none (read-only)',
-    flags: [{ name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' }],
-    examples: ['forest health', 'forest health --json'],
-    related: ['stats', 'admin.recompute-embeddings'],
+    p: 'System health check (DB, embeddings, graph integrity)',
+    in: [],
+    out: ['health_status', 'diagnostics', 'warnings'],
+    fx: 'none',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: ['forest health', 'forest health --json'],
+    rel: ['stats', 'admin.recompute-embeddings'],
   },
 
   serve: {
     cmd: 'serve',
-    purpose: 'Start REST API server with WebSocket event stream',
-    inputs: ['ENV(FOREST_PORT,FOREST_HOST,FOREST_DB_PATH)'],
-    outputs: ['HTTP server', 'WebSocket events'],
-    sideEffects: 'binds to network port,serves REST API endpoints',
-    flags: [
-      { name: 'port', type: 'INT', default: 3000, desc: 'server port' },
-      { name: 'host', type: 'STR', default: '::', desc: 'bind hostname (:: = dual-stack IPv4/IPv6)' },
+    p: 'Start REST API server with WebSocket event stream',
+    in: ['env'],
+    out: ['http_server', 'websocket_events'],
+    fx: 'network:bind',
+    fl: [
+      { n: 'port', t: 'int', d: 3000, desc: 'server port' },
+      { n: 'host', t: 'str', d: '::', desc: 'bind hostname (:: = dual-stack IPv4/IPv6)' },
     ],
-    examples: [
+    ex: [
       'forest serve',
       'forest serve --port 8080',
       'forest serve --host 0.0.0.0',
       'FOREST_PORT=3000 forest serve',
     ],
-    related: ['health', 'stats'],
+    rel: ['health', 'stats'],
   },
 
   config: {
     cmd: 'config',
-    purpose: 'Configure Forest settings interactively (embedding provider, API keys, models)',
-    inputs: ['ARGS(key,value)', 'INTERACTIVE'],
-    outputs: ['~/.forestrc config file', 'confirmation message'],
-    sideEffects: 'writes to ~/.forestrc config file',
-    flags: [
-      { name: 'show', type: 'BOOL', default: false, desc: 'show current configuration' },
-      { name: 'reset', type: 'BOOL', default: false, desc: 'reset config to defaults' },
+    p: 'Configure Forest settings interactively (embedding provider, API keys, models)',
+    in: ['args', 'interactive'],
+    out: ['config_file', 'confirmation'],
+    fx: 'filesystem:write',
+    fl: [
+      { n: 'show', t: 'bool', d: false, desc: 'show current configuration' },
+      { n: 'reset', t: 'bool', d: false, desc: 'reset config to defaults' },
     ],
-    examples: [
+    ex: [
       'forest config',
       'forest config --show',
       'forest config --reset',
       'forest config embedProvider openai',
     ],
-    related: ['admin.recompute-embeddings', 'capture'],
+    rel: ['admin.recompute-embeddings', 'capture'],
   },
 
   'admin.recompute-embeddings': {
     cmd: 'admin.recompute-embeddings',
-    purpose: 'Recompute embeddings for all nodes and optionally rescore edges',
-    inputs: ['none'],
-    outputs: ['progress log', 'updated node/edge records'],
-    sideEffects: 'updates all node embeddings,optionally updates all edge scores',
-    flags: [
-      { name: 'rescore', type: 'BOOL', default: false, desc: 'rescore all edges after recomputing embeddings' },
+    p: 'Recompute embeddings for all nodes and optionally rescore edges',
+    in: [],
+    out: ['progress_log', 'updated_records'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'rescore', t: 'bool', d: false, desc: 'rescore all edges after recomputing embeddings' },
     ],
-    examples: [
+    ex: [
       'forest admin:recompute-embeddings',
       'forest admin:recompute-embeddings --rescore',
     ],
-    related: ['health', 'edges.propose'],
+    rel: ['health', 'edges.propose'],
   },
 
   'admin.retag-all': {
     cmd: 'admin.retag-all',
-    purpose: 'Regenerate tags for all nodes using current tagging method (LLM or lexical)',
-    inputs: ['none'],
-    outputs: ['progress log', 'updated node records', 'cost estimate'],
-    sideEffects: 'updates tags for all nodes,may call LLM API',
-    flags: [
-      { name: 'dry-run', type: 'BOOL', default: false, desc: 'preview changes without saving' },
-      { name: 'limit', type: 'INT', desc: 'only retag first N nodes (for testing)' },
-      { name: 'skip-unchanged', type: 'BOOL', default: false, desc: 'skip nodes where tags would not change' },
-      { name: 'force', type: 'BOOL', default: false, desc: 'retag even if node has explicit #hashtags' },
+    p: 'Regenerate tags for all nodes using current tagging method (LLM or lexical)',
+    in: [],
+    out: ['progress_log', 'updated_records', 'cost_estimate'],
+    fx: 'db:write,network:api_call',
+    fl: [
+      { n: 'dry-run', t: 'bool', d: false, desc: 'preview changes without saving' },
+      { n: 'limit', t: 'int', desc: 'only retag first N nodes (for testing)' },
+      { n: 'skip-unchanged', t: 'bool', d: false, desc: 'skip nodes where tags would not change' },
+      { n: 'force', t: 'bool', d: false, desc: 'retag even if node has explicit #hashtags' },
     ],
-    examples: [
+    ex: [
       'forest admin:retag-all --dry-run',
       'forest admin:retag-all --limit 10',
       'forest admin:retag-all --skip-unchanged',
     ],
-    related: ['config', 'capture', 'tags.list'],
+    rel: ['config', 'capture', 'tags.list'],
   },
 
   version: {
     cmd: 'version',
-    purpose: 'Display CLI version',
-    inputs: ['none'],
-    outputs: ['version string'],
-    sideEffects: 'none',
-    flags: [],
-    examples: ['forest version'],
-    related: ['health'],
+    p: 'Display CLI version',
+    in: [],
+    out: ['version_string'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest version'],
+    rel: ['health'],
   },
 
   'node.read': {
     cmd: 'node.read',
-    purpose: 'Show the full content of a note',
-    inputs: ['ARGS(id)'],
-    outputs: ['node metadata', 'body text', 'edge summary'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'meta', type: 'BOOL', default: false, desc: 'show metadata only (no body)' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
-      { name: 'long-ids', type: 'BOOL', default: false, desc: 'display full UUIDs' },
-      { name: 'raw', type: 'BOOL', default: false, desc: 'output only raw markdown body (for piping)' },
+    p: 'Show the full content of a note',
+    in: ['args'],
+    out: ['node_metadata', 'body_text', 'edge_summary'],
+    fx: 'none',
+    fl: [
+      { n: 'meta', t: 'bool', d: false, desc: 'show metadata only (no body)' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
+      { n: 'raw', t: 'bool', d: false, desc: 'output only raw markdown body (for piping)' },
     ],
-    examples: [
+    ex: [
       'forest node read abc123',
       'forest node read abc123 --meta',
       'forest node read abc123 --json',
       'forest node read abc123 --raw | glow',
     ],
-    related: ['explore', 'node.edit', 'capture'],
+    rel: ['explore', 'node.edit', 'capture'],
   },
 
   'node.edit': {
     cmd: 'node.edit',
-    purpose: 'Edit an existing note and optionally rescore links',
-    inputs: ['ARGS(id,title,body,tags)', 'STDIN', 'FILE'],
-    outputs: ['updated node record', 'rescore summary'],
-    sideEffects: 'updates node in DB,recomputes embeddings,optionally rescores edges',
-    flags: [
-      { name: 'title', type: 'STR', desc: 'new title' },
-      { name: 'body', type: 'STR', desc: 'new body content' },
-      { name: 'file', type: 'FILE', desc: 'read new body from file' },
-      { name: 'stdin', type: 'BOOL', default: false, desc: 'read new body from stdin' },
-      { name: 'tags', type: 'LIST', desc: 'comma-separated tags (overrides auto-detected)' },
-      { name: 'no-auto-link', type: 'BOOL', default: false, desc: 'skip rescoring edges' },
+    p: 'Edit an existing note and optionally rescore links',
+    in: ['args', 'stdin', 'file'],
+    out: ['updated_record', 'rescore_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'title', t: 'str', desc: 'new title' },
+      { n: 'body', t: 'str', desc: 'new body content' },
+      { n: 'file', t: 'file', desc: 'read new body from file' },
+      { n: 'stdin', t: 'bool', d: false, desc: 'read new body from stdin' },
+      { n: 'tags', t: 'list', desc: 'comma-separated tags (overrides auto-detected)' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
     ],
-    examples: [
+    ex: [
       'forest node edit abc123 --title "New Title"',
       'forest node edit abc123 --stdin < updated.md',
       'forest node edit abc123 --tags focus,ops --no-auto-link',
     ],
-    related: ['node.read', 'capture', 'edges.propose'],
+    rel: ['node.read', 'capture', 'edges.propose'],
   },
 
   'node.delete': {
     cmd: 'node.delete',
-    purpose: 'Delete a note and its edges',
-    inputs: ['ARGS(id)'],
-    outputs: ['deletion confirmation'],
-    sideEffects: 'removes node and all connected edges from DB',
-    flags: [
-      { name: 'force', type: 'BOOL', default: false, desc: 'skip confirmation prompt' },
+    p: 'Delete a note and its edges',
+    in: ['args'],
+    out: ['deletion_confirmation'],
+    fx: 'db:write',
+    fl: [
+      { n: 'force', t: 'bool', d: false, desc: 'skip confirmation prompt' },
     ],
-    examples: [
+    ex: [
       'forest node delete abc123',
       'forest node delete abc123 --force',
     ],
-    related: ['node.read', 'edges'],
+    rel: ['node.read', 'edges'],
   },
 
   'node.link': {
     cmd: 'node.link',
-    purpose: 'Manually create an edge between two notes',
-    inputs: ['ARGS(a,b)'],
-    outputs: ['edge record with score'],
-    sideEffects: 'creates/updates edge in DB',
-    flags: [
-      { name: 'score', type: 'FLOAT', desc: 'override computed score' },
-      { name: 'suggest', type: 'BOOL', default: false, desc: 'create as suggestion (not accepted)' },
-      { name: 'explain', type: 'BOOL', default: false, desc: 'print scoring components' },
+    p: 'Manually create an edge between two notes',
+    in: ['args'],
+    out: ['edge_record'],
+    fx: 'db:write',
+    fl: [
+      { n: 'score', t: 'float', desc: 'override computed score' },
+      { n: 'suggest', t: 'bool', d: false, desc: 'create as suggestion (not accepted)' },
+      { n: 'explain', t: 'bool', d: false, desc: 'print scoring components' },
     ],
-    examples: [
+    ex: [
       'forest node link abc123 def456',
       'forest node link abc123 def456 --score 0.8',
       'forest node link abc123 def456 --suggest --explain',
     ],
-    related: ['edges.accept', 'edges.explain', 'node.read'],
+    rel: ['edges.accept', 'edges.explain', 'node.read'],
   },
 
   'node.recent': {
     cmd: 'node.recent',
-    purpose: 'Show recent node activity (created/updated)',
-    inputs: ['none'],
-    outputs: ['timeline of node activity with timestamps,tags,body previews,edge counts'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'limit', type: 'INT', default: 20, desc: 'max activities to show' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
-      { name: 'created', type: 'BOOL', default: false, desc: 'show only created activities' },
-      { name: 'updated', type: 'BOOL', default: false, desc: 'show only updated activities' },
-      { name: 'since', type: 'STR', desc: 'show activities since duration (e.g. 24h, 7d)' },
+    p: 'Show recent node activity (created/updated)',
+    in: [],
+    out: ['activity_timeline'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 20, desc: 'max activities to show' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+      { n: 'created', t: 'bool', d: false, desc: 'show only created activities' },
+      { n: 'updated', t: 'bool', d: false, desc: 'show only updated activities' },
+      { n: 'since', t: 'str', desc: 'show activities since duration (e.g. 24h, 7d)' },
     ],
-    examples: [
+    ex: [
       'forest node recent',
       'forest node recent --limit 10',
       'forest node recent --since 24h',
       'forest node recent --created',
       'forest node recent --json',
     ],
-    related: ['node.read', 'explore', 'capture'],
+    rel: ['node.read', 'explore', 'capture'],
   },
 
   node: {
     cmd: 'node',
-    purpose: 'View node dashboard (total count, recent nodes, quick actions)',
-    inputs: ['none'],
-    outputs: ['dashboard summary'],
-    sideEffects: 'none (read-only)',
-    flags: [],
-    examples: ['forest node'],
-    related: ['node.read', 'node.edit', 'explore'],
+    p: 'View node dashboard (total count, recent nodes, quick actions)',
+    in: [],
+    out: ['dashboard_summary'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest node'],
+    rel: ['node.read', 'node.edit', 'explore'],
   },
 
   'edges.propose': {
     cmd: 'edges.propose',
-    purpose: 'List suggested links ordered by score',
-    inputs: ['none'],
-    outputs: ['ranked suggestion list with scores'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'limit', type: 'INT', default: 10, desc: 'max suggestions to show' },
-      { name: 'long-ids', type: 'BOOL', default: false, desc: 'display full UUIDs' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'List suggested links ordered by score',
+    in: [],
+    out: ['ranked_suggestions'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 10, desc: 'max suggestions to show' },
+      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest edges propose',
       'forest edges propose --limit 20',
       'forest edges propose --json',
     ],
-    related: ['edges.accept', 'edges.promote', 'edges.explain'],
+    rel: ['edges.accept', 'edges.promote', 'edges.explain'],
   },
 
   'edges.promote': {
     cmd: 'edges.promote',
-    purpose: 'Promote suggestions above a score threshold to accepted edges',
-    inputs: ['none'],
-    outputs: ['promotion count'],
-    sideEffects: 'updates edge status from suggested to accepted in DB',
-    flags: [
-      { name: 'min-score', type: 'FLOAT', default: 0.5, desc: 'minimum score to accept' },
+    p: 'Promote suggestions above a score threshold to accepted edges',
+    in: [],
+    out: ['promotion_count'],
+    fx: 'db:write',
+    fl: [
+      { n: 'min-score', t: 'float', d: 0.5, desc: 'minimum score to accept' },
     ],
-    examples: [
+    ex: [
       'forest edges promote',
       'forest edges promote --min-score 0.6',
     ],
-    related: ['edges.propose', 'edges.accept'],
+    rel: ['edges.propose', 'edges.accept'],
   },
 
   'edges.accept': {
     cmd: 'edges.accept',
-    purpose: 'Promote a single suggestion by reference (index/code/ID)',
-    inputs: ['ARGS(ref)'],
-    outputs: ['acceptance confirmation'],
-    sideEffects: 'updates edge status to accepted,logs edge event for undo',
-    flags: [],
-    examples: [
+    p: 'Promote a single suggestion by reference (index/code/ID)',
+    in: ['args'],
+    out: ['acceptance_confirmation'],
+    fx: 'db:write',
+    fl: [],
+    ex: [
       'forest edges accept 1',
       'forest edges accept 0L5a',
       'forest edges accept abc123::def456',
     ],
-    related: ['edges.propose', 'edges.undo', 'edges.reject'],
+    rel: ['edges.propose', 'edges.undo', 'edges.reject'],
   },
 
   'edges.reject': {
     cmd: 'edges.reject',
-    purpose: 'Reject and remove a suggestion by reference',
-    inputs: ['ARGS(ref)'],
-    outputs: ['rejection confirmation'],
-    sideEffects: 'deletes edge from DB,logs edge event for undo',
-    flags: [],
-    examples: [
+    p: 'Reject and remove a suggestion by reference',
+    in: ['args'],
+    out: ['rejection_confirmation'],
+    fx: 'db:write',
+    fl: [],
+    ex: [
       'forest edges reject 1',
       'forest edges reject 0L5a',
       'forest edges reject abc123::def456',
     ],
-    related: ['edges.propose', 'edges.undo', 'edges.sweep'],
+    rel: ['edges.propose', 'edges.undo', 'edges.sweep'],
   },
 
   'edges.sweep': {
     cmd: 'edges.sweep',
-    purpose: 'Bulk-reject suggestions by index range or score threshold',
-    inputs: ['none'],
-    outputs: ['rejection count'],
-    sideEffects: 'deletes multiple edges from DB',
-    flags: [
-      { name: 'range', type: 'STR', desc: 'comma-separated indexes or ranges (e.g., 1-10,15)' },
-      { name: 'max-score', type: 'FLOAT', desc: 'reject suggestions at or below this score' },
+    p: 'Bulk-reject suggestions by index range or score threshold',
+    in: [],
+    out: ['rejection_count'],
+    fx: 'db:write',
+    fl: [
+      { n: 'range', t: 'str', desc: 'comma-separated indexes or ranges (e.g., 1-10,15)' },
+      { n: 'max-score', t: 'float', desc: 'reject suggestions at or below this score' },
     ],
-    examples: [
+    ex: [
       'forest edges sweep --range 1-5',
       'forest edges sweep --max-score 0.3',
       'forest edges sweep --range 1-10 --max-score 0.25',
     ],
-    related: ['edges.reject', 'edges.propose'],
+    rel: ['edges.reject', 'edges.propose'],
   },
 
   'edges.explain': {
     cmd: 'edges.explain',
-    purpose: 'Explain scoring components for a link',
-    inputs: ['ARGS(ref)'],
-    outputs: ['score breakdown (token,embedding,tag,title similarity)'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'Explain scoring components for a link',
+    in: ['args'],
+    out: ['score_breakdown'],
+    fx: 'none',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest edges explain 0L5a',
       'forest edges explain abc123::def456 --json',
     ],
-    related: ['edges.propose', 'node.link'],
+    rel: ['edges.propose', 'node.link'],
   },
 
   'edges.undo': {
     cmd: 'edges.undo',
-    purpose: 'Undo the last accept/reject action for a link',
-    inputs: ['ARGS(ref)'],
-    outputs: ['undo confirmation'],
-    sideEffects: 'restores edge to previous status in DB',
-    flags: [],
-    examples: [
+    p: 'Undo the last accept/reject action for a link',
+    in: ['args'],
+    out: ['undo_confirmation'],
+    fx: 'db:write',
+    fl: [],
+    ex: [
       'forest edges undo 0L5a',
       'forest edges undo abc123::def456',
     ],
-    related: ['edges.accept', 'edges.reject'],
+    rel: ['edges.accept', 'edges.reject'],
   },
 
   edges: {
     cmd: 'edges',
-    purpose: 'View recent accepted edges (base command)',
-    inputs: ['none'],
-    outputs: ['recent edge list with scores'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'limit', type: 'INT', default: 10, desc: 'max edges to show' },
-      { name: 'long-ids', type: 'BOOL', default: false, desc: 'display full UUIDs' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'View recent accepted edges (base command)',
+    in: [],
+    out: ['recent_edge_list'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 10, desc: 'max edges to show' },
+      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest edges',
       'forest edges --limit 20',
       'forest edges --json',
     ],
-    related: ['edges.propose', 'node.link'],
+    rel: ['edges.propose', 'node.link'],
   },
 
   'tags.list': {
     cmd: 'tags.list',
-    purpose: 'List tags with usage counts',
-    inputs: ['none'],
-    outputs: ['tag list with counts'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'top', type: 'INT', desc: 'limit to top N tags' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'List tags with usage counts',
+    in: [],
+    out: ['tag_list'],
+    fx: 'none',
+    fl: [
+      { n: 'top', t: 'int', desc: 'limit to top N tags' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest tags list',
       'forest tags list --top 20',
       'forest tags list --json',
     ],
-    related: ['tags.stats', 'tags.rename'],
+    rel: ['tags.stats', 'tags.rename'],
   },
 
   'tags.rename': {
     cmd: 'tags.rename',
-    purpose: 'Rename a tag across all notes',
-    inputs: ['ARGS(old,new)'],
-    outputs: ['rename count'],
-    sideEffects: 'updates tag field on all affected nodes in DB',
-    flags: [],
-    examples: [
+    p: 'Rename a tag across all notes',
+    in: ['args'],
+    out: ['rename_count'],
+    fx: 'db:write',
+    fl: [],
+    ex: [
       'forest tags rename old-tag new-tag',
     ],
-    related: ['tags.list', 'tags.stats'],
+    rel: ['tags.list', 'tags.stats'],
   },
 
   'tags.stats': {
     cmd: 'tags.stats',
-    purpose: 'Show tag co-occurrence statistics',
-    inputs: ['none'],
-    outputs: ['top tags', 'top tag pairs', 'optional focused co-occurrence'],
-    sideEffects: 'none (read-only)',
-    flags: [
-      { name: 'tag', type: 'STR', desc: 'focus on a single tag and show co-occurring tags' },
-      { name: 'min-count', type: 'INT', default: 0, desc: 'only show items with count >= N' },
-      { name: 'top', type: 'INT', default: 10, desc: 'top N results to show' },
-      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+    p: 'Show tag co-occurrence statistics',
+    in: [],
+    out: ['top_tags', 'top_pairs', 'cooccurrence'],
+    fx: 'none',
+    fl: [
+      { n: 'tag', t: 'str', desc: 'focus on a single tag and show co-occurring tags' },
+      { n: 'min-count', t: 'int', d: 0, desc: 'only show items with count >= N' },
+      { n: 'top', t: 'int', d: 10, desc: 'top N results to show' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
-    examples: [
+    ex: [
       'forest tags stats',
       'forest tags stats --tag focus',
       'forest tags stats --min-count 3 --top 15 --json',
     ],
-    related: ['tags.list', 'explore'],
+    rel: ['tags.list', 'explore'],
   },
 
   tags: {
     cmd: 'tags',
-    purpose: 'View tag dashboard (total count, top tags, quick actions)',
-    inputs: ['none'],
-    outputs: ['dashboard summary'],
-    sideEffects: 'none (read-only)',
-    flags: [],
-    examples: ['forest tags'],
-    related: ['tags.list', 'tags.stats', 'tags.rename'],
+    p: 'View tag dashboard (total count, top tags, quick actions)',
+    in: [],
+    out: ['dashboard_summary'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest tags'],
+    rel: ['tags.list', 'tags.stats', 'tags.rename'],
   },
 
   'export.graphviz': {
     cmd: 'export.graphviz',
-    purpose: 'Export graph as DOT format (Graphviz)',
-    inputs: ['none'],
-    outputs: ['DOT graph file'],
-    sideEffects: 'writes to stdout or file',
-    flags: [],
-    examples: [
+    p: 'Export graph as DOT format (Graphviz)',
+    in: [],
+    out: ['dot_file'],
+    fx: 'stdout',
+    fl: [],
+    ex: [
       'forest export graphviz > graph.dot',
       'forest export graphviz | dot -Tpng > graph.png',
     ],
-    related: ['export.json', 'stats'],
+    rel: ['export.json', 'stats'],
   },
 
   'export.json': {
     cmd: 'export.json',
-    purpose: 'Export entire graph as JSON',
-    inputs: ['none'],
-    outputs: ['JSON graph structure (nodes + edges)'],
-    sideEffects: 'writes to stdout',
-    flags: [],
-    examples: [
+    p: 'Export entire graph as JSON',
+    in: [],
+    out: ['json_graph'],
+    fx: 'stdout',
+    fl: [],
+    ex: [
       'forest export json > export.json',
     ],
-    related: ['export.graphviz', 'stats'],
+    rel: ['export.graphviz', 'stats'],
   },
 
   export: {
     cmd: 'export',
-    purpose: 'Export graph data (base command, delegates to subcommands)',
-    inputs: ['none'],
-    outputs: ['help text'],
-    sideEffects: 'none',
-    flags: [],
-    examples: ['forest export graphviz', 'forest export json'],
-    related: ['stats', 'health'],
+    p: 'Export graph data (base command, delegates to subcommands)',
+    in: [],
+    out: ['help_text'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest export graphviz', 'forest export json'],
+    rel: ['stats', 'health'],
   },
 };

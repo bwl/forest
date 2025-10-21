@@ -20,6 +20,7 @@ import {
   resolveSuggestionReference,
 } from '../shared/edges';
 import { formatId, handleError, getEdgePrefix } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
@@ -87,7 +88,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.propose'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.propose'], getVersion());
         }
         await runEdgesPropose(flags);
       } catch (error) {
@@ -118,7 +119,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.promote'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.promote'], getVersion());
         }
         await runEdgesPromote(flags);
       } catch (error) {
@@ -145,7 +146,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.accept'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.accept'], getVersion());
         }
         await runEdgesAccept(parameters.ref);
       } catch (error) {
@@ -172,7 +173,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.reject'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.reject'], getVersion());
         }
         await runEdgesReject(parameters.ref);
       } catch (error) {
@@ -206,7 +207,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.sweep'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.sweep'], getVersion());
         }
         await runEdgesSweep(flags);
       } catch (error) {
@@ -237,7 +238,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.explain'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.explain'], getVersion());
         }
         await runEdgesExplain(parameters.ref, flags);
       } catch (error) {
@@ -264,7 +265,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.undo'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['edges.undo'], getVersion());
         }
         await runEdgesUndo(parameters.ref);
       } catch (error) {
@@ -324,7 +325,7 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.edges, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.edges, getVersion());
         }
         await runEdgesList(flags);
       } catch (error) {

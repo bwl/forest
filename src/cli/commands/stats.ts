@@ -1,5 +1,6 @@
 import { getStats } from '../../core/stats';
 import { formatId, handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -36,7 +37,7 @@ export function createStatsCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.stats, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.stats, getVersion());
         }
         await runStats(flags as StatsFlags);
       } catch (error) {

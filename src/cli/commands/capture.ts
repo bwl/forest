@@ -12,6 +12,7 @@ import {
   printExplore,
 } from '../shared/explore';
 import { linkAgainstExisting } from '../shared/linking';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -91,7 +92,7 @@ export function createCaptureCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.capture, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.capture, getVersion());
         }
         await runCapture(flags as CaptureFlags);
       } catch (error) {

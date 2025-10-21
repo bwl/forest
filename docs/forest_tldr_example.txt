@@ -1,0 +1,365 @@
+════════════════════════════════════════════════════════════════════════════════
+  forest v0.2.0 - Complete TLDR Documentation
+════════════════════════════════════════════════════════════════════════════════
+
+  Graph-native knowledge base CLI
+
+  Generated: 2025-10-19 15:23:26 UTC
+  TLDR Spec: v0.1
+  Commands: 30 total
+
+════════════════════════════════════════════════════════════════════════════════
+
+GLOBAL INDEX
+────────────────────────────────────────────────────────────────────────────────
+NAME: forest
+VERSION: 0.2.0
+SUMMARY: Graph-native knowledge base CLI
+COMMANDS: help,completions,capture,explore,search,stats,health,serve,admin.recompute-embeddings,version,node.read,node.edit,node.delete,node.link,node,edges.propose,edges.promote,edges.accept,edges.reject,edges.sweep,edges.explain,edges.undo,edges,tags.list,tags.rename,tags.stats,tags,export.graphviz,export.json,export
+TLDR_CALL: forest <command> --tldr
+
+════════════════════════════════════════════════════════════════════════════════
+
+COMMAND INDEX
+────────────────────────────────────────────────────────────────────────────────
+
+[Top-Level Commands]
+  capture
+  completions
+  edges
+  explore
+  export
+  health
+  help
+  node
+  search
+  serve
+  stats
+  tags
+  version
+
+[Admin Commands]
+  admin.recompute-embeddings
+
+[Edges Commands]
+  edges.propose
+  edges.promote
+  edges.accept
+  edges.reject
+  edges.sweep
+  edges.explain
+  edges.undo
+
+[Export Commands]
+  export.graphviz
+  export.json
+
+[Node Commands]
+  node.read
+  node.edit
+  node.delete
+  node.link
+
+[Tags Commands]
+  tags.list
+  tags.rename
+  tags.stats
+
+════════════════════════════════════════════════════════════════════════════════
+
+COMMAND DETAILS
+════════════════════════════════════════════════════════════════════════════════
+
+>>> help <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'help'
+ ERROR  Unexpected flag: tldr.
+
+
+>>> completions <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'completions'
+ ERROR  Unexpected flag: tldr.
+
+
+>>> capture <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: capture
+PURPOSE: Create a new note and optionally auto-link into the graph
+INPUTS: ARGS(title,body,tags),STDIN,FILE
+OUTPUTS: node record,edges summary,optional preview
+SIDE_EFFECTS: writes to SQLite DB,computes embeddings,creates/updates edges
+FLAGS: --title=STR|note title;--body=STR|note body;--stdin=BOOL=false|read entire stdin as body;--file=FILE|read body from file;--tags=LIST|comma-separated tags;--no-preview=BOOL=false|skip post-capture explore;--no-auto-link=BOOL=false|disable immediate link scoring;--preview-suggestions-only=BOOL=false|show suggestions only in preview;--json=BOOL=false|emit JSON output
+EXAMPLES: forest capture --title "Named Idea" --body "Free-form text with #tags"|forest capture --stdin < note.md|forest capture --file captured.md --tags focus,ops|forest capture --no-preview --json
+RELATED: explore,edges.propose,node.read
+SCHEMA_JSON: emits {"node":{"id":STR,"title":STR,"tags":[STR]},"links":{"accepted":INT,"suggested":INT},"suggestions":[{"id":STR,"score":FLOAT}]}
+
+
+>>> explore <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: explore
+PURPOSE: Interactive graph exploration via search/filter/navigation
+INPUTS: ARGS(query),STDIN
+OUTPUTS: node list,neighborhood graph,suggestions
+SIDE_EFFECTS: none (read-only)
+FLAGS: --query=STR|search query (title/tag/text match);--limit=INT=15|max neighbors per node;--match-limit=INT=10|max search matches to show;--depth=INT=1|neighborhood depth (1 or 2);--suggestions=BOOL=false|include pending suggestions;--long-ids=BOOL=false|show full UUIDs;--json=BOOL=false|emit JSON output
+EXAMPLES: forest explore|forest explore "search term"|forest explore --depth 2 --limit 20|forest explore --suggestions --json
+RELATED: search,node.read,edges.propose
+
+
+>>> search <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: search
+PURPOSE: Semantic search using embeddings
+INPUTS: ARGS(query),STDIN
+OUTPUTS: ranked node list with similarity scores
+SIDE_EFFECTS: none (read-only)
+FLAGS: --limit=INT=10|max results to return;--min-score=FLOAT=0|minimum similarity threshold;--json=BOOL=false|emit JSON output
+EXAMPLES: forest search "machine learning patterns"|forest search --limit 20 --min-score 0.3 "async architecture"|forest search --json "knowledge graphs"
+RELATED: explore,capture
+
+
+>>> stats <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: stats
+PURPOSE: Show graph statistics and health metrics
+INPUTS: none
+OUTPUTS: node/edge counts,recent captures,top suggestions,high-degree nodes
+SIDE_EFFECTS: none (read-only)
+FLAGS: --json=BOOL=false|emit JSON output
+EXAMPLES: forest stats|forest stats --json
+RELATED: health,edges.propose
+
+
+>>> health <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: health
+PURPOSE: System health check (DB, embeddings, graph integrity)
+INPUTS: none
+OUTPUTS: health status,diagnostics,warnings
+SIDE_EFFECTS: none (read-only)
+FLAGS: --json=BOOL=false|emit JSON output
+EXAMPLES: forest health|forest health --json
+RELATED: stats,admin.recompute-embeddings
+
+
+>>> serve <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: serve
+PURPOSE: Start REST API server with WebSocket event stream
+INPUTS: ENV(FOREST_PORT,FOREST_HOST,FOREST_DB_PATH)
+OUTPUTS: HTTP server,WebSocket events
+SIDE_EFFECTS: binds to network port,serves REST API endpoints
+FLAGS: --port=INT=3000|server port;--host=STR=::|bind hostname (:: = dual-stack IPv4/IPv6)
+EXAMPLES: forest serve|forest serve --port 8080|forest serve --host 0.0.0.0|FOREST_PORT=3000 forest serve
+RELATED: health,stats
+
+
+>>> admin.recompute-embeddings <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'admin.recompute-embeddings'
+Command "[9madmin recompute-embeddings[29m" not found.
+Did you mean "[1madmin:recompute-embeddings[22m"?
+
+
+>>> version <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: version
+PURPOSE: Display CLI version
+INPUTS: none
+OUTPUTS: version string
+SIDE_EFFECTS: none
+FLAGS: 
+EXAMPLES: forest version
+RELATED: health
+
+
+>>> node.read <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'node.read'
+ ERROR  Missing required parameter "id".
+
+
+>>> node.edit <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'node.edit'
+ ERROR  Missing required parameter "id".
+
+
+>>> node.delete <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'node.delete'
+ ERROR  Missing required parameter "id".
+
+
+>>> node.link <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'node.link'
+ ERROR  Missing required parameter "a".
+
+
+>>> node <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: node
+PURPOSE: View node dashboard (total count, recent nodes, quick actions)
+INPUTS: none
+OUTPUTS: dashboard summary
+SIDE_EFFECTS: none (read-only)
+FLAGS: 
+EXAMPLES: forest node
+RELATED: node.read,node.edit,explore
+
+
+>>> edges.propose <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: edges.propose
+PURPOSE: List suggested links ordered by score
+INPUTS: none
+OUTPUTS: ranked suggestion list with scores
+SIDE_EFFECTS: none (read-only)
+FLAGS: --limit=INT=10|max suggestions to show;--long-ids=BOOL=false|display full UUIDs;--json=BOOL=false|emit JSON output
+EXAMPLES: forest edges propose|forest edges propose --limit 20|forest edges propose --json
+RELATED: edges.accept,edges.promote,edges.explain
+
+
+>>> edges.promote <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: edges.promote
+PURPOSE: Promote suggestions above a score threshold to accepted edges
+INPUTS: none
+OUTPUTS: promotion count
+SIDE_EFFECTS: updates edge status from suggested to accepted in DB
+FLAGS: --min-score=FLOAT=0.5|minimum score to accept
+EXAMPLES: forest edges promote|forest edges promote --min-score 0.6
+RELATED: edges.propose,edges.accept
+
+
+>>> edges.accept <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'edges.accept'
+ ERROR  Missing required parameter "ref".
+
+
+>>> edges.reject <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'edges.reject'
+ ERROR  Missing required parameter "ref".
+
+
+>>> edges.sweep <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: edges.sweep
+PURPOSE: Bulk-reject suggestions by index range or score threshold
+INPUTS: none
+OUTPUTS: rejection count
+SIDE_EFFECTS: deletes multiple edges from DB
+FLAGS: --range=STR|comma-separated indexes or ranges (e.g., 1-10,15);--max-score=FLOAT|reject suggestions at or below this score
+EXAMPLES: forest edges sweep --range 1-5|forest edges sweep --max-score 0.3|forest edges sweep --range 1-10 --max-score 0.25
+RELATED: edges.reject,edges.propose
+
+
+>>> edges.explain <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'edges.explain'
+ ERROR  Missing required parameter "ref".
+
+
+>>> edges.undo <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'edges.undo'
+ ERROR  Missing required parameter "ref".
+
+
+>>> edges <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: edges
+PURPOSE: View recent accepted edges (base command)
+INPUTS: none
+OUTPUTS: recent edge list with scores
+SIDE_EFFECTS: none (read-only)
+FLAGS: --limit=INT=10|max edges to show;--long-ids=BOOL=false|display full UUIDs;--json=BOOL=false|emit JSON output
+EXAMPLES: forest edges|forest edges --limit 20|forest edges --json
+RELATED: edges.propose,node.link
+
+
+>>> tags.list <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: tags.list
+PURPOSE: List tags with usage counts
+INPUTS: none
+OUTPUTS: tag list with counts
+SIDE_EFFECTS: none (read-only)
+FLAGS: --top=INT|limit to top N tags;--json=BOOL=false|emit JSON output
+EXAMPLES: forest tags list|forest tags list --top 20|forest tags list --json
+RELATED: tags.stats,tags.rename
+
+
+>>> tags.rename <<<
+────────────────────────────────────────────────────────────────────────────────
+ERROR: Failed to fetch TLDR for command 'tags.rename'
+ ERROR  Missing required parameter "old".
+
+
+>>> tags.stats <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: tags.stats
+PURPOSE: Show tag co-occurrence statistics
+INPUTS: none
+OUTPUTS: top tags,top tag pairs,optional focused co-occurrence
+SIDE_EFFECTS: none (read-only)
+FLAGS: --tag=STR|focus on a single tag and show co-occurring tags;--min-count=INT=0|only show items with count >= N;--top=INT=10|top N results to show;--json=BOOL=false|emit JSON output
+EXAMPLES: forest tags stats|forest tags stats --tag focus|forest tags stats --min-count 3 --top 15 --json
+RELATED: tags.list,explore
+
+
+>>> tags <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: tags
+PURPOSE: View tag dashboard (total count, top tags, quick actions)
+INPUTS: none
+OUTPUTS: dashboard summary
+SIDE_EFFECTS: none (read-only)
+FLAGS: 
+EXAMPLES: forest tags
+RELATED: tags.list,tags.stats,tags.rename
+
+
+>>> export.graphviz <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: export.graphviz
+PURPOSE: Export graph as DOT format (Graphviz)
+INPUTS: none
+OUTPUTS: DOT graph file
+SIDE_EFFECTS: writes to stdout or file
+FLAGS: 
+EXAMPLES: forest export graphviz > graph.dot|forest export graphviz | dot -Tpng > graph.png
+RELATED: export.json,stats
+
+
+>>> export.json <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: export.json
+PURPOSE: Export entire graph as JSON
+INPUTS: none
+OUTPUTS: JSON graph structure (nodes + edges)
+SIDE_EFFECTS: writes to stdout
+FLAGS: 
+EXAMPLES: forest export json > export.json
+RELATED: export.graphviz,stats
+
+
+>>> export <<<
+────────────────────────────────────────────────────────────────────────────────
+CMD: export
+PURPOSE: Export graph data (base command, delegates to subcommands)
+INPUTS: none
+OUTPUTS: help text
+SIDE_EFFECTS: none
+FLAGS: 
+EXAMPLES: forest export graphviz|forest export json
+RELATED: stats,health
+
+════════════════════════════════════════════════════════════════════════════════
+  End of forest TLDR Documentation
+  Generated by: tldr-doc-gen.sh (TLDR v0.1 Universal Generator)
+════════════════════════════════════════════════════════════════════════════════

@@ -1,6 +1,7 @@
 import { listNodes, updateNodeIndexData } from '../../lib/db';
 
 import { handleError } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 import type { HandlerContext } from '@clerc/core';
@@ -47,7 +48,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.list'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['tags.list'], getVersion());
         }
         await runTagsList(flags);
       } catch (error) {
@@ -74,7 +75,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.rename'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['tags.rename'], getVersion());
         }
         await runTagsRename(parameters.old, parameters.next);
       } catch (error) {
@@ -118,7 +119,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.stats'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['tags.stats'], getVersion());
         }
         await runTagsStats(flags);
       } catch (error) {
@@ -158,7 +159,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if ((ctx as any).flags?.tldr !== undefined) {
           const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.tags, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.tags, getVersion());
         }
         await runTagsDashboard();
       } catch (error) {

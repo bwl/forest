@@ -1,5 +1,6 @@
 import { semanticSearchCore } from '../../core/search';
 import { handleError, formatId, parseCsvList } from '../shared/utils';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { deduplicateChunks } from '../../lib/reconstruction';
 
@@ -57,7 +58,7 @@ export function createSearchCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.search, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.search, getVersion());
         }
         await runSearch(flags as SearchFlags, parameters.query as string | undefined);
       } catch (error) {

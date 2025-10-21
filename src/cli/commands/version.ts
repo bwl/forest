@@ -51,7 +51,7 @@ export function createVersionCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.version, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.version, getVersion());
         }
         displayVersion();
       } catch (error) {

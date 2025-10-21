@@ -14,6 +14,7 @@ import {
   resolveNodeReference,
 } from '../shared/utils';
 import { rescoreNode } from '../shared/linking';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
 import { createNodeCore } from '../../core/nodes';
@@ -123,7 +124,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.read'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.read'], getVersion());
         }
         await runNodeRead(parameters.id, flags);
       } catch (error) {
@@ -175,7 +176,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.edit'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.edit'], getVersion());
         }
         await runNodeEdit(parameters.id, flags);
       } catch (error) {
@@ -206,7 +207,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.delete'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.delete'], getVersion());
         }
         await runNodeDelete(parameters.id, flags);
       } catch (error) {
@@ -245,7 +246,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.link'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.link'], getVersion());
         }
         await runNodeLink(parameters.a, parameters.b, flags);
       } catch (error) {
@@ -297,7 +298,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.synthesize'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.synthesize'], getVersion());
         }
         await runNodeSynthesize(parameters.ids, flags);
       } catch (error) {
@@ -369,7 +370,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.import'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.import'], getVersion());
         }
         await runNodeImport(flags);
       } catch (error) {
@@ -416,7 +417,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.recent'], jsonMode);
+          emitTldrAndExit(COMMAND_TLDR['node.recent'], getVersion());
         }
         await runNodeRecent(flags);
       } catch (error) {
@@ -462,7 +463,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if ((ctx as any).flags?.tldr !== undefined) {
           const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.node, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.node, getVersion());
         }
         await runNodeDashboard();
       } catch (error) {

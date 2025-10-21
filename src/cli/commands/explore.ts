@@ -7,6 +7,7 @@ import {
   parseDate,
 } from '../shared/utils';
 import { printExplore, selectNode } from '../shared/explore';
+import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 
 type ClercModule = typeof import('clerc');
@@ -100,7 +101,7 @@ export function createExploreCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.explore, jsonMode);
+          emitTldrAndExit(COMMAND_TLDR.explore, getVersion());
         }
         const limitFlag =
           typeof flags.limit === 'number' && !Number.isNaN(flags.limit) ? flags.limit : undefined;

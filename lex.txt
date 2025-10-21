@@ -1,0 +1,275 @@
+
+--- lexicon ---
+
+# NDJSON::CMD Format Spec — v0.1
+# One NDJSON line = one CLI command surface.
+# The first `! meta:` line defines the lexicon and context for all lines below.
+# Use the lexicon to interpret fields; do NOT infer or invent beyond it.
+# Fields are optional unless required by schema or record.
+
+! meta: tool=awk, v=5.x, keymap={"n":"name","v":"version","c":"command","p":"purpose","i":"in","o":"out","t":"type","r":"req","d":"default","x":"vals","f":"flags","a":"alias","e":"effects","s":"scope","m":"mode","y":"perm","z":"timeout","k":"err","q":"code","g":"msg","u":"retry","w":"xc","l":"ctx","h":"ex","j":"note"}
+{"n":"awk","v":"5.x","c":"exec","p":"Execute an AWK program provided inline against input records","i":[{"n":"program","t":"str","r":1},{"n":"files","t":"file"}],"o":[{"n":"stdout","t":"str"}],"f":[{"n":"FS","t":"str","a":"-F","d":"[ \t]+"},{"n":"OFS","t":"str","d":" "},{"n":"vars","t":"str","a":"-v","d":""},{"n":"posix","t":"bool","d":0},{"n":"lint","t":"enum","x":["none","warn","fatal"],"d":"none"}],"e":["fs:r","stdout:w","cpu"],"s":"fs","m":"i","y":[],"z":0,"k":[{"q":"E_PARSE","g":"syntax error in AWK program","u":0},{"q":"E_FILE","g":"cannot open input file","u":0},{"q":"E_RUNTIME","g":"runtime error","u":0}],"h":"awk -F, -v limit=10 'NR>1 && $3>limit { print $1,$3 }' data.csv"}
+{"n":"awk","v":"5.x","c":"execfile","p":"Execute an AWK program loaded from one or more script files","i":[{"n":"progfile","t":"file","r":1},{"n":"files","t":"file"}],"o":[{"n":"stdout","t":"str"}],"f":[{"n":"FS","t":"str","a":"-F","d":"[ \t]+"},{"n":"OFS","t":"str","d":" "},{"n":"vars","t":"str","a":"-v","d":""},{"n":"posix","t":"bool","d":0},{"n":"lint","t":"enum","x":["none","warn","fatal"],"d":"none"},{"n":"f","t":"file","a":"-f"}],"e":["fs:r","stdout:w","cpu"],"s":"fs","m":"i","y":[],"z":0,"k":[{"q":"E_PARSE","g":"syntax error in script","u":0},{"q":"E_FILE","g":"cannot open program or input file","u":0},{"q":"E_RUNTIME","g":"runtime error","u":0}],"h":"awk -F: -v min=1000 -f scripts/filter.awk /etc/passwd"}
+
+
+# Style/Format Guide (for generators & doc renderers, but like… not too rigid)
+# So here’s the deal:
+# Each tool gets its moment. Start with the title (tool name + version) — it’s like the movie poster.
+# Then, give a quick “what’s this thing even for?” overview — two, three, sentences tops, but they can wander a bit if they want, maybe mention a nice walk in the woods but definitely don't go over 2 paragraphs.
+#
+# For commands, go full field report:
+#  A. SYNOPSIS — the elevator pitch of a command, one clean line before it all falls apart.
+#  B. ARGUMENTS & FLAGS — think of it like a diner menu. Make a neat table: [name, type, required?, default, choices, alias, group].
+#     If there’s an alias, drop it like an inside joke (“-t” means “template,” obviously).
+#  C. BEHAVIOR — talk about side effects, idempotence, confirmation prompts, the emotional state of the filesystem…  
+#     Include context (ctx), scope, permissions, timeouts — the whole entourage.
+#  D. I/O — list the inputs and outputs like a band lineup.  
+#     If it takes stdin or spits to stdout, note it. Schemas too, if you’ve got them (we’re completists here).
+#  E. ERRORS — table form please, [code, message, retryable, exit code]. Bonus points if the errors sound tragic.
+#  F. NOTES — mention versions, deprecations, or urban legends about when this flag first appeared in 2014.
+#  G. EXAMPLE — one line, no essays. Just how a tired engineer would actually run it.
+#
+# The vibe:
+# - Keep headings consistent but don’t sound like a legal document.
+# - Avoid prose walls; use bullets like you’re leaving breadcrumbs.
+# - You may digress briefly — compare a timeout to boiling pasta, or a flag to Schrödinger’s cat.
+# - Do not invent data that isn’t in the spec. We’re dreamers, not liars.
+# - Think documentation written by someone who once maintained the tool at 2 a.m. while eating cold ramen.
+#
+# TL;DR: structure like a spec, sound like a field diary. Make it human, slightly chaotic, but still parseable.
+
+
+
+
+
+#   Standard dictionary
+#
+#   Key   Meaning       Category        Notes
+#
+#   a     alias	        flags	          short flag e.g. -t
+#   c     command       meta	          verb / subcommand
+#   d     default       I/O	            literal or null
+#   e     effects	      behavior        side effects
+#   f     flags	        flags	          array of flag defs
+#   g     msg	          errors	        message
+#   h     ex	          doc	            exaple command line
+#   i     in	          I/O	            inputs list
+#   j     note          doc	            comment, since/until/deprec etc.
+#   k     err           errors	        list of error entries
+#   l     ctx           system	        execution context (cwd, session)
+#   m     mode          behavior        idempotent / confirm / dry, etc. compact marker
+#   n     name          meta	          tool / command name
+#   o     out           I/O	            outputs list
+#   p     purpose       meta	          one-line description
+#   q     code          errors	        error code string
+#   r     req           I/O		          required (0/1)
+#   s     scope         behavior        domain touched (fs, net, sys)
+#   t     type          I/O	            datatype (str, int, bool, file, dir, enum)
+#   u     retry         errors	        retryable flag
+#   v     version       meta	          semver or tag
+#   w     xc            system	        exit codes
+#   x     vals          I/O	            allowed values (choices)
+#   y     perm          behavior        permission needed
+#   z     timeout       behavior        timeout seconds
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+name
+meta
+tool / command name
+v
+version
+meta
+semver or tag
+c
+command
+meta
+verb / subcommand
+p
+purpose
+meta
+one-line description
+i
+in
+I/O
+inputs list
+o
+out
+I/O
+outputs list
+t
+type
+I/O
+datatype (str, int, bool, file, dir, enum)
+r
+req
+I/O
+required (0/1)
+d
+default
+I/O
+literal or null
+x
+vals
+I/O
+allowed values (choices)
+f
+flags
+flags
+array of flag defs
+a
+alias
+flags
+short flag e.g. -t
+e
+effects
+behavior
+side effects
+s
+scope
+behavior
+domain touched (fs, net, sys)
+m
+mode
+behavior
+idempotent / confirm / dry, etc. compact marker
+y
+perm
+behavior
+permission needed
+z
+timeout
+behavior
+timeout seconds
+k
+err
+errors
+list of error entries
+q
+code
+errors
+error code string
+g
+msg
+errors
+message
+u
+retry
+errors
+retryable flag
+w
+xc
+system
+exit codes
+l
+ctx
+system
+execution context (cwd, session)
+h
+ex
+doc
+example command line
+j
+note
+doc
+comment, since/until/deprec etc.
+
+Perfect — this is the Tier-0 Core Lexicon (v0.3), engineered for NDJSON::CMD ultra-dense encoding.
+The design goals are:
+  •	✅ ≤ 25 keys
+  •	✅ ASCII-only (a–z), single or dual letters
+  •	✅ Uniquely decodable (no collisions)
+  •	✅ Stable semantic anchors for CLI and API metadata
+  •	✅ Round-trip safe across compression → render → doc
+
+⸻
+
+⚙️ Tier-0 Lexicon — “StdLex-T0”
+
+Key	Expands To	Category	Notes
+n	name	meta	tool / command name
+v	version	meta	semver or tag
+c	command	meta	verb / subcommand
+p	purpose	meta	one-line description
+i	in	I/O	inputs list
+o	out	I/O	outputs list
+t	type	I/O	datatype (str, int, bool, file, dir, enum)
+r	req	I/O	required (0/1)
+d	default	I/O	literal or null
+x	vals	I/O	allowed values (choices)
+f	flags	flags	array of flag defs
+a	alias	flags	short flag e.g. -t
+e	effects	behavior	side effects
+s	scope	behavior	domain touched (fs, net, sys)
+m	mode	behavior	idempotent / confirm / dry, etc. compact marker
+y	perm	behavior	permission needed
+z	timeout	behavior	timeout seconds
+k	err	errors	list of error entries
+q	code	errors	error code string
+g	msg	errors	message
+u	retry	errors	retryable flag
+w	xc	system	exit codes
+l	ctx	system	execution context (cwd, session)
+h	ex	doc	example command line
+j	note	doc	comment, since/until/deprec etc.
+
+🧠 Count: 24 total (well within 25 target)
+
+⸻
+
+🧩 Encoding Principles
+  •	Each NDJSON record = one command surface.
+  •	Omit any unused keys.
+  •	Boolean values → 1 / 0 to save bytes.
+  •	Arrays compress naturally (JSON list form).
+  •	Optional single-letter markers:
+  •	m can encode small bitfield for behavior:
+e.g., "m":"ic" → idempotent+confirm; "m":"i" = idempotent only.
+(Agents can unroll "m" into full semantics when rendering.)
+  •	k (errors) entries use {q,g,u} only for minimalism.
+
+⸻
+
+🪐 Example — Dense “astro init”
+
+{"n":"astro","v":"0.9.5","c":"init","p":"Initialize new astronomy project","i":[],"o":[{"n":"proj_dir","t":"dir"}],"f":[{"n":"template","t":"enum","x":["default","planetary","stellar"],"d":"default","a":"-t"},{"n":"name","t":"str","d":"astro-project","a":"-n"},{"n":"force","t":"bool","d":0}],"e":["fs:w"],"s":"fs","m":"i","y":["fs:w"],"z":15,"k":[{"q":"E_EXISTS","g":"directory already initialized","u":0}],"h":"astro init -t planetary -n myproj"}
+
+
+⸻
+
+Would you like me to add a bit-encoded legend for m (so models can decode i,c,d,p etc. → idempotent, confirm, dry, preview)?
+That would make this Tier-0 spec fully self-contained for autonomous agents.
+
+
+# meta: tool=astro, version=0.9.4, keymap={cmd:command,p:purpose,in:inputs,out:outputs,t:type,req:required,d:default,vals:choices,al:alias,mx:mutual_exclusion_group,fl:flags,effects:side_effects,idempotent:safe_to_repeat,confirm:requires_confirmation,er:errors,code:error_code,msg:message,retry:retryable,exit:exit_codes,ctx:context,scope:state_scope,perms:permissions,timeout:timeout_secs,stream_in:streaming_input,stream_out:streaming_output,schema_in:schema_in,schema_out:schema_out,example:example_command,since:since_version,until:until_version,deprec:deprecated}
+{"cmd":"init","p":"Initialize a new astronomy project","in":[],"out":[{"n":"project_dir","t":"dir"}],"fl":[{"n":"template","t":"enum","vals":["default","planetary","stellar"],"d":"default","al":"-t"},{"n":"name","t":"str","d":"astro-project","al":"-n"},{"n":"force","t":"bool","d":false}],"effects":["filesystem:write"],"idempotent":true,"confirm":false,"ctx":"cwd","scope":"filesystem","perms":["fs:write"],"timeout":15,"exit":{"0":"ok","2":"already_initialized"},"er":[{"code":"E_EXISTS","msg":"directory already initialized","retry":0}],"example":"astro init -t planetary -n myproj","since":"0.9.0"}
+{"cmd":"fetch","p":"Download telescope data","in":[{"n":"dataset","t":"str","req":1}],"out":[{"n":"path","t":"file"}],"fl":[{"n":"format","t":"enum","vals":["fits","csv","json"],"d":"fits","mx":"fmt"},{"n":"raw","t":"bool","d":false,"mx":"fmt"},{"n":"retry","t":"int","d":3}],"effects":["network:read","filesystem:write"],"idempotent":true,"confirm":false,"ctx":"cwd","scope":"filesystem","perms":["net:read","fs:write"],"timeout":120,"exit":{"0":"ok","7":"net_error"},"er":[{"code":"E_NET","msg":"network error","retry":1}],"example":"astro fetch ngc224 --format fits","since":"0.9.0"}
+{"cmd":"analyze","p":"Run data analysis on local files or STDIN","in":[{"n":"input","t":"file"},{"n":"stdin","t":"stdin"}],"out":[{"n":"report","t":"file"}],"fl":[{"n":"model","t":"enum","vals":["spectral","photometric","custom"],"d":"spectral"},{"n":"threads","t":"int","d":4},{"n":"out","t":"file"}],"effects":["cpu:compute"],"idempotent":true,"confirm":false,"ctx":"cwd","scope":"process","perms":["cpu"],"timeout":300,"stream_in":true,"schema_out":"object{report:file}","exit":{"0":"ok","3":"bad_model"},"er":[{"code":"E_BADMODEL","msg":"unknown analysis model","retry":0}],"example":"astro analyze data.fits --model spectral --threads 8","since":"0.9.0"}
+{"cmd":"publish","p":"Upload analysis results","in":[{"n":"report","t":"file","req":1}],"out":[{"n":"url","t":"str"}],"fl":[{"n":"token","t":"str","req":1},{"n":"dry-run","t":"bool","d":false}],"effects":["network:write"],"idempotent":false,"confirm":true,"ctx":"cwd","scope":"network","perms":["net:write"],"timeout":60,"exit":{"0":"ok","5":"auth_failed","6":"upload_temp_fail"},"er":[{"code":"E_AUTH","msg":"invalid token","retry":0},{"code":"E_UPLOAD","msg":"temporary server issue","retry":1}],"example":"astro publish report.json --token TOKEN","since":"0.9.0"}
+{"cmd":"purge","p":"Delete cached datasets and temp files","in":[],"out":[],"fl":[{"n":"all","t":"bool","d":false},{"n":"days","t":"int","d":30},{"n":"dry-run","t":"bool","d":true}],"effects":["filesystem:delete"],"idempotent":false,"confirm":true,"ctx":"cwd","scope":"filesystem","perms":["fs:delete"],"timeout":45,"exit":{"0":"ok","13":"permission_denied"},"er":[{"code":"E_DENY","msg":"insufficient permissions","retry":0},{"code":"E_BUSY","msg":"resources busy","retry":1}],"example":"astro purge --days 7","since":"0.9.0"}
+
+--- tool: git ---
+# meta: tool=git, version=2.46, keymap={cmd:command,p:purpose,in:inputs,out:outputs,t:type,req:required,d:default,vals:choices,al:alias,fl:flags,effects:side_effects,idempotent:safe_to_repeat,confirm:requires_confirmation,er:errors,code:error_code,msg:message,retry:retryable,exit:exit_codes,ctx:context,scope:state_scope,perms:permissions,timeout:timeout_secs,example:example_command,deprec:deprecated}
+{"cmd":"init","p":"Create an empty repository","in":[],"out":[{"n":"repo_dir","t":"dir"}],"fl":[{"n":"bare","t":"bool","d":false}],"effects":["filesystem:write"],"idempotent":true,"confirm":false,"ctx":"cwd","scope":"git-repo","perms":["fs:write"],"timeout":10,"exit":{"0":"ok"},"er":[{"code":"E_EXISTS","msg":"already initialized","retry":0}],"example":"git init"}
+{"cmd":"clone","p":"Clone a repository","in":[{"n":"repo_url","t":"str","req":1}],"out":[{"n":"repo_dir","t":"dir"}],"fl":[{"n":"branch","t":"str","al":"-b"},{"n":"depth","t":"int","d":0}],"effects":["network:read","filesystem:write"],"idempotent":true,"confirm":false,"ctx":"cwd","scope":"filesystem","perms":["net:read","fs:write"],"timeout":300,"exit":{"0":"ok","7":"net_error"},"er":[{"code":"E_NET","msg":"network failure","retry":1},{"code":"E_AUTH","msg":"authentication failed","retry":0}],"example":"git clone https://github.com/user/repo.git -b main"}
+{"cmd":"commit","p":"Record staged changes","in":[{"n":"message","t":"str","req":1}],"out":[{"n":"commit_id","t":"hash"}],"fl":[{"n":"amend","t":"bool"},{"n":"signoff","t":"bool"}],"effects":["repo:write"],"idempotent":false,"confirm":false,"ctx":"git-repo","scope":"repo","perms":["fs:write"],"timeout":20,"exit":{"0":"ok","1":"nothing_to_commit"},"er":[{"code":"E_EMPTY","msg":"no changes","retry":0}],"example":"git commit -m 'Fix bug'"}
+{"cmd":"push","p":"Update remote refs","in":[{"n":"remote","t":"str","d":"origin"},{"n":"branch","t":"str","d":"HEAD"}],"out":[{"n":"remote_ref","t":"str"}],"fl":[{"n":"force","t":"bool","al":"-f"},{"n":"tags","t":"bool"}],"effects":["network:write","remote_repo:update"],"idempotent":false,"confirm":true,"ctx":"git-repo","scope":"remote","perms":["net:write"],"timeout":120,"exit":{"0":"ok","2":"rejected"},"er":[{"code":"E_CONFLICT","msg":"non-fast-forward rejected","retry":0}],"example":"git push origin main"}
+
