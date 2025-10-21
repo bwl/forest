@@ -1,5 +1,7 @@
 import { handleError } from '../shared/utils';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import * as path from 'path';
+import * as fs from 'fs';
 
 type ClercModule = typeof import('clerc');
 
@@ -32,7 +34,17 @@ const FOREST_ART = `
 
 `;
 
-const VERSION = '0.2.0';
+// Read version dynamically from package.json
+function readVersion(): string {
+  try {
+    const packageJsonPath = path.join(__dirname, '../../../package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    return packageJson.version || '0.0.0';
+  } catch (error) {
+    // Fallback version if package.json can't be read
+    return '0.0.0';
+  }
+}
 
 export function createVersionCommand(clerc: ClercModule) {
   return clerc.defineCommand(
@@ -63,21 +75,22 @@ export function createVersionCommand(clerc: ClercModule) {
 
 export function displayVersion() {
   console.log(FOREST_ART);
-  console.log(`  Version: ${VERSION}`);
+  console.log(`  Version: ${getVersion()}`);
   console.log('  A graph-native knowledge base CLI');
   console.log('');
 }
 
 export function getVersion(): string {
-  return VERSION;
+  return readVersion();
 }
 
 export function displayBriefInfo() {
+  const version = getVersion();
   console.log('');
   console.log('    #o#');
   console.log('  ####o#');
   console.log(' #o# \\#|_#,#');
-  console.log('###\\ |/   #o#        forest v' + VERSION);
+  console.log('###\\ |/   #o#        forest v' + version);
   console.log(' # {}{      #        A graph-native knowledge base CLI');
   console.log('    }{{');
   console.log('   ,\'  `');
@@ -87,6 +100,6 @@ export function displayBriefInfo() {
   console.log('  Quick start:');
   console.log('    forest capture --stdin    # Capture ideas from stdin');
   console.log('    forest explore <term>     # Search and explore connections');
-  console.log('    forest insights list      # Review suggested links');
+  console.log('    forest edges propose      # Review suggested links');
   console.log('');
 }
