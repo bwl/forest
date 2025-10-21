@@ -18,6 +18,7 @@ import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
 import { createNodeCore } from '../../core/nodes';
 import { importDocumentCore } from '../../core/import';
+import { reconstructDocument } from '../../lib/reconstruction';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -457,32 +458,84 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
     return;
   }
 
+  // Check if this node is part of a chunked document
+  const reconstructed = await reconstructDocument(node);
+
   if (flags.json) {
-    console.log(
-      JSON.stringify(
-        {
-          node: {
-            id: node.id,
-            title: node.title,
-            tags: node.tags,
-            createdAt: node.createdAt,
-            updatedAt: node.updatedAt,
+    if (reconstructed) {
+      // For reconstructed documents, return full document in JSON
+      console.log(
+        JSON.stringify(
+          {
+            node: {
+              id: reconstructed.rootNode.id,
+              title: reconstructed.rootNode.title,
+              tags: reconstructed.rootNode.tags,
+              createdAt: reconstructed.rootNode.createdAt,
+              updatedAt: reconstructed.rootNode.updatedAt,
+            },
+            body: reconstructed.fullBody,
+            metadata: {
+              isReconstructed: true,
+              totalChunks: reconstructed.metadata.totalChunks,
+              chunks: reconstructed.chunks.map((c) => ({
+                id: c.id,
+                title: c.title,
+                order: c.chunkOrder,
+              })),
+            },
           },
-          body: node.body,
-        },
-        null,
-        2,
-      ),
-    );
+          null,
+          2,
+        ),
+      );
+    } else {
+      // Regular node output
+      console.log(
+        JSON.stringify(
+          {
+            node: {
+              id: node.id,
+              title: node.title,
+              tags: node.tags,
+              createdAt: node.createdAt,
+              updatedAt: node.updatedAt,
+            },
+            body: node.body,
+          },
+          null,
+          2,
+        ),
+      );
+    }
     return;
   }
 
-  const { directEdges } = await buildNeighborhoodPayload(node.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
-  printNodeOverview(node, directEdges, { longIds: Boolean(flags.longIds) });
+  // Text output
+  if (reconstructed) {
+    // Use the root node for overview
+    const displayNode = reconstructed.rootNode;
+    const { directEdges } = await buildNeighborhoodPayload(displayNode.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
+    printNodeOverview(displayNode, directEdges, { longIds: Boolean(flags.longIds) });
 
-  if (!flags.meta) {
-    console.log('');
-    console.log(node.body);
+    if (!flags.meta) {
+      console.log('');
+      console.log(`[Document with ${reconstructed.metadata.totalChunks} chunks - automatically reconstructed]`);
+      console.log('');
+      console.log(reconstructed.fullBody);
+      console.log('');
+      console.log('---');
+      console.log(`Chunks: ${reconstructed.chunks.map((c) => formatId(c.id)).join(', ')}`);
+    }
+  } else {
+    // Regular node output
+    const { directEdges } = await buildNeighborhoodPayload(node.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
+    printNodeOverview(node, directEdges, { longIds: Boolean(flags.longIds) });
+
+    if (!flags.meta) {
+      console.log('');
+      console.log(node.body);
+    }
   }
 }
 
