@@ -15,6 +15,7 @@ import {
   DEFAULT_NEIGHBORHOOD_LIMIT,
   DEFAULT_SEARCH_LIMIT,
   formatId,
+  formatNodeIdProgressive,
   formatScore,
   getEdgePrefix,
   isShortId,
@@ -311,9 +312,9 @@ export async function printExplore(options: ExploreRenderOptions) {
   }
 
   if (!focusSelected && options.showMatches) {
-    printMatches(matches, match, { longIds: options.longIds, label: 'Matches:', limit: selection.limit });
+    await printMatches(matches, match, { longIds: options.longIds, label: 'Matches:', limit: selection.limit });
   } else {
-    printMatches(matches, match, {
+    await printMatches(matches, match, {
       longIds: options.longIds,
       label: 'Matches (selected first):',
       limit: selection.limit,
@@ -321,31 +322,38 @@ export async function printExplore(options: ExploreRenderOptions) {
   }
 
   if (!options.suppressOverview) {
-    printNodeOverview(match.node, neighborhoodData.directEdges, { longIds: options.longIds });
+    await printNodeOverview(match.node, neighborhoodData.directEdges, { longIds: options.longIds });
     if (options.includeSuggestions && suggestionData.length > 0) {
-      // Fetch all edges for progressive ID calculation
+      // Fetch all nodes and edges for progressive ID calculation
+      const allNodes = await listNodes();
       const allEdges = await listEdges('all');
+      const formatNodeId = (id: string) =>
+        options.longIds ? id : formatNodeIdProgressive(id, allNodes);
+
       console.log('');
       console.log('suggested edges:');
       for (const suggestion of suggestionData) {
         const [sa, sb] = suggestion.id.split('::');
         const code = sa && sb ? getEdgePrefix(sa, sb, allEdges) : '????';
         console.log(
-          `  ${formatScore(suggestion.score)}  [${code}] ${formatId(suggestion.otherId, {
-            long: options.longIds,
-          })}  ${suggestion.otherTitle}  (${suggestion.id})`,
+          `  ${formatScore(suggestion.score)}  [${code}] ${formatNodeId(suggestion.otherId)}  ${suggestion.otherTitle}`,
         );
       }
     }
   }
 }
 
-export function printNodeOverview(
+export async function printNodeOverview(
   node: NodeRecord,
   directEdges: Array<{ otherId: string; otherTitle: string; score: number }>,
   options: { longIds: boolean },
 ) {
-  console.log(`${formatId(node.id, { long: options.longIds })} ${node.title}`);
+  // Use progressive IDs unless --long is specified
+  const allNodes = await listNodes();
+  const formatNodeId = (id: string) =>
+    options.longIds ? id : formatNodeIdProgressive(id, allNodes);
+
+  console.log(`${formatNodeId(node.id)} ${node.title}`);
   if (node.tags.length > 0) {
     console.log(`tags: ${node.tags.join(', ')}`);
   }
@@ -357,7 +365,7 @@ export function printNodeOverview(
     console.log('accepted edges:');
     for (const edge of directEdges) {
       console.log(
-        `  ${formatScore(edge.score)}  ${formatId(edge.otherId, { long: options.longIds })}  ${edge.otherTitle}`,
+        `  ${formatScore(edge.score)}  ${formatNodeId(edge.otherId)}  ${edge.otherTitle}`,
       );
     }
   } else {
@@ -365,19 +373,25 @@ export function printNodeOverview(
   }
 }
 
-function printMatches(
+async function printMatches(
   matches: SearchMatch[],
   _selected: SearchMatch,
   options: { longIds: boolean; label: string; limit: number },
 ) {
   if (matches.length === 0) return;
+
+  // Use progressive IDs unless --long is specified
+  const allNodes = matches.map((m) => m.node);
+  const formatNodeId = (id: string) =>
+    options.longIds ? id : formatNodeIdProgressive(id, allNodes);
+
   console.log(options.label);
   const limit = Math.min(matches.length, options.limit ?? DEFAULT_MATCH_DISPLAY_LIMIT);
   for (let index = 0; index < limit; index += 1) {
     const entry = matches[index];
     const tags = entry.node.tags.length > 0 ? ` [${entry.node.tags.join(', ')}]` : '';
     console.log(
-      `${index + 1}. ${formatScore(entry.score)}  ${formatId(entry.node.id, { long: options.longIds })}  ${
+      `${index + 1}. ${formatScore(entry.score)}  ${formatNodeId(entry.node.id)}  ${
         entry.node.title
       }${tags}`,
     );
