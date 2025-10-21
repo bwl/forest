@@ -20,7 +20,8 @@
 
 // Re-export color utilities
 export {
-  FOREST_THEMES,
+  ACTIVE_SCHEME,
+  COLOR_SCHEMES,
   hslToRgb,
   formatScoreComponent,
   colorizeScore,
@@ -29,6 +30,8 @@ export {
   useColors,
   colorize,
 } from './colors';
+
+export type { ColorRole, ColorSchemeName } from './colors';
 
 // Re-export edge formatters
 export {

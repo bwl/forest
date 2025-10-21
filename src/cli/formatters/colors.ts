@@ -1,28 +1,35 @@
 import chalk from 'chalk';
 
-/**
- * Color themes for Forest CLI - inspired by natural forest hues
- */
-export const FOREST_THEMES = {
-  aggregate: { hue: 35, name: 'amber-bark' },
-  embedding: { hue: 120, name: 'forest-green' },
-  token: { hue: 100, name: 'moss-lime' },
-  title: { hue: 45, name: 'autumn-gold' },
-  tag: { hue: 10, name: 'clay-rust' },
-  nodeA: { hex: '#A8C5DD', name: 'sky-blue' },
-  nodeB: { hex: '#A8DDB5', name: 'sage-green' },
-  edgeCode: { hex: '#FF8C00', name: 'dark-orange' },
-} as const;
+import { loadConfig } from '../../lib/config';
+import {
+  COLOR_SCHEME_PRESETS,
+  DEFAULT_COLOR_SCHEME,
+  type ColorEntry,
+  type ColorRole,
+  type ColorSchemeDefinition,
+  type ColorSchemeName,
+} from '../../lib/color-schemes';
+
+export type { ColorRole, ColorSchemeName } from '../../lib/color-schemes';
 
 /**
- * Convert HSL to RGB for use with chalk.rgb()
- *
- * Extracted from edges.ts - enables gradient heat maps and theme variations
- *
- * @param h Hue (0-360)
- * @param s Saturation (0-100)
- * @param l Lightness (0-100)
- * @returns RGB tuple [r, g, b] where each value is 0-255
+ * HSL tuple representation used for derived palette values.
+ */
+type HslTuple = [number, number, number];
+
+/**
+ * Runtime-resolved color scheme with derived HSL metadata.
+ */
+interface ResolvedColorScheme {
+  id: ColorSchemeName;
+  label: string;
+  description: string;
+  colors: Record<ColorRole, ColorEntry>;
+  hsl: Record<ColorRole, HslTuple>;
+}
+
+/**
+ * Convert HSL to RGB for use with chalk.rgb().
  */
 export function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   s /= 100;
@@ -33,97 +40,158 @@ export function hslToRgb(h: number, s: number, l: number): [number, number, numb
   return [Math.round(255 * f(0)), Math.round(255 * f(8)), Math.round(255 * f(4))];
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const normalized = hex.replace('#', '');
+  const bigint = parseInt(normalized, 16);
+  const length = normalized.length;
+  if (Number.isNaN(bigint)) {
+    return [255, 255, 255];
+  }
+  if (length === 6) {
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+  }
+  if (length === 3) {
+    return [
+      ((bigint >> 8) & 15) * 17,
+      ((bigint >> 4) & 15) * 17,
+      (bigint & 15) * 17,
+    ];
+  }
+  return [255, 255, 255];
+}
+
+function rgbToHsl(r: number, g: number, b: number): HslTuple {
+  r /= 255;
+  g /= 255;
+  b /= 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r:
+        h = (g - b) / d + (g < b ? 6 : 0);
+        break;
+      case g:
+        h = (b - r) / d + 2;
+        break;
+      case b:
+        h = (r - g) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+
+  return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
+}
+
+function hexToHsl(hex: string): HslTuple {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHsl(r, g, b);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function deriveHsl(definition: ColorSchemeDefinition): Record<ColorRole, HslTuple> {
+  return Object.fromEntries(
+    Object.entries(definition.colors).map(([role, entry]) => [role, hexToHsl(entry.hex)]),
+  ) as Record<ColorRole, HslTuple>;
+}
+
+function resolveActiveColorScheme(): ResolvedColorScheme {
+  const { colorScheme } = loadConfig();
+  const schemeId = (colorScheme && colorScheme in COLOR_SCHEME_PRESETS
+    ? colorScheme
+    : DEFAULT_COLOR_SCHEME) as ColorSchemeName;
+  const definition = COLOR_SCHEME_PRESETS[schemeId];
+  return {
+    id: schemeId,
+    label: definition.label,
+    description: definition.description,
+    colors: definition.colors,
+    hsl: deriveHsl(definition),
+  };
+}
+
+const ACTIVE_COLOR_SCHEME = resolveActiveColorScheme();
+
+function getRoleHue(role: ColorRole): number {
+  return ACTIVE_COLOR_SCHEME.hsl[role][0];
+}
+
+function getRoleHsl(role: ColorRole): HslTuple {
+  return ACTIVE_COLOR_SCHEME.hsl[role];
+}
+
+function getRoleHex(role: ColorRole): string {
+  return ACTIVE_COLOR_SCHEME.colors[role].hex;
+}
+
 /**
- * Format score component as 2-digit integer (0-99 scale)
- *
- * Used for compact display of score components in tables
+ * Format score component as 2-digit integer (0-99 scale).
  */
 export function formatScoreComponent(value: number): string {
   const scaled = Math.floor(value * 100);
-  const clamped = Math.max(0, Math.min(99, scaled));
+  const clamped = clamp(scaled, 0, 99);
   return clamped.toString().padStart(2, '0');
 }
 
 /**
- * Colorize a score value using gradient heat map
- *
- * Maps score (0.0 to 1.0) to color gradient:
- * - Low scores (0.0): Dark, muted colors (low lightness/saturation)
- * - High scores (1.0): Bright, vibrant colors (high lightness/saturation)
- *
- * @param value Score value (0.0 to 1.0)
- * @param hue Base hue for the color (0-360)
- * @returns Colored string with formatted score (00-99)
- *
- * @example
- * colorizeScore(0.85, FOREST_THEMES.embedding.hue) // bright green "85"
- * colorizeScore(0.23, FOREST_THEMES.token.hue)     // dark moss "23"
+ * Colorize a score value using a gradient derived from the active scheme role.
  */
-export function colorizeScore(value: number, hue: number): string {
+export function colorizeScore(value: number, role: ColorRole): string {
   const formattedValue = formatScoreComponent(value);
+  const [, baseSaturation, baseLightness] = getRoleHsl(role);
+  const hue = getRoleHue(role);
 
-  // Gradient from dark (low) to bright (high)
-  // HSL interpolation: consistent hue, varying lightness & saturation
-  const t = Math.max(0, Math.min(1, value)); // Clamp to [0, 1]
-
-  // Dark muted -> bright vibrant
-  const lightness = 20 + t * 50;  // 20% to 70%
-  const saturation = 25 + t * 45; // 25% to 70%
+  const t = clamp(value, 0, 1);
+  const saturation = clamp(baseSaturation * 0.4 + t * 45, 20, 90);
+  const lightness = clamp(baseLightness * 0.4 + t * 45, 20, 80);
 
   const [r, g, b] = hslToRgb(hue, saturation, lightness);
   return chalk.rgb(r, g, b)(formattedValue);
 }
 
 /**
- * Color node IDs with subtle per-character hue variation
- *
- * Creates visual interest while maintaining readability by applying
- * slight hue shifts to each character
- *
- * @param id Node ID string (e.g., "7fa7acb2")
- * @param baseHue Base hue for the color palette (default: 200 = light grey-blue)
- * @returns Colored string with subtle per-character variation
- *
- * @example
- * colorNodeId("7fa7acb2") // Light grey with subtle hue shifts
+ * Color node IDs with subtle per-character hue variation.
  */
-export function colorNodeId(id: string, baseHue = 200): string {
+export function colorNodeId(id: string, role: ColorRole = 'neutral'): string {
+  const hue = getRoleHue(role);
+  const [, baseSaturation, baseLightness] = getRoleHsl(role);
+  const saturation = clamp(baseSaturation * 0.35, 10, 35);
+  const lightness = clamp(baseLightness + 10, 35, 75);
+
   return id
     .split('')
-    .map((char, i) => {
-      const hueOffset = (i * 13) % 30;  // Subtle variation
-      const [r, g, b] = hslToRgb(baseHue + hueOffset, 10, 65);  // Light grey with slight hue shift
+    .map((char, index) => {
+      const hueOffset = (index * 13) % 30;
+      const [r, g, b] = hslToRgb(hue + hueOffset, saturation, lightness);
       return chalk.rgb(r, g, b)(char);
     })
     .join('');
 }
 
 /**
- * Create colored text for table headers
- *
- * Applies slight hue twist (+10°) and fixed lightness/saturation
- * for consistent header styling
- *
- * @param hue Base hue for the header (0-360)
- * @returns Chalk color function
- *
- * @example
- * const headerColor = makeHeaderColor(FOREST_THEMES.embedding.hue);
- * console.log(headerColor('em')); // Forest green "em" header
+ * Create colored text for table headers using a given role from the active scheme.
  */
-export function makeHeaderColor(hue: number) {
-  const [r, g, b] = hslToRgb(hue + 10, 45, 40);  // 40% brightness, hue twist +10°
+export function makeHeaderColor(role: ColorRole) {
+  const hue = getRoleHue(role);
+  const [, baseSaturation, baseLightness] = getRoleHsl(role);
+  const saturation = clamp(baseSaturation + 15, 25, 85);
+  const lightness = clamp(baseLightness - 15, 25, 65);
+  const [r, g, b] = hslToRgb(hue + 10, saturation, lightness);
   return chalk.rgb(r, g, b);
 }
 
 /**
- * Convenience object providing all color utilities
- *
- * Use this for easy access to all color functions and themes:
- *
- * @example
- * const { colorizeScore, themes } = useColors();
- * const scoreText = colorizeScore(0.85, themes.embedding.hue);
+ * Retrieve helper functions and the active scheme for consumers.
  */
 export function useColors() {
   return {
@@ -132,89 +200,40 @@ export function useColors() {
     colorizeScore,
     colorNodeId,
     makeHeaderColor,
-    themes: FOREST_THEMES,
+    scheme: ACTIVE_COLOR_SCHEME,
+    themes: ACTIVE_COLOR_SCHEME,
+    getColorHex: getRoleHex,
   };
 }
 
 /**
- * Preset color functions for common use cases
+ * Export the resolved active color scheme for other modules.
+ */
+export const ACTIVE_SCHEME = ACTIVE_COLOR_SCHEME;
+
+/**
+ * Preset color functions for common use cases.
  */
 export const colorize = {
-  /**
-   * Color an aggregate score with amber/bark brown gradient
-   */
-  aggregateScore: (value: number) => colorizeScore(value, FOREST_THEMES.aggregate.hue),
-
-  /**
-   * Color an embedding similarity score with forest green gradient
-   */
-  embeddingScore: (value: number) => colorizeScore(value, FOREST_THEMES.embedding.hue),
-
-  /**
-   * Color a token similarity score with moss/lime green gradient
-   */
-  tokenScore: (value: number) => colorizeScore(value, FOREST_THEMES.token.hue),
-
-  /**
-   * Color a title similarity score with autumn gold/yellow gradient
-   */
-  titleScore: (value: number) => colorizeScore(value, FOREST_THEMES.title.hue),
-
-  /**
-   * Color a tag overlap score with clay red/rust gradient
-   */
-  tagScore: (value: number) => colorizeScore(value, FOREST_THEMES.tag.hue),
-
-  /**
-   * Color an edge reference code (progressive ID) in dark orange
-   */
-  edgeCode: (code: string) => chalk.hex(FOREST_THEMES.edgeCode.hex)(code),
-
-  /**
-   * Color nodeA identifier in sky blue
-   */
-  nodeA: (text: string) => chalk.hex(FOREST_THEMES.nodeA.hex)(text),
-
-  /**
-   * Color nodeB identifier in sage green
-   */
-  nodeB: (text: string) => chalk.hex(FOREST_THEMES.nodeB.hex)(text),
-
-  /**
-   * Color a node ID with default grey-blue subtle variation
-   */
-  nodeId: (id: string) => colorNodeId(id),
-
-  /**
-   * Color grey text (for delimiters, secondary info)
-   */
-  grey: (text: string) => chalk.grey(text),
-
-  /**
-   * Color tag names with forest green
-   */
-  tag: (tagName: string) => chalk.hex('#4A7856')(tagName),
-
-  /**
-   * Color counts/numbers with amber gradient based on ratio to max
-   */
+  aggregateScore: (value: number) => colorizeScore(value, 'main'),
+  embeddingScore: (value: number) => colorizeScore(value, 'accent'),
+  tokenScore: (value: number) => colorizeScore(value, 'highlight'),
+  titleScore: (value: number) => colorizeScore(value, 'emphasis'),
+  tagScore: (value: number) => colorizeScore(value, 'warning'),
+  edgeCode: (code: string) => chalk.hex(getRoleHex('info'))(code),
+  nodeA: (text: string) => chalk.hex(getRoleHex('accent'))(text),
+  nodeB: (text: string) => chalk.hex(getRoleHex('highlight'))(text),
+  nodeId: (id: string) => colorNodeId(id, 'neutral'),
+  grey: (text: string) => chalk.hex(getRoleHex('muted'))(text),
+  tag: (tagName: string) => chalk.hex(getRoleHex('accent'))(tagName),
   count: (value: number, max: number) => {
     const ratio = max > 0 ? value / max : 0;
-    return colorizeScore(ratio, FOREST_THEMES.aggregate.hue);
+    return colorizeScore(ratio, 'main');
   },
-
-  /**
-   * Color success messages/checkmarks in forest green
-   */
-  success: (text: string) => chalk.hex('#2D5F3F')(text),
-
-  /**
-   * Color metadata labels in muted grey
-   */
-  label: (text: string) => chalk.hex('#6B7280')(text),
-
-  /**
-   * Color checkmarks and bullets in forest green
-   */
-  bullet: (symbol: string) => chalk.hex('#4A7856')(symbol),
+  success: (text: string) => chalk.hex(getRoleHex('success'))(text),
+  label: (text: string) => chalk.hex(getRoleHex('muted'))(text),
+  bullet: (symbol: string) => chalk.hex(getRoleHex('success'))(symbol),
+  info: (text: string) => chalk.hex(getRoleHex('info'))(text),
 };
+
+export const COLOR_SCHEMES = COLOR_SCHEME_PRESETS;

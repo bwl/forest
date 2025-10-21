@@ -2,6 +2,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
+import {
+  DEFAULT_COLOR_SCHEME,
+  isColorSchemeName,
+  type ColorSchemeName,
+} from './color-schemes';
+
 export interface ForestConfig {
   embedProvider?: 'local' | 'openai' | 'none';
   openaiApiKey?: string;
@@ -9,6 +15,7 @@ export interface ForestConfig {
   localModel?: string;
   taggingMethod?: 'lexical' | 'llm' | 'none';
   llmTaggerModel?: 'gpt-5-nano' | 'gpt-4o-mini' | 'gpt-4o';
+  colorScheme?: ColorSchemeName;
 }
 
 const CONFIG_FILE = path.join(os.homedir(), '.forestrc');
@@ -31,6 +38,13 @@ export function loadConfig(): ForestConfig {
   }
 
   // Merge with env vars (env vars take lower priority than file)
+  const schemeFromFile = isColorSchemeName((fileConfig as any).colorScheme)
+    ? ((fileConfig as any).colorScheme as ColorSchemeName)
+    : undefined;
+  const schemeFromEnv = isColorSchemeName(process.env.FOREST_COLOR_SCHEME)
+    ? (process.env.FOREST_COLOR_SCHEME as ColorSchemeName)
+    : undefined;
+
   const config: ForestConfig = {
     embedProvider: fileConfig.embedProvider || getEmbedProviderFromEnv(),
     openaiApiKey: fileConfig.openaiApiKey || process.env.OPENAI_API_KEY,
@@ -41,6 +55,7 @@ export function loadConfig(): ForestConfig {
     localModel: fileConfig.localModel || process.env.FOREST_EMBED_LOCAL_MODEL,
     taggingMethod: fileConfig.taggingMethod || 'lexical', // Default to lexical (backward compat)
     llmTaggerModel: fileConfig.llmTaggerModel || 'gpt-5-nano',
+    colorScheme: schemeFromFile || schemeFromEnv || DEFAULT_COLOR_SCHEME,
   };
 
   return config;

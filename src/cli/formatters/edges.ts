@@ -1,4 +1,3 @@
-import chalk from 'chalk';
 import { EdgeRecord, NodeRecord } from '../../lib/db';
 import { formatId, getEdgePrefix } from '../shared/utils';
 import { colorize, makeHeaderColor, useColors } from './colors';
@@ -31,12 +30,12 @@ export type EdgeSuggestionsTableOptions = {
 /**
  * Format edge suggestions as a colorful table
  *
- * Uses Forest color themes for score components:
- * - ag (aggregate): Amber/bark brown
- * - em (embedding): Forest green
- * - tk (token): Moss/lime green
- * - ti (title): Autumn gold/yellow
- * - tg (tag): Clay red/rust
+ * Uses the active color scheme for score components:
+ * - ag (aggregate): main role
+ * - em (embedding): accent role
+ * - tk (token): highlight role
+ * - ti (title): emphasis role
+ * - tg (tag): warning role
  *
  * @param suggestions Array of edge suggestions with node data
  * @param options Formatting options
@@ -89,14 +88,14 @@ function formatEdgeSuggestionsHeader(): string {
 function formatEdgeSuggestionsColumnHeader(): string {
   return (
     '◌ ' +
-    chalk.grey('ref') + ' ' +
-    makeHeaderColor(35)('ag') + ' ' +
-    makeHeaderColor(120)('em') + ' ' +
-    makeHeaderColor(100)('tk') + ' ' +
-    makeHeaderColor(45)('ti') + ' ' +
-    makeHeaderColor(10)('tg') + '                                   ' +
+    colorize.label('ref') + ' ' +
+    makeHeaderColor('main')('ag') + ' ' +
+    makeHeaderColor('accent')('em') + ' ' +
+    makeHeaderColor('highlight')('tk') + ' ' +
+    makeHeaderColor('emphasis')('ti') + ' ' +
+    makeHeaderColor('warning')('tg') + '                                   ' +
     colorize.nodeA('nodeA') +
-    chalk.grey('::') +
+    colorize.grey('::') +
     colorize.nodeB('nodeB')
   );
 }
