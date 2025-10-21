@@ -14,6 +14,7 @@ import {
 import { linkAgainstExisting } from '../shared/linking';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { colorize } from '../formatters';
 
 type ClercModule = typeof import('clerc');
 
@@ -215,19 +216,20 @@ function emitTextSummary(
   summary: { accepted: number; suggested: number },
   autoLinked: boolean,
 ) {
-  console.log(`✔ Captured idea: ${node.title}`);
-  console.log(`   id: ${node.id}`);
+  console.log(`${colorize.success('✔')} Captured idea: ${node.title}`);
+  console.log(`   ${colorize.label('id:')} ${colorize.nodeId(node.id.slice(0, 8))}`);
   if (tags.length > 0) {
-    console.log(`   tags: ${tags.join(', ')}`);
+    const coloredTags = tags.map(tag => colorize.tag(tag)).join(', ');
+    console.log(`   ${colorize.label('tags:')} ${coloredTags}`);
   }
   if (autoLinked) {
     console.log(
-      `   links: ${summary.accepted} accepted, ${summary.suggested} pending (thresholds auto=${getAutoAcceptThreshold().toFixed(
+      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} accepted, ${colorize.aggregateScore(summary.suggested / 10)} pending (thresholds auto=${getAutoAcceptThreshold().toFixed(
         3,
       )}, suggest=${getSuggestionThreshold().toFixed(3)})`,
     );
   } else {
-    console.log('   links: auto-linking skipped (--no-auto-link)');
+    console.log(`   ${colorize.label('links:')} auto-linking skipped (--no-auto-link)`);
   }
 }
 

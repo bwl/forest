@@ -24,6 +24,7 @@ import {
   parseDate,
   resolveByIdPrefix,
 } from './utils';
+import { colorize } from '../formatters';
 
 export type SelectionResult = { selected: SearchMatch; matches: SearchMatch[]; limit: number };
 
@@ -331,12 +332,15 @@ export async function printExplore(options: ExploreRenderOptions) {
         options.longIds ? id : formatNodeIdProgressive(id, allNodes);
 
       console.log('');
-      console.log('suggested edges:');
+      console.log(`${colorize.label('suggested edges:')}`);
       for (const suggestion of suggestionData) {
         const [sa, sb] = suggestion.id.split('::');
         const code = sa && sb ? getEdgePrefix(sa, sb, allEdges) : '????';
+        const coloredScore = colorize.aggregateScore(suggestion.score);
+        const coloredCode = colorize.edgeCode(code);
+        const coloredId = colorize.nodeId(formatNodeId(suggestion.otherId));
         console.log(
-          `  ${formatScore(suggestion.score)}  [${code}] ${formatNodeId(suggestion.otherId)}  ${suggestion.otherTitle}`,
+          `  ${coloredScore}  [${coloredCode}] ${coloredId}  ${suggestion.otherTitle}`,
         );
       }
     }
@@ -353,23 +357,26 @@ export async function printNodeOverview(
   const formatNodeId = (id: string) =>
     options.longIds ? id : formatNodeIdProgressive(id, allNodes);
 
-  console.log(`${formatNodeId(node.id)} ${node.title}`);
+  console.log(`${colorize.nodeId(formatNodeId(node.id))} ${node.title}`);
   if (node.tags.length > 0) {
-    console.log(`tags: ${node.tags.join(', ')}`);
+    const tagLabels = node.tags.map(tag => colorize.tag(tag)).join(', ');
+    console.log(`${colorize.label('tags:')} ${tagLabels}`);
   }
-  console.log(`created: ${node.createdAt}`);
-  console.log(`updated: ${node.updatedAt}`);
+  console.log(`${colorize.label('created:')} ${node.createdAt}`);
+  console.log(`${colorize.label('updated:')} ${node.updatedAt}`);
   console.log('');
 
   if (directEdges.length > 0) {
-    console.log('accepted edges:');
+    console.log(`${colorize.label('accepted edges:')}`);
     for (const edge of directEdges) {
+      const coloredScore = colorize.embeddingScore(edge.score);
+      const coloredId = colorize.nodeId(formatNodeId(edge.otherId));
       console.log(
-        `  ${formatScore(edge.score)}  ${formatNodeId(edge.otherId)}  ${edge.otherTitle}`,
+        `  ${coloredScore}  ${coloredId}  ${edge.otherTitle}`,
       );
     }
   } else {
-    console.log('accepted edges: none');
+    console.log(`${colorize.label('accepted edges:')} none`);
   }
 }
 
@@ -389,9 +396,13 @@ async function printMatches(
   const limit = Math.min(matches.length, options.limit ?? DEFAULT_MATCH_DISPLAY_LIMIT);
   for (let index = 0; index < limit; index += 1) {
     const entry = matches[index];
-    const tags = entry.node.tags.length > 0 ? ` [${entry.node.tags.join(', ')}]` : '';
+    const coloredScore = colorize.embeddingScore(entry.score);
+    const coloredId = colorize.nodeId(formatNodeId(entry.node.id));
+    const tags = entry.node.tags.length > 0
+      ? ` [${entry.node.tags.map(tag => colorize.tag(tag)).join(', ')}]`
+      : '';
     console.log(
-      `${index + 1}. ${formatScore(entry.score)}  ${formatNodeId(entry.node.id)}  ${
+      `${index + 1}. ${coloredScore}  ${coloredId}  ${
         entry.node.title
       }${tags}`,
     );

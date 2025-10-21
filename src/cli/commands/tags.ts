@@ -3,6 +3,7 @@ import { listNodes, updateNodeIndexData } from '../../lib/db';
 import { handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { colorize } from '../formatters';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -223,8 +224,13 @@ async function runTagsList(flags: TagsListFlags) {
     return;
   }
 
+  // Find max count for gradient calculation
+  const maxCount = items.length > 0 ? items[0][1] : 1;
+
   items.forEach(([tag, count]) => {
-    console.log(`${String(count).padStart(3, ' ')}  ${tag}`);
+    const coloredCount = colorize.count(count, maxCount);
+    const coloredTag = colorize.tag(tag);
+    console.log(`${String(count).padStart(3, ' ')} ${coloredCount}  ${coloredTag}`);
   });
 }
 
@@ -244,7 +250,7 @@ async function runTagsRename(oldTag: string | undefined, nextTag: string | undef
     changed += 1;
   }
 
-  console.log(`✔ Renamed tag '${oldTag}' to '${nextTag}' on ${changed} notes`);
+  console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${changed} notes`);
 }
 
 async function runTagsStats(flags: TagsStatsFlags) {

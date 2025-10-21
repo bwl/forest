@@ -189,4 +189,32 @@ export const colorize = {
    * Color grey text (for delimiters, secondary info)
    */
   grey: (text: string) => chalk.grey(text),
+
+  /**
+   * Color tag names with forest green
+   */
+  tag: (tagName: string) => chalk.hex('#4A7856')(tagName),
+
+  /**
+   * Color counts/numbers with amber gradient based on ratio to max
+   */
+  count: (value: number, max: number) => {
+    const ratio = max > 0 ? value / max : 0;
+    return colorizeScore(ratio, FOREST_THEMES.aggregate.hue);
+  },
+
+  /**
+   * Color success messages/checkmarks in forest green
+   */
+  success: (text: string) => chalk.hex('#2D5F3F')(text),
+
+  /**
+   * Color metadata labels in muted grey
+   */
+  label: (text: string) => chalk.hex('#6B7280')(text),
+
+  /**
+   * Color checkmarks and bullets in forest green
+   */
+  bullet: (symbol: string) => chalk.hex('#4A7856')(symbol),
 };
