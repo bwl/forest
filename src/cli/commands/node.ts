@@ -1,4 +1,4 @@
-import { NodeRecord, deleteNode, updateNode, listNodes } from '../../lib/db';
+import { NodeRecord, deleteNode, updateNode, listNodes, listEdges } from '../../lib/db';
 import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
@@ -18,7 +18,7 @@ import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
 import { createNodeCore } from '../../core/nodes';
 import { importDocumentCore } from '../../core/import';
-import { reconstructDocument } from '../../lib/reconstruction';
+import { reconstructDocument, filterOutChunks } from '../../lib/reconstruction';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -76,6 +76,15 @@ type NodeImportFlags = {
   noSequential?: boolean;
   noAutoLink?: boolean;
   json?: boolean;
+  tldr?: string;
+};
+
+type NodeRecentFlags = {
+  limit?: number;
+  json?: boolean;
+  created?: boolean;
+  updated?: boolean;
+  since?: string;
   tldr?: string;
 };
 
@@ -365,6 +374,53 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(importCommand);
 
+  const recentCommand = clerc.defineCommand(
+    {
+      name: 'node recent',
+      description: 'Show recent node activity (created/updated)',
+      flags: {
+        limit: {
+          type: Number,
+          description: 'Maximum number of activities to show',
+          default: 20,
+        },
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
+        },
+        created: {
+          type: Boolean,
+          description: 'Show only created activities',
+        },
+        updated: {
+          type: Boolean,
+          description: 'Show only updated activities',
+        },
+        since: {
+          type: String,
+          description: 'Show activities since duration (e.g., 24h, 7d, 4w, 1m, 1y)',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ flags }: { flags: NodeRecentFlags }) => {
+      try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['node.recent'], jsonMode);
+        }
+        await runNodeRecent(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(recentCommand);
+
   const baseCommand = clerc.defineCommand(
     {
       name: 'node',
@@ -376,6 +432,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           '  edit        Edit an existing note and optionally rescore links',
           '  delete      Delete a note and its edges',
           '  link        Manually create an edge between two notes',
+          '  recent      Show recent node activity (created/updated)',
           '  import      Import a large markdown document by chunking it',
           '  synthesize  Use GPT-5 to synthesize a new article from 2+ notes',
           '',
@@ -901,6 +958,126 @@ async function runNodeImport(flags: NodeImportFlags) {
   console.log(`  Sequential edges: ${result.linking.sequentialEdges}`);
   console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted, ${result.linking.semanticSuggested} suggested`);
   console.log('');
+}
+
+async function runNodeRecent(flags: NodeRecentFlags) {
+  const limit =
+    typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 20;
+
+  // Get all nodes and filter out chunks
+  const allNodes = await listNodes();
+  const nodes = filterOutChunks(allNodes);
+
+  // Get all accepted edges for counting
+  const acceptedEdges = await listEdges('accepted');
+
+  // Build edge count map
+  const edgeCountMap = new Map<string, number>();
+  for (const edge of acceptedEdges) {
+    edgeCountMap.set(edge.sourceId, (edgeCountMap.get(edge.sourceId) || 0) + 1);
+    edgeCountMap.set(edge.targetId, (edgeCountMap.get(edge.targetId) || 0) + 1);
+  }
+
+  // Build timeline: each node generates activity records
+  type Activity = {
+    type: 'created' | 'updated';
+    timestamp: string;
+    node: NodeRecord;
+  };
+
+  const activities: Activity[] = [];
+  for (const node of nodes) {
+    // Add created activity unless user specified --updated only
+    if (!flags.updated) {
+      activities.push({ type: 'created', timestamp: node.createdAt, node });
+    }
+
+    // Add updated activity if it's different from created, unless user specified --created only
+    if (!flags.created && node.createdAt !== node.updatedAt) {
+      activities.push({ type: 'updated', timestamp: node.updatedAt, node });
+    }
+  }
+
+  // Apply --since filter if provided
+  let filteredActivities = activities;
+  if (flags.since) {
+    const sinceMs = parseDuration(flags.since);
+    filteredActivities = activities.filter((activity) => {
+      const activityMs = new Date(activity.timestamp).getTime();
+      return activityMs >= sinceMs;
+    });
+  }
+
+  // Sort by timestamp descending (most recent first)
+  filteredActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  // Take limit
+  const recentActivities = filteredActivities.slice(0, limit);
+
+  if (recentActivities.length === 0) {
+    console.log('No recent node activity found.');
+    return;
+  }
+
+  // Emit JSON or table output
+  if (flags.json) {
+    console.log(
+      JSON.stringify(
+        recentActivities.map((activity) => ({
+          type: activity.type,
+          timestamp: activity.timestamp,
+          node: {
+            id: activity.node.id,
+            title: activity.node.title,
+            tags: activity.node.tags,
+            bodyPreview: activity.node.body.slice(0, 100),
+            edges: edgeCountMap.get(activity.node.id) || 0,
+          },
+        })),
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  // Table output
+  console.log(`\nRecent node activity (${recentActivities.length}):\n`);
+
+  for (const activity of recentActivities) {
+    const date = new Date(activity.timestamp).toISOString().replace('T', ' ').slice(0, 19);
+    const typeLabel = activity.type.padEnd(7);
+    const shortId = formatId(activity.node.id);
+    const title = activity.node.title.length > 40 ? activity.node.title.slice(0, 37) + '...' : activity.node.title;
+    const tagsStr = activity.node.tags.length > 0 ? `[${activity.node.tags.slice(0, 3).join(', ')}]` : '';
+    const bodyPreview = activity.node.body.replace(/\n/g, ' ').slice(0, 100);
+    const edgeCount = edgeCountMap.get(activity.node.id) || 0;
+    const edgesLabel = `${edgeCount} edge${edgeCount === 1 ? '' : 's'}`;
+
+    console.log(`${date}  ${typeLabel}  ${shortId}  ${title.padEnd(42)}  ${tagsStr}`);
+    console.log(`${' '.repeat(42)}${bodyPreview}  ${edgesLabel}`);
+    console.log('');
+  }
+}
+
+function parseDuration(duration: string): number {
+  const match = duration.match(/^(\d+)([hdwmy])$/);
+  if (!match) {
+    throw new Error(`Invalid duration format: "${duration}". Use format like: 24h, 7d, 4w, 1m, 1y`);
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2];
+
+  const msPerUnit: Record<string, number> = {
+    h: 3600000,        // 1 hour
+    d: 86400000,       // 1 day
+    w: 604800000,      // 1 week
+    m: 2592000000,     // 30 days
+    y: 31536000000,    // 365 days
+  };
+
+  return Date.now() - (value * msPerUnit[unit]);
 }
 
 function validateChunkStrategy(strategyFlag: string | undefined): 'headers' | 'size' | 'hybrid' {

@@ -151,6 +151,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'node.edit',
       'node.delete',
       'node.link',
+      'node.recent',
       'node.import',
       'node.synthesize',
       'node',
@@ -435,6 +436,29 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest node link abc123 def456 --suggest --explain',
     ],
     related: ['edges.accept', 'edges.explain', 'node.read'],
+  },
+
+  'node.recent': {
+    cmd: 'node.recent',
+    purpose: 'Show recent node activity (created/updated)',
+    inputs: ['none'],
+    outputs: ['timeline of node activity with timestamps,tags,body previews,edge counts'],
+    sideEffects: 'none (read-only)',
+    flags: [
+      { name: 'limit', type: 'INT', default: 20, desc: 'max activities to show' },
+      { name: 'json', type: 'BOOL', default: false, desc: 'emit JSON output' },
+      { name: 'created', type: 'BOOL', default: false, desc: 'show only created activities' },
+      { name: 'updated', type: 'BOOL', default: false, desc: 'show only updated activities' },
+      { name: 'since', type: 'STR', desc: 'show activities since duration (e.g. 24h, 7d)' },
+    ],
+    examples: [
+      'forest node recent',
+      'forest node recent --limit 10',
+      'forest node recent --since 24h',
+      'forest node recent --created',
+      'forest node recent --json',
+    ],
+    related: ['node.read', 'explore', 'capture'],
   },
 
   node: {
