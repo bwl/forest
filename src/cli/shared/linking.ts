@@ -27,6 +27,7 @@ export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRec
       targetId,
       score,
       status,
+      edgeType: 'semantic',
       metadata: {
         components,
       },
@@ -60,6 +61,7 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
       targetId,
       score,
       status,
+      edgeType: 'semantic',
       metadata: { components },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

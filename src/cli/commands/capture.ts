@@ -130,6 +130,9 @@ async function runCapture(flags: CaptureFlags) {
     embedding,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    isChunk: false,
+    parentDocumentId: null,
+    chunkOrder: null,
   };
 
   const existingNodes = await listNodes();

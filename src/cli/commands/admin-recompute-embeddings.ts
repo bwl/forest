@@ -90,6 +90,7 @@ async function runAdminRecomputeEmbeddings(flags: AdminRecomputeEmbeddingsFlags)
         targetId,
         score,
         status: status as EdgeStatus,
+        edgeType: 'semantic',
         metadata: { components },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

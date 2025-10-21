@@ -11,9 +11,14 @@ export type NodeRecord = {
   embedding?: number[];
   createdAt: string;
   updatedAt: string;
+  // Document chunking metadata
+  isChunk: boolean;
+  parentDocumentId: string | null;
+  chunkOrder: number | null;
 };
 
 export type EdgeStatus = 'accepted' | 'suggested';
+export type EdgeType = 'semantic' | 'parent-child' | 'sequential' | 'manual';
 
 export type EdgeRecord = {
   id: string;
@@ -21,6 +26,7 @@ export type EdgeRecord = {
   targetId: string;
   score: number;
   status: EdgeStatus;
+  edgeType: EdgeType;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown> | null;
@@ -119,12 +125,41 @@ function runMigrations(db: Database) {
     CREATE INDEX IF NOT EXISTS idx_edge_events_edge ON edge_events(edge_id);
   `);
 
-  // Add embedding column if missing (for existing databases)
+  // Add missing columns for existing databases (best-effort migrations)
   try {
     const res = db.exec(`PRAGMA table_info(nodes);`);
-    const hasEmbedding = res.length > 0 && res[0].values.some((row) => String(row[1]) === 'embedding');
-    if (!hasEmbedding) {
+    const columns = res.length > 0 ? res[0].values.map((row) => String(row[1])) : [];
+
+    // Add embedding column if missing
+    if (!columns.includes('embedding')) {
       db.exec(`ALTER TABLE nodes ADD COLUMN embedding TEXT;`);
+      dirty = true;
+    }
+
+    // Add document chunking columns if missing
+    if (!columns.includes('is_chunk')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN is_chunk INTEGER NOT NULL DEFAULT 0;`);
+      dirty = true;
+    }
+    if (!columns.includes('parent_document_id')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN parent_document_id TEXT;`);
+      dirty = true;
+    }
+    if (!columns.includes('chunk_order')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN chunk_order INTEGER;`);
+      dirty = true;
+    }
+  } catch (_) {
+    // Best-effort; ignore if pragma not supported in this context
+  }
+
+  // Add edge_type column to edges table if missing
+  try {
+    const res = db.exec(`PRAGMA table_info(edges);`);
+    const columns = res.length > 0 ? res[0].values.map((row) => String(row[1])) : [];
+
+    if (!columns.includes('edge_type')) {
+      db.exec(`ALTER TABLE edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'semantic';`);
       dirty = true;
     }
   } catch (_) {
@@ -137,11 +172,43 @@ async function markDirtyAndPersist() {
   await persist();
 }
 
+// Helper function to parse node row from database
+function parseNodeRow(row: any): NodeRecord {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    body: String(row.body),
+    tags: JSON.parse(String(row.tags)),
+    tokenCounts: JSON.parse(String(row.token_counts)),
+    embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    isChunk: Number(row.is_chunk || 0) === 1,
+    parentDocumentId: row.parent_document_id ? String(row.parent_document_id) : null,
+    chunkOrder: row.chunk_order ? Number(row.chunk_order) : null,
+  };
+}
+
+// Helper function to parse edge row from database
+function parseEdgeRow(row: any): EdgeRecord {
+  return {
+    id: String(row.id),
+    sourceId: String(row.source_id),
+    targetId: String(row.target_id),
+    score: Number(row.score),
+    status: row.status as EdgeStatus,
+    edgeType: (row.edge_type as EdgeType) || 'semantic',
+    metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
 export async function insertNode(record: NodeRecord): Promise<void> {
   const db = await ensureDatabase();
   const stmt = db.prepare(
-    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at)
-     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt)`
+    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at, is_chunk, parent_document_id, chunk_order)
+     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder)`
   );
   stmt.bind({
     ':id': record.id,
@@ -152,6 +219,9 @@ export async function insertNode(record: NodeRecord): Promise<void> {
     ':embedding': record.embedding ? JSON.stringify(record.embedding) : null,
     ':createdAt': record.createdAt,
     ':updatedAt': record.updatedAt,
+    ':isChunk': record.isChunk ? 1 : 0,
+    ':parentDocumentId': record.parentDocumentId,
+    ':chunkOrder': record.chunkOrder,
   });
   stmt.step();
   stmt.free();
@@ -236,17 +306,7 @@ export async function listNodes(): Promise<NodeRecord[]> {
   const stmt = db.prepare('SELECT * FROM nodes');
   const nodes: NodeRecord[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    nodes.push({
-      id: String(row.id),
-      title: String(row.title),
-      body: String(row.body),
-      tags: JSON.parse(String(row.tags)),
-      tokenCounts: JSON.parse(String(row.token_counts)),
-      embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    });
+    nodes.push(parseNodeRow(stmt.getAsObject()));
   }
   stmt.free();
   return nodes;
@@ -258,21 +318,7 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
   // Try exact match first (fast path)
   let stmt = db.prepare('SELECT * FROM nodes WHERE id = :id LIMIT 1');
   stmt.bind({ ':id': id });
-  let node = stmt.step()
-    ? (() => {
-        const row = stmt.getAsObject();
-        return {
-          id: String(row.id),
-          title: String(row.title),
-          body: String(row.body),
-          tags: JSON.parse(String(row.tags)),
-          tokenCounts: JSON.parse(String(row.token_counts)),
-          embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
-          createdAt: String(row.created_at),
-          updatedAt: String(row.updated_at),
-        } satisfies NodeRecord;
-      })()
-    : null;
+  let node = stmt.step() ? parseNodeRow(stmt.getAsObject()) : null;
   stmt.free();
 
   if (node) return node;
@@ -288,17 +334,7 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
 
   const matches: NodeRecord[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    matches.push({
-      id: String(row.id),
-      title: String(row.title),
-      body: String(row.body),
-      tags: JSON.parse(String(row.tags)),
-      tokenCounts: JSON.parse(String(row.token_counts)),
-      embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    } satisfies NodeRecord);
+    matches.push(parseNodeRow(stmt.getAsObject()));
   }
   stmt.free();
 
@@ -313,21 +349,7 @@ export async function findNodeByTitle(title: string): Promise<NodeRecord | null>
   const db = await ensureDatabase();
   const stmt = db.prepare('SELECT * FROM nodes WHERE lower(title) = lower(:title) LIMIT 1');
   stmt.bind({ ':title': title });
-  const node = stmt.step()
-    ? (() => {
-        const row = stmt.getAsObject();
-        return {
-          id: String(row.id),
-          title: String(row.title),
-          body: String(row.body),
-          tags: JSON.parse(String(row.tags)),
-          tokenCounts: JSON.parse(String(row.token_counts)),
-          embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
-          createdAt: String(row.created_at),
-          updatedAt: String(row.updated_at),
-        } satisfies NodeRecord;
-      })()
-    : null;
+  const node = stmt.step() ? parseNodeRow(stmt.getAsObject()) : null;
   stmt.free();
   return node;
 }
@@ -373,12 +395,13 @@ export async function searchNodes(term: string, limit = 25): Promise<SearchMatch
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   const db = await ensureDatabase();
   const stmt = db.prepare(
-    `INSERT INTO edges (id, source_id, target_id, score, status, metadata, created_at, updated_at)
-     VALUES (:id, :sourceId, :targetId, :score, :status, :metadata, :createdAt, :updatedAt)
+    `INSERT INTO edges (id, source_id, target_id, score, status, edge_type, metadata, created_at, updated_at)
+     VALUES (:id, :sourceId, :targetId, :score, :status, :edgeType, :metadata, :createdAt, :updatedAt)
      ON CONFLICT(source_id, target_id)
      DO UPDATE SET
        score = excluded.score,
        status = excluded.status,
+       edge_type = excluded.edge_type,
        metadata = excluded.metadata,
        updated_at = excluded.updated_at`
   );
@@ -388,6 +411,7 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
     ':targetId': record.targetId,
     ':score': record.score,
     ':status': record.status,
+    ':edgeType': record.edgeType,
     ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
     ':createdAt': record.createdAt,
     ':updatedAt': record.updatedAt,
@@ -406,17 +430,7 @@ export async function listEdges(status: EdgeStatus | 'all' = 'all'): Promise<Edg
   }
   const edges: EdgeRecord[] = [];
   while (stmt.step()) {
-    const row = stmt.getAsObject();
-    edges.push({
-      id: String(row.id),
-      sourceId: String(row.source_id),
-      targetId: String(row.target_id),
-      score: Number(row.score),
-      status: row.status as EdgeStatus,
-      metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    });
+    edges.push(parseEdgeRow(stmt.getAsObject()));
   }
   stmt.free();
   return edges;

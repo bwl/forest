@@ -106,6 +106,7 @@ export async function createEdgeCore(data: CreateEdgeData): Promise<CreateEdgeRe
     targetId,
     score,
     status: 'accepted',
+    edgeType: 'manual',
     metadata: null,
     createdAt: now,
     updatedAt: now,

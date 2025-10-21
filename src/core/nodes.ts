@@ -276,6 +276,9 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
     embedding: undefined,
     createdAt: now,
     updatedAt: now,
+    isChunk: false,
+    parentDocumentId: null,
+    chunkOrder: null,
   };
 
   // Compute embedding
