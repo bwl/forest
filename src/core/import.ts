@@ -13,6 +13,7 @@ import {
   EdgeRecord,
   DocumentRecord,
   DocumentChunkRecord,
+  DocumentMetadata,
   upsertDocument,
   replaceDocumentChunks,
 } from '../lib/db';
@@ -154,7 +155,7 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
 
   // Register canonical document + segment mappings
   const canonicalBody = chunkNodes.map((entry) => entry.node.body.replace(/\r\n/g, '\n')).join('\n\n');
-  const documentMetadata: Record<string, unknown> = {
+  const documentMetadata: DocumentMetadata = {
     chunkStrategy,
     maxTokens,
     overlap,

@@ -8,6 +8,7 @@ import { nodesRoutes } from './routes/nodes';
 import { tagsRoutes } from './routes/tags';
 import { edgesRoutes } from './routes/edges';
 import { searchRoutes } from './routes/search';
+import { documentsRoutes } from './routes/documents';
 import { websocketRoute } from './routes/websocket';
 
 const DEFAULT_PORT = 3000;
@@ -30,6 +31,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
           tags: [
             { name: 'System', description: 'Health and statistics endpoints' },
             { name: 'Nodes', description: 'Node CRUD operations' },
+            { name: 'Documents', description: 'Canonical document operations' },
             { name: 'Edges', description: 'Edge management' },
             { name: 'Tags', description: 'Tag operations' },
             { name: 'Search', description: 'Semantic search operations' },
@@ -45,6 +47,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     .use(healthRoutes)
     .use(statsRoutes)
     .use(nodesRoutes)
+    .use(documentsRoutes)
     .use(edgesRoutes)
     .use(tagsRoutes)
     .use(searchRoutes)

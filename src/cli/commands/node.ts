@@ -12,6 +12,7 @@ import {
   listEdges,
   DocumentRecord,
   DocumentChunkRecord,
+  DocumentMetadata,
   upsertDocument,
   replaceDocumentChunks,
   updateNodeChunkOrder,
@@ -729,6 +730,15 @@ async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags
     updatedAt,
   };
 
+  // Persist updated node to database
+  await updateNode(node.id, {
+    title: nextTitle,
+    body: nextBody,
+    tags,
+    tokenCounts,
+    embedding,
+  });
+
   let accepted = 0;
   let suggested = 0;
   if (autoLink) {
@@ -1174,7 +1184,7 @@ async function applyDocumentChunkUpdates(
   if (changedSegmentIds.size === 0 && canonicalBody === session.document.body) {
     return { updatedDocument: session.document, changedSegmentIds };
   }
-  const updatedMetadata: Record<string, unknown> = {
+  const updatedMetadata: DocumentMetadata = {
     ...(session.document.metadata ?? {}),
     lastEditedAt: updatedAt,
     lastEditedNodeId: editedNodeId,
@@ -1313,7 +1323,7 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
     }
 
     const now = new Date().toISOString();
-    const updatedMetadata: Record<string, unknown> = {
+    const updatedMetadata: DocumentMetadata = {
       ...(session.document.metadata ?? {}),
       lastEditedAt: now,
       lastEditedNodeId: node.id,

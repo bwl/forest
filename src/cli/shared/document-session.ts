@@ -1,10 +1,15 @@
-import { NodeRecord, DocumentRecord, DocumentChunkRecord } from '../../lib/db';
-import {
-  getDocumentByRootNode,
-  getDocumentChunks,
-  getDocumentForNode,
-  getNodeById,
-} from '../../lib/db';
+import type { NodeRecord, DocumentRecord, DocumentChunkRecord } from '../../lib/db';
+
+type DbModule = typeof import('../../lib/db');
+
+let dbModulePromise: Promise<DbModule> | null = null;
+
+async function getDbModule(): Promise<DbModule> {
+  if (!dbModulePromise) {
+    dbModulePromise = import('../../lib/db');
+  }
+  return dbModulePromise;
+}
 
 export type LoadedDocumentSession = {
   document: DocumentRecord;
@@ -28,7 +33,7 @@ export type ParsedDocumentEdit = {
 
 type SegmentAttributes = {
   segmentId: string;
-  nodeId: string;
+  nodeId?: string;
   title?: string;
   [key: string]: string | undefined;
 };
@@ -44,7 +49,7 @@ function escapeAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
-function parseAttributes(raw: string, lineNumber: number): SegmentAttributes {
+function parseAttributeMap(raw: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const regex = /([a-zA-Z0-9_-]+)=("([^"]*?)"|([^\s]+))/g;
   let match: RegExpExecArray | null;
@@ -53,6 +58,11 @@ function parseAttributes(raw: string, lineNumber: number): SegmentAttributes {
     const value = match[3] ?? match[4] ?? '';
     attrs[key] = value;
   }
+  return attrs;
+}
+
+function parseSegmentStartAttributes(raw: string, lineNumber: number): SegmentAttributes & { nodeId: string } {
+  const attrs = parseAttributeMap(raw);
   if (!attrs.segment_id) {
     throw new Error(`Missing segment_id on segment start marker (line ${lineNumber})`);
   }
@@ -67,7 +77,20 @@ function parseAttributes(raw: string, lineNumber: number): SegmentAttributes {
   };
 }
 
+function parseSegmentEndAttributes(raw: string, lineNumber: number): SegmentAttributes {
+  const attrs = parseAttributeMap(raw);
+  if (!attrs.segment_id) {
+    throw new Error(`Missing segment_id on segment end marker (line ${lineNumber})`);
+  }
+  return {
+    segmentId: attrs.segment_id,
+    ...attrs,
+  };
+}
+
 export async function loadDocumentSessionForNode(node: NodeRecord): Promise<LoadedDocumentSession | null> {
+  const { getDocumentForNode, getDocumentByRootNode, getNodeById, getDocumentChunks } = await getDbModule();
+
   const direct = await getDocumentForNode(node.id);
   let document: DocumentRecord | null = null;
   let rootNode: NodeRecord | null = null;
@@ -189,7 +212,7 @@ export function parseDocumentEditorBuffer(session: LoadedDocumentSession, rawBuf
       throw new Error(`Expected segment start marker on line ${index + 1}.`);
     }
 
-    const attrs = parseAttributes(startMatch[1]!, index + 1);
+    const attrs = parseSegmentStartAttributes(startMatch[1]!, index + 1);
     index += 1;
 
     const segmentLines: string[] = [];
@@ -198,7 +221,7 @@ export function parseDocumentEditorBuffer(session: LoadedDocumentSession, rawBuf
       const innerLine = lines[index]!;
       const endMatch = innerLine.match(END_REGEX);
       if (endMatch) {
-        const endAttrs = parseAttributes(endMatch[1]!, index + 1);
+        const endAttrs = parseSegmentEndAttributes(endMatch[1]!, index + 1);
         if (endAttrs.segmentId !== attrs.segmentId) {
           throw new Error(
             `Segment end marker for segment_id=${endAttrs.segmentId} does not match start (expected ${attrs.segmentId}) on line ${index + 1}.`

@@ -33,11 +33,34 @@ export type EdgeRecord = {
   metadata: Record<string, unknown> | null;
 };
 
+export type DocumentMetadata = {
+  // Import settings
+  chunkStrategy?: 'headers' | 'size' | 'hybrid';
+  maxTokens?: number;
+  overlap?: number;
+  chunkCount?: number;
+  source?: 'import' | 'backfill';
+  autoLink?: boolean;
+  createParent?: boolean;
+  linkSequential?: boolean;
+
+  // Edit tracking
+  lastEditedAt?: string;
+  lastEditedNodeId?: string;
+
+  // Backfill tracking
+  backfill?: boolean;
+  chunkOrdersProvided?: boolean;
+
+  // Allow extensions
+  [key: string]: unknown;
+};
+
 export type DocumentRecord = {
   id: string;
   title: string;
   body: string;
-  metadata: Record<string, unknown> | null;
+  metadata: DocumentMetadata | null;
   version: number;
   rootNodeId: string | null;
   createdAt: string;
@@ -250,7 +273,10 @@ async function backfillCanonicalDocuments(db: Database) {
 
   if (docsToCreate.length === 0) return;
 
+  console.log(`Backfilling ${docsToCreate.length} canonical documents...`);
+
   let madeChanges = false;
+  let successCount = 0;
 
   for (const documentId of docsToCreate) {
     const chunkStmt = db.prepare(
@@ -375,10 +401,12 @@ async function backfillCanonicalDocuments(db: Database) {
     insertChunk.free();
 
     madeChanges = true;
+    successCount++;
   }
 
   if (madeChanges) {
     dirty = true;
+    console.log(`Successfully backfilled ${successCount}/${docsToCreate.length} canonical documents`);
   }
 }
 
