@@ -1,3 +1,8 @@
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { spawnSync } from 'child_process';
+
 import { NodeRecord, deleteNode, updateNode, listNodes, listEdges } from '../../lib/db';
 import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
@@ -20,6 +25,8 @@ import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } f
 import { createNodeCore } from '../../core/nodes';
 import { importDocumentCore } from '../../core/import';
 import { reconstructDocument, filterOutChunks } from '../../lib/reconstruction';
+import { loadConfig } from '../../lib/config';
+import { renderMarkdownToTerminal } from '../formatters';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -34,13 +41,21 @@ type NodeReadFlags = {
   tldr?: string;
 };
 
-type NodeEditFlags = {
+type NodeRefreshFlags = {
   title?: string;
   body?: string;
   file?: string;
   stdin?: boolean;
   tags?: string;
   autoLink?: boolean;
+  noAutoLink?: boolean;
+  tldr?: string;
+};
+
+type NodeEditFlags = {
+  editor?: string;
+  autoLink?: boolean;
+  noAutoLink?: boolean;
   tldr?: string;
 };
 
@@ -134,10 +149,10 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(readCommand);
 
-  const editCommand = clerc.defineCommand(
+  const refreshCommand = clerc.defineCommand(
     {
-      name: 'node edit',
-      description: 'Edit an existing note and optionally rescore links',
+      name: 'node refresh',
+      description: 'Update note fields from flags or files and optionally rescore links',
       parameters: ['[id]'],
       flags: {
         title: {
@@ -160,10 +175,43 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           type: String,
           description: 'Comma-separated list of tags to set (overrides auto-detected tags)',
         },
-        autoLink: {
+        noAutoLink: {
           type: Boolean,
-          description: 'Rescore/link against existing nodes',
-          default: true,
+          description: 'Skip rescoring edges after update',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeRefreshFlags }) => {
+      try {
+        // Handle TLDR request first
+        if (flags.tldr !== undefined) {
+          emitTldrAndExit(COMMAND_TLDR['node.refresh'], getVersion());
+        }
+        await runNodeRefresh(parameters.id, flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(refreshCommand);
+
+  const editCommand = clerc.defineCommand(
+    {
+      name: 'node edit',
+      description: 'Open a note in your editor for inline updates',
+      parameters: ['[id]'],
+      flags: {
+        editor: {
+          type: String,
+          description: 'Override editor command (defaults to $FOREST_EDITOR, $VISUAL, $EDITOR)',
+        },
+        noAutoLink: {
+          type: Boolean,
+          description: 'Skip rescoring edges after saving',
         },
         tldr: {
           type: String,
@@ -173,9 +221,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
     },
     async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeEditFlags }) => {
       try {
-        // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
           emitTldrAndExit(COMMAND_TLDR['node.edit'], getVersion());
         }
         await runNodeEdit(parameters.id, flags);
@@ -521,6 +567,12 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
     return;
   }
 
+  const config = loadConfig();
+  const markdownOptions = {
+    width: config.markdown?.width ?? 90,
+    reflowText: config.markdown?.reflowText ?? true,
+  };
+
   // Check if this node is part of a chunked document
   const reconstructed = await reconstructDocument(node);
 
@@ -595,7 +647,7 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
       console.log('');
       console.log(`[Document with ${reconstructed.metadata.totalChunks} chunks - automatically reconstructed]`);
       console.log('');
-      console.log(reconstructed.fullBody);
+      console.log(renderMarkdownToTerminal(reconstructed.fullBody, markdownOptions));
       console.log('');
       console.log('---');
       console.log(`Chunks: ${reconstructed.chunks.map((c) => formatId(c.id)).join(', ')}`);
@@ -607,12 +659,12 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
 
     if (!flags.meta) {
       console.log('');
-      console.log(node.body);
+      console.log(renderMarkdownToTerminal(node.body, markdownOptions));
     }
   }
 }
 
-async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
+async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
@@ -661,13 +713,117 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
     ({ accepted, suggested } = await rescoreNode(updatedNode));
   }
 
-  console.log(`✔ Updated note: ${nextTitle}`);
+  console.log(`✔ Refreshed note: ${nextTitle}`);
   console.log(`   id: ${node.id}`);
   if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
   if (autoLink) {
     console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
   } else {
     console.log('   links: rescoring skipped (--no-auto-link)');
+  }
+}
+
+async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
+  if (!idRef) {
+    console.error('✖ Missing required parameter "id".');
+    process.exitCode = 1;
+    return;
+  }
+
+  const node = await resolveNodeReference(String(idRef));
+  if (!node) {
+    console.error('✖ No node found. Provide a full id or unique short id.');
+    process.exitCode = 1;
+    return;
+  }
+
+  let editorCommand: EditorCommand;
+  try {
+    editorCommand = resolveEditorCommand(flags.editor);
+  } catch (error) {
+    console.error(`✖ ${(error as Error).message}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'forest-edit-'));
+  const filePath = path.join(tempDir, `${formatId(node.id)}.md`);
+  const initialBuffer = buildEditorDraft(node);
+  await fs.writeFile(filePath, initialBuffer, 'utf8');
+
+  let preserveTempDir = false;
+
+  try {
+    const result = spawnSync(editorCommand.command, [...editorCommand.args, filePath], {
+      stdio: 'inherit',
+    });
+
+    if (result.error) {
+      console.error(`✖ Failed to launch editor (${editorCommand.display}): ${(result.error as Error).message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    if (typeof result.status === 'number' && result.status !== 0) {
+      console.error(`✖ Editor exited with code ${result.status}. Aborting save.`);
+      process.exitCode = result.status;
+      return;
+    }
+
+    const editedBuffer = await fs.readFile(filePath, 'utf8');
+    let parsed: ParsedEditorDraft;
+    try {
+      parsed = parseEditorDraft(editedBuffer);
+    } catch (error) {
+      console.error(`✖ ${String((error as Error).message)}`);
+      console.error(`   Temporary file preserved at: ${filePath}`);
+      preserveTempDir = true;
+      process.exitCode = 1;
+      return;
+    }
+
+    const { title, tags: explicitTags, body } = parsed;
+    const combinedText = `${title}\n${body}`;
+    const tokenCounts = tokenize(combinedText);
+    const tags =
+      explicitTags.length > 0 ? explicitTags : extractTags(combinedText, tokenCounts);
+    const embedding = await computeEmbeddingForNode({ title, body });
+
+    await updateNode(node.id, {
+      title,
+      body,
+      tags,
+      tokenCounts,
+      embedding,
+    });
+
+    const autoLink = computeAutoLinkIntent(flags);
+    let accepted = 0;
+    let suggested = 0;
+    if (autoLink) {
+      const updatedNode: NodeRecord = {
+        ...node,
+        title,
+        body,
+        tags,
+        tokenCounts,
+        embedding,
+      };
+      ({ accepted, suggested } = await rescoreNode(updatedNode));
+    }
+
+    console.log(`✔ Saved note: ${title}`);
+    console.log(`   id: ${node.id}`);
+    if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
+    if (autoLink) {
+      console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+    } else {
+      console.log('   links: rescoring skipped (--no-auto-link)');
+    }
+  } finally {
+    if (!preserveTempDir) {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
 
@@ -772,9 +928,150 @@ function resolveTags(tagsOption: string | undefined, combinedText: string, token
   return extractTags(combinedText, tokenCounts);
 }
 
-function computeAutoLinkIntent(flags: NodeEditFlags) {
+function computeAutoLinkIntent(flags: { autoLink?: boolean; noAutoLink?: boolean }) {
+  if (typeof flags.noAutoLink === 'boolean') return !flags.noAutoLink;
   if (typeof flags.autoLink === 'boolean') return flags.autoLink;
   return true;
+}
+
+type EditorCommand = {
+  command: string;
+  args: string[];
+  display: string;
+};
+
+type ParsedEditorDraft = {
+  title: string;
+  tags: string[];
+  body: string;
+};
+
+function resolveEditorCommand(override?: string): EditorCommand {
+  const candidates = [
+    override,
+    process.env.FOREST_EDITOR,
+    process.env.VISUAL,
+    process.env.EDITOR,
+    process.platform === 'win32' ? 'notepad' : null,
+    process.platform === 'win32' ? null : 'nano',
+    process.platform === 'win32' ? null : 'vi',
+  ].filter((entry): entry is string => Boolean(entry && entry.trim().length > 0));
+
+  for (const candidate of candidates) {
+    const parts = splitEditorArgs(candidate);
+    if (parts.length === 0) continue;
+    return {
+      command: parts[0],
+      args: parts.slice(1),
+      display: candidate,
+    };
+  }
+
+  throw new Error('No editor configured. Set $FOREST_EDITOR/$VISUAL/$EDITOR or pass --editor.');
+}
+
+function splitEditorArgs(command: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let escapeNext = false;
+
+  for (let i = 0; i < command.length; i += 1) {
+    const char = command[i]!;
+
+    if (escapeNext) {
+      current += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === '\\' && quote !== "'") {
+      escapeNext = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        result.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (quote) {
+    // Unclosed quote -- treat remaining buffer as literal
+    if (current.length > 0) result.push(current);
+  } else if (current.length > 0) {
+    result.push(current);
+  }
+
+  return result;
+}
+
+function buildEditorDraft(node: NodeRecord): string {
+  const header = [
+    '# Forest Node Editor',
+    '# Edit Title and Tags below; lines starting with # are ignored.',
+    '# Leave Tags blank to auto-detect when saving.',
+    `Title: ${node.title}`,
+    `Tags: ${node.tags.join(', ')}`,
+    '',
+  ];
+  const body = node.body.replace(/\r\n/g, '\n');
+  const content = [...header, body].join('\n');
+  return content.endsWith('\n') ? content : `${content}\n`;
+}
+
+function parseEditorDraft(content: string): ParsedEditorDraft {
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const meaningful = lines.filter((line) => !line.startsWith('#'));
+
+  while (meaningful.length > 0 && meaningful[0]!.trim() === '') {
+    meaningful.shift();
+  }
+
+  const titleLine = meaningful.shift();
+  if (!titleLine || !titleLine.startsWith('Title:')) {
+    throw new Error('Updated file missing required "Title:" line.');
+  }
+  const title = titleLine.slice('Title:'.length).trim();
+
+  let tags: string[] = [];
+  if (meaningful.length > 0 && meaningful[0]!.startsWith('Tags:')) {
+    const tagLine = meaningful.shift()!;
+    const raw = tagLine.slice('Tags:'.length).trim();
+    if (raw.length > 0) {
+      tags = raw
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0);
+    }
+  }
+
+  if (meaningful.length > 0 && meaningful[0]!.trim() === '') {
+    meaningful.shift();
+  }
+
+  const body = meaningful.join('\n');
+  return { title, tags, body };
 }
 
 async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
@@ -813,7 +1110,9 @@ async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesiz
   }
 
   // Validate model and reasoning options
-  const model = validateModel(flags.model);
+  const config = loadConfig();
+  const defaultModel = config.synthesizeModel || 'gpt-5';
+  const model = validateModel(flags.model, defaultModel);
   const reasoning = validateReasoning(flags.reasoning);
   const verbosity = validateVerbosity(flags.verbosity);
 
@@ -1106,14 +1405,14 @@ function validateChunkStrategy(strategyFlag: string | undefined): 'headers' | 's
   return 'headers';
 }
 
-function validateModel(modelFlag: string | undefined): SynthesisModel {
-  if (!modelFlag) return 'gpt-5';
+function validateModel(modelFlag: string | undefined, defaultModel: SynthesisModel): SynthesisModel {
+  if (!modelFlag) return defaultModel;
   const normalized = modelFlag.toLowerCase();
   if (normalized === 'gpt-5' || normalized === 'gpt-5-mini') {
     return normalized as SynthesisModel;
   }
-  console.error(`⚠ Invalid model "${modelFlag}", using default: gpt-5`);
-  return 'gpt-5';
+  console.error(`⚠ Invalid model "${modelFlag}", using default: ${defaultModel}`);
+  return defaultModel;
 }
 
 function validateReasoning(reasoningFlag: string | undefined): ReasoningEffort {

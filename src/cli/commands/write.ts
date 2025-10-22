@@ -1,5 +1,6 @@
 import { writeArticleCore, WriteModel, WriteReasoningEffort, WriteVerbosity } from '../../core/write';
 import { createNodeCore } from '../../core/nodes';
+import { loadConfig } from '../../lib/config';
 import { formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
@@ -79,7 +80,10 @@ async function runWrite(topic: string | undefined, flags: WriteFlags) {
   }
 
   // Validate model and reasoning options
-  const model = validateModel(flags.model);
+  const config = loadConfig();
+  const defaultModel = config.writeModel || 'gpt-5';
+
+  const model = validateModel(flags.model, defaultModel);
   const reasoning = validateReasoning(flags.reasoning);
   const verbosity = validateVerbosity(flags.verbosity);
 
@@ -157,14 +161,14 @@ async function runWrite(topic: string | undefined, flags: WriteFlags) {
   console.log('');
 }
 
-function validateModel(modelFlag: string | undefined): WriteModel {
-  if (!modelFlag) return 'gpt-5';
+function validateModel(modelFlag: string | undefined, defaultModel: WriteModel): WriteModel {
+  if (!modelFlag) return defaultModel;
   const normalized = modelFlag.toLowerCase();
   if (normalized === 'gpt-5' || normalized === 'gpt-5-mini' || normalized === 'gpt-4o') {
     return normalized as WriteModel;
   }
-  console.error(`⚠ Invalid model "${modelFlag}", using default: gpt-5`);
-  return 'gpt-5';
+  console.error(`⚠ Invalid model "${modelFlag}", using default: ${defaultModel}`);
+  return defaultModel;
 }
 
 function validateReasoning(reasoningFlag: string | undefined): WriteReasoningEffort {

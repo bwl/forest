@@ -57,8 +57,7 @@ async function runServe(flags: ServeFlags) {
     console.error('');
     console.error('To start the Forest server:');
     console.error('  1. Install Bun: https://bun.sh');
-    console.error('  2. Run: bun run src/server/index.ts');
-    console.error('  Or use: npm run dev:server');
+    console.error('  2. Run: bun run dev:server');
     process.exit(1);
   }
 

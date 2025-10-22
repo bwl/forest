@@ -138,6 +138,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'version',
       'node.read',
       'node.edit',
+      'node.refresh',
       'node.delete',
       'node.link',
       'node.recent',
@@ -375,12 +376,30 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest node read abc123 --json',
       'forest node read abc123 --raw | glow',
     ],
-    rel: ['explore', 'node.edit', 'capture'],
+    rel: ['explore', 'node.edit', 'node.refresh', 'capture'],
   },
 
   'node.edit': {
     cmd: 'node.edit',
-    p: 'Edit an existing note and optionally rescore links',
+    p: 'Open an existing note in your editor and optionally rescore links',
+    in: ['args'],
+    out: ['updated_record', 'rescore_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'editor', t: 'str', desc: 'override editor command' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
+    ],
+    ex: [
+      'forest node edit abc123',
+      'forest node edit abc123 --editor "code --wait"',
+      'forest node edit abc123 --no-auto-link',
+    ],
+    rel: ['node.read', 'node.refresh', 'capture', 'edges.propose'],
+  },
+
+  'node.refresh': {
+    cmd: 'node.refresh',
+    p: 'Update fields from flags or files and rescore links',
     in: ['args', 'stdin', 'file'],
     out: ['updated_record', 'rescore_summary'],
     fx: 'db:write,compute:embedding',
@@ -393,9 +412,9 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
     ],
     ex: [
-      'forest node edit abc123 --title "New Title"',
-      'forest node edit abc123 --stdin < updated.md',
-      'forest node edit abc123 --tags focus,ops --no-auto-link',
+      'forest node refresh abc123 --title "New Title"',
+      'forest node refresh abc123 --stdin < updated.md',
+      'forest node refresh abc123 --tags focus,ops --no-auto-link',
     ],
     rel: ['node.read', 'capture', 'edges.propose'],
   },
@@ -466,7 +485,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'none',
     fl: [],
     ex: ['forest node'],
-    rel: ['node.read', 'node.edit', 'explore'],
+    rel: ['node.read', 'node.edit', 'node.refresh', 'explore'],
   },
 
   'edges.propose': {

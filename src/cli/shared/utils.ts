@@ -4,6 +4,9 @@ import path from 'path';
 import { getNodeById, listNodes, NodeRecord, EdgeRecord } from '../../lib/db';
 import { generateEdgeHash, buildPrefixMap, normalizeNodeId, findHashesByPrefix, buildNodePrefixMap } from '../../lib/progressive-id';
 
+// Cache prefix maps per edge list so callers can reuse them within a command invocation.
+const edgePrefixCache = new WeakMap<EdgeRecord[], Map<string, string>>();
+
 export const SHORT_ID_LENGTH = 8;
 export const MIN_NODE_ID_LENGTH = 4;
 export const DEFAULT_SEARCH_LIMIT = 6;
@@ -64,8 +67,18 @@ export function getEdgeHash(sourceId: string, targetId: string): string {
  */
 export function getEdgePrefix(sourceId: string, targetId: string, allEdges: EdgeRecord[]): string {
   const hash = generateEdgeHash(sourceId, targetId);
-  const allHashes = allEdges.map(e => generateEdgeHash(e.sourceId, e.targetId));
-  const prefixMap = buildPrefixMap(allHashes, 4);
+
+  if (allEdges.length === 0) {
+    return hash.slice(0, 4);
+  }
+
+  let prefixMap = edgePrefixCache.get(allEdges);
+  if (!prefixMap) {
+    const allHashes = allEdges.map(e => generateEdgeHash(e.sourceId, e.targetId));
+    prefixMap = buildPrefixMap(allHashes, 4);
+    edgePrefixCache.set(allEdges, prefixMap);
+  }
+
   return prefixMap.get(hash) ?? hash.slice(0, 4);
 }
 

@@ -8,6 +8,14 @@ import {
   type ColorSchemeName,
 } from './color-schemes';
 
+export type WriteModelName = 'gpt-5' | 'gpt-5-mini' | 'gpt-4o';
+export type SynthesizeModelName = 'gpt-5' | 'gpt-5-mini';
+
+export interface MarkdownOutputConfig {
+  width?: number;
+  reflowText?: boolean;
+}
+
 export interface ForestConfig {
   embedProvider?: 'local' | 'openai' | 'none';
   openaiApiKey?: string;
@@ -16,6 +24,9 @@ export interface ForestConfig {
   taggingMethod?: 'lexical' | 'llm' | 'none';
   llmTaggerModel?: 'gpt-5-nano' | 'gpt-4o-mini' | 'gpt-4o';
   colorScheme?: ColorSchemeName;
+  writeModel?: WriteModelName;
+  synthesizeModel?: SynthesizeModelName;
+  markdown?: MarkdownOutputConfig;
 }
 
 const CONFIG_FILE = path.join(os.homedir(), '.forestrc');
@@ -45,6 +56,13 @@ export function loadConfig(): ForestConfig {
     ? (process.env.FOREST_COLOR_SCHEME as ColorSchemeName)
     : undefined;
 
+  const writeModelFromFile = isWriteModelName((fileConfig as any).writeModel)
+    ? ((fileConfig as any).writeModel as WriteModelName)
+    : undefined;
+  const synthModelFromFile = isSynthesizeModelName((fileConfig as any).synthesizeModel)
+    ? ((fileConfig as any).synthesizeModel as SynthesizeModelName)
+    : undefined;
+
   const config: ForestConfig = {
     embedProvider: fileConfig.embedProvider || getEmbedProviderFromEnv(),
     openaiApiKey: fileConfig.openaiApiKey || process.env.OPENAI_API_KEY,
@@ -56,7 +74,25 @@ export function loadConfig(): ForestConfig {
     taggingMethod: fileConfig.taggingMethod || 'lexical', // Default to lexical (backward compat)
     llmTaggerModel: fileConfig.llmTaggerModel || 'gpt-5-nano',
     colorScheme: schemeFromFile || schemeFromEnv || DEFAULT_COLOR_SCHEME,
+    writeModel: writeModelFromFile || 'gpt-5',
+    synthesizeModel: synthModelFromFile || 'gpt-5',
+    markdown: normalizeMarkdownConfig((fileConfig as any).markdown),
   };
+
+  // Apply defaults for markdown output
+  if (!config.markdown) {
+    config.markdown = {
+      width: 90,
+      reflowText: true,
+    };
+  } else {
+    config.markdown.width =
+      typeof config.markdown.width === 'number' && Number.isFinite(config.markdown.width)
+        ? config.markdown.width
+        : 90;
+    config.markdown.reflowText =
+      typeof config.markdown.reflowText === 'boolean' ? config.markdown.reflowText : true;
+  }
 
   return config;
 }
@@ -84,4 +120,25 @@ function getEmbedProviderFromEnv(): ForestConfig['embedProvider'] {
  */
 export function getConfigPath(): string {
   return CONFIG_FILE;
+}
+
+function isWriteModelName(value: unknown): value is WriteModelName {
+  return value === 'gpt-5' || value === 'gpt-5-mini' || value === 'gpt-4o';
+}
+
+function isSynthesizeModelName(value: unknown): value is SynthesizeModelName {
+  return value === 'gpt-5' || value === 'gpt-5-mini';
+}
+
+function normalizeMarkdownConfig(raw: unknown): MarkdownOutputConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = raw as Record<string, unknown>;
+  const width =
+    typeof input.width === 'number' && Number.isFinite(input.width) ? Math.max(20, input.width) : undefined;
+  const reflowText =
+    typeof input.reflowText === 'boolean' ? input.reflowText : undefined;
+  const normalized: MarkdownOutputConfig = {};
+  if (width !== undefined) normalized.width = width;
+  if (reflowText !== undefined) normalized.reflowText = reflowText;
+  return normalized;
 }

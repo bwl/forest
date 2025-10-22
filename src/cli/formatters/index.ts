@@ -43,3 +43,7 @@ export {
 
 // Re-export types
 export type { EdgeSuggestion, EdgeSuggestionsTableOptions } from './edges';
+
+// Markdown utilities
+export { renderMarkdownToTerminal } from './markdown';
+export type { MarkdownRenderOptions } from './markdown';

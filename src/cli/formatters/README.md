@@ -123,7 +123,7 @@ Add to `package.json`:
 }
 ```
 
-Then run: `npm install`
+Then run: `bun install`
 
 ## Status
 

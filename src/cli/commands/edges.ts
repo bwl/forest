@@ -391,6 +391,11 @@ async function runEdgesList(flags: EdgesListFlags) {
 async function runEdgesPropose(flags: EdgesProposeFlags) {
   const limit =
     typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
+
+  if (!flags.json) {
+    console.log('Fetching edge suggestions…');
+  }
+
   const edges = (await listEdges('suggested')).sort((a, b) => b.score - a.score).slice(0, limit);
 
   if (edges.length === 0) {
