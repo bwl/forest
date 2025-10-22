@@ -1344,7 +1344,8 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
     for (const { segment, content, newOrder } of contentChanges) {
       const combinedText = `${segment.node.title}\n${content}`;
       const tokenCounts = tokenize(combinedText);
-      const tags = extractTags(combinedText, tokenCounts);
+      // Preserve existing tags - only auto-extract if node had no tags
+      const tags = segment.node.tags.length > 0 ? segment.node.tags : extractTags(combinedText, tokenCounts);
       const embedding = await computeEmbeddingForNode({ title: segment.node.title, body: content });
 
       await updateNode(segment.node.id, {
