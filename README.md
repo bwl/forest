@@ -5,8 +5,8 @@ A graph-native knowledge base that captures ideas and automatically links them u
 ## Quick Start
 
 ```bash
-npm install
-npm run build
+bun install
+bun run build
 
 # Capture ideas from different sources
 forest capture --stdin < idea.txt
@@ -78,10 +78,16 @@ forest node read abc12345 --raw | glow  # Pipe to markdown viewer
 forest node read abc12345 --json
 ```
 
-**Edit** existing notes:
+**Edit** existing notes with your editor:
 ```bash
-forest node edit abc12345 --title "New title"
-forest node edit abc12345 --stdin < updated.md
+forest node edit abc12345
+forest node edit abc12345 --editor "code --wait"
+```
+
+**Refresh** notes from flags or files:
+```bash
+forest node refresh abc12345 --title "New title"
+forest node refresh abc12345 --stdin < updated.md
 ```
 
 **Synthesize** combines multiple notes into new perspectives:
@@ -397,15 +403,15 @@ TLDR v0.2 provides condensed command metadata optimized for LLM consumption (60%
 
 ```bash
 # Build from source
-npm run build
+bun run build
 
 # Type checking
-npm run lint
+bun run lint
 
 # Run from source
-npm run dev -- capture --stdin
+bun run dev -- capture --stdin
 
-# Start API server (requires Bun)
+# Start API server
 bun run dev:server
 ```
 

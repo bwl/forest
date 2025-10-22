@@ -6,11 +6,11 @@
     "forest": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "lint": "tsc --noEmit",
-    "dev": "ts-node src/index.ts",
-    "dev:server": "bun run src/server/index.ts",
-    "start": "node dist/index.js"
+    "build": "bunx tsc",
+    "lint": "bunx tsc --noEmit",
+    "dev": "bunx tsx src/index.ts",
+    "dev:server": "bunx tsx src/server/index.ts",
+    "start": "bun run dist/index.js"
   },
   "keywords": [
     "graph",
@@ -29,9 +29,12 @@
     "clerc": "^0.44.0",
     "elysia": "^1.1.22",
     "graphology": "^0.25.1",
+    "marked": "^16.4.1",
+    "marked-terminal": "^7.3.0",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^20.11.20",
     "@types/sql.js": "^1.4.9",
     "ts-node": "^10.9.2",

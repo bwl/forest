@@ -176,6 +176,7 @@ All commands that accept node refs now support all patterns:
 
 - **`forest node read [ref]`** - Works with `@`, `#tag`, `"title"`, UUID prefix
 - **`forest node edit [ref]`** - Same
+- **`forest node refresh [ref]`** - Same
 - **`forest node delete [ref]`** - Same
 - **`forest node link [ref1] [ref2]`** - Both refs support all patterns
 
@@ -195,7 +196,7 @@ forest node read @<TAB>    # Suggests @, @1, @2, @3, @4, @5
 fpath=(path/to/forest/completions $fpath)
 autoload -Uz compinit && compinit
 
-forest node <TAB>          # Shows: read, edit, delete, link, recent, ...
+forest node <TAB>          # Shows: read, edit, refresh, delete, link, recent, ...
 ```
 
 ## Documentation

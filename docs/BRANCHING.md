@@ -54,8 +54,8 @@ Forest uses a minimal **master + next** branching strategy.
    ```bash
    git checkout next
    # Run tests, verify everything works
-   npm run build
-   npm run lint
+   bun run build
+   bun run lint
    ```
 
 2. **Merge next to master:**
@@ -67,7 +67,7 @@ Forest uses a minimal **master + next** branching strategy.
 3. **Bump version:**
    ```bash
    # Update package.json and src/cli/commands/version.ts
-   npm run build
+   bun run build
    git add package.json src/cli/commands/version.ts
    git commit -m "Bump version to X.Y.Z"
    ```
@@ -127,7 +127,7 @@ git checkout next
 git checkout master
 git merge next
 # Update version files
-npm run build
+bun run build
 git add package.json src/cli/commands/version.ts
 git commit -m "Bump version to 0.3.0"
 git tag -a v0.3.0 -m "Release v0.3.0"

@@ -86,15 +86,15 @@ cd tldr-agent-spec
 ## Development Commands
 
 ```bash
-npm install          # Install dependencies
-npm run build        # Compile TypeScript to dist/
-npm run lint         # Type-check without emitting files
-npm run dev          # Run from source with ts-node
+bun install          # Install dependencies
+bun run build        # Compile TypeScript to dist/
+bun run lint         # Type-check without emitting files
+bun run dev          # Run from source with ts-node
 
 # Testing the CLI during development
-npm run dev -- capture --stdin < test.txt
-npm run dev -- health
-npm run dev -- stats
+bun run dev -- capture --stdin < test.txt
+bun run dev -- health
+bun run dev -- stats
 
 # Running the API server
 bun run dev:server                    # Start on default port 3000 (dual-stack IPv4/IPv6)
