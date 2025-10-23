@@ -1,6 +1,6 @@
 {
   "name": "forest-cli",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Ingest unstructured ideas into a graph-first knowledge base.",
   "bin": {
     "forest": "dist/index.js"
