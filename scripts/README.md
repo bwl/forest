@@ -210,6 +210,66 @@ RELATED: explore,edges.propose,node.read
 SCHEMA_JSON: emits {"node":{"id":STR,...},...}
 ```
 
+---
+
+## Environment Validation
+
+### `forest-preflight.js` - Environment Check
+
+**Purpose**: Comprehensive environment validation before setting up Forest
+
+**Usage**:
+```bash
+# Basic check (local SQLite)
+node scripts/forest-preflight.js
+
+# Check remote database connectivity
+node scripts/forest-preflight.js --remote
+
+# Verbose output (show all checks)
+node scripts/forest-preflight.js --verbose
+```
+
+**What it checks**:
+- Core dependencies (Node.js, npm/Bun, Git)
+- Filesystem permissions and disk space
+- SQLite support (sql.js)
+- Environment variables (FOREST_*)
+- Remote PostgreSQL connectivity (optional)
+- OpenAI API key (if configured)
+
+**When to use**:
+- First time setting up Forest
+- Onboarding new team members
+- Troubleshooting environment issues
+- Before deploying to new environment
+- In CI/CD pipelines
+
+**Documentation**: See [PREFLIGHT_CHECK.md](../docs/PREFLIGHT_CHECK.md) for detailed guide
+
+**Example output**:
+```
+Forest Environment Preflight Check
+
+━━━ Core Dependencies ━━━
+
+✓ Node.js Version
+  Found Node.js 18.17.0
+
+✓ Bun
+  Found Bun 1.0.14
+
+━━━ Summary ━━━
+
+✓ Passed:  6
+✗ Failed:  0
+⚠ Warnings: 0
+
+✓ Environment is ready for Forest!
+```
+
+---
+
 ## License
 
 These scripts are part of the Forest project.
