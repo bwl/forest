@@ -1,6 +1,7 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 export type NodeRecord = {
   id: string;
@@ -30,6 +31,57 @@ export type EdgeRecord = {
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown> | null;
+};
+
+export type DocumentMetadata = {
+  // Import settings
+  chunkStrategy?: 'headers' | 'size' | 'hybrid';
+  maxTokens?: number;
+  overlap?: number;
+  chunkCount?: number;
+  source?: 'import' | 'backfill';
+  autoLink?: boolean;
+  createParent?: boolean;
+  linkSequential?: boolean;
+
+  // Edit tracking
+  lastEditedAt?: string;
+  lastEditedNodeId?: string;
+
+  // Backfill tracking
+  backfill?: boolean;
+  chunkOrdersProvided?: boolean;
+
+  // Allow extensions
+  [key: string]: unknown;
+};
+
+export type DocumentRecord = {
+  id: string;
+  title: string;
+  body: string;
+  metadata: DocumentMetadata | null;
+  version: number;
+  rootNodeId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DocumentChunkRecord = {
+  documentId: string;
+  segmentId: string;
+  nodeId: string;
+  offset: number;
+  length: number;
+  chunkOrder: number;
+  checksum: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DocumentWithChunk = {
+  document: DocumentRecord;
+  chunk: DocumentChunkRecord;
 };
 
 const DEFAULT_DB_PATH = path.join(process.cwd(), 'forest.db');
@@ -63,6 +115,7 @@ async function ensureDatabase(): Promise<Database> {
       dirty = true;
     }
     runMigrations(database);
+    await backfillCanonicalDocuments(database);
     await persist();
   }
   return database;
@@ -123,6 +176,33 @@ function runMigrations(db: Database) {
 
     CREATE INDEX IF NOT EXISTS idx_edge_events_pair ON edge_events(source_id, target_id);
     CREATE INDEX IF NOT EXISTS idx_edge_events_edge ON edge_events(edge_id);
+
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      metadata TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      root_node_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS document_chunks (
+      document_id TEXT NOT NULL,
+      segment_id TEXT NOT NULL,
+      node_id TEXT NOT NULL,
+      offset INTEGER NOT NULL,
+      length INTEGER NOT NULL,
+      chunk_order INTEGER NOT NULL,
+      checksum TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (document_id, segment_id)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_document_chunks_node ON document_chunks(node_id);
+    CREATE INDEX IF NOT EXISTS idx_document_chunks_document_order ON document_chunks(document_id, chunk_order);
   `);
 
   // Add missing columns for existing databases (best-effort migrations)
@@ -167,6 +247,169 @@ function runMigrations(db: Database) {
   }
 }
 
+function hashContent(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+async function backfillCanonicalDocuments(db: Database) {
+  // Ensure tables exist before attempting backfill
+  const tables = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='documents'`);
+  if (tables.length === 0) return;
+
+  const docsToCreate: string[] = [];
+  const stmt = db.prepare(`
+    SELECT DISTINCT parent_document_id AS document_id
+    FROM nodes
+    WHERE is_chunk = 1
+      AND parent_document_id IS NOT NULL
+      AND parent_document_id NOT IN (SELECT id FROM documents)
+  `);
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    const docId = row.document_id ? String(row.document_id) : null;
+    if (docId) docsToCreate.push(docId);
+  }
+  stmt.free();
+
+  if (docsToCreate.length === 0) return;
+
+  console.log(`Backfilling ${docsToCreate.length} canonical documents...`);
+
+  let madeChanges = false;
+  let successCount = 0;
+
+  for (const documentId of docsToCreate) {
+    const chunkStmt = db.prepare(
+      `SELECT id, title, body, chunk_order, created_at, updated_at
+       FROM nodes
+       WHERE parent_document_id = :docId
+       ORDER BY COALESCE(chunk_order, 0), created_at`
+    );
+    chunkStmt.bind({ ':docId': documentId });
+
+    const chunks: {
+      id: string;
+      title: string;
+      body: string;
+      chunkOrder: number | null;
+      createdAt: string;
+      updatedAt: string;
+    }[] = [];
+
+    while (chunkStmt.step()) {
+      const row = chunkStmt.getAsObject();
+      chunks.push({
+        id: String(row.id),
+        title: String(row.title),
+        body: String(row.body),
+        chunkOrder: row.chunk_order !== null ? Number(row.chunk_order) : null,
+        createdAt: String(row.created_at),
+        updatedAt: String(row.updated_at),
+      });
+    }
+    chunkStmt.free();
+
+    if (chunks.length === 0) continue;
+
+    const rootStmt = db.prepare(
+      `SELECT id, title, body, created_at, updated_at
+       FROM nodes
+       WHERE id = :docId
+       LIMIT 1`
+    );
+    rootStmt.bind({ ':docId': documentId });
+    const rootRow = rootStmt.step() ? rootStmt.getAsObject() : null;
+    rootStmt.free();
+
+    const rootNodeId = rootRow ? String(rootRow.id) : null;
+    const documentTitle = rootRow ? String(rootRow.title) : chunks[0]?.title ?? 'Untitled Document';
+
+    const bodyParts = chunks.map(chunk => chunk.body);
+    const fullBody = bodyParts.join('\n\n');
+
+    const chunkCount = chunks.length;
+    const createdAt =
+      rootRow?.created_at ? String(rootRow.created_at) : chunks[0]?.createdAt ?? new Date().toISOString();
+    const updatedAt =
+      rootRow?.updated_at
+        ? String(rootRow.updated_at)
+        : chunks[chunks.length - 1]?.updatedAt ?? new Date().toISOString();
+
+    const metadata = {
+      backfill: true,
+      chunkCount,
+      chunkOrdersProvided: chunks.every(chunk => chunk.chunkOrder !== null),
+    };
+
+    const insertDocument = db.prepare(
+      `INSERT OR IGNORE INTO documents (id, title, body, metadata, version, root_node_id, created_at, updated_at)
+       VALUES (:id, :title, :body, :metadata, :version, :rootNodeId, :createdAt, :updatedAt)`
+    );
+    insertDocument.bind({
+      ':id': documentId,
+      ':title': documentTitle,
+      ':body': fullBody,
+      ':metadata': JSON.stringify(metadata),
+      ':version': 1,
+      ':rootNodeId': rootNodeId,
+      ':createdAt': createdAt,
+      ':updatedAt': updatedAt,
+    });
+    insertDocument.step();
+    insertDocument.free();
+
+    // If insert was ignored because document already exists, skip chunk inserts
+    const existsCheck = db.prepare(`SELECT 1 FROM documents WHERE id = :id LIMIT 1`);
+    existsCheck.bind({ ':id': documentId });
+    const exists = existsCheck.step();
+    existsCheck.free();
+    if (!exists) continue;
+
+    const insertChunk = db.prepare(
+      `INSERT OR REPLACE INTO document_chunks
+        (document_id, segment_id, node_id, offset, length, chunk_order, checksum, created_at, updated_at)
+       VALUES
+        (:documentId, :segmentId, :nodeId, :offset, :length, :chunkOrder, :checksum, :createdAt, :updatedAt)`
+    );
+
+    let offset = 0;
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index]!;
+      const length = chunk.body.length;
+      const chunkOrder = chunk.chunkOrder !== null ? chunk.chunkOrder : index;
+      const checksum = hashContent(chunk.body);
+
+      insertChunk.bind({
+        ':documentId': documentId,
+        ':segmentId': chunk.id,
+        ':nodeId': chunk.id,
+        ':offset': offset,
+        ':length': length,
+        ':chunkOrder': chunkOrder,
+        ':checksum': checksum,
+        ':createdAt': chunk.createdAt,
+        ':updatedAt': chunk.updatedAt,
+      });
+      insertChunk.step();
+      insertChunk.reset();
+
+      offset += length;
+      if (index < chunks.length - 1) {
+        offset += 2; // account for '\n\n' separator
+      }
+    }
+    insertChunk.free();
+
+    madeChanges = true;
+    successCount++;
+  }
+
+  if (madeChanges) {
+    dirty = true;
+    console.log(`Successfully backfilled ${successCount}/${docsToCreate.length} canonical documents`);
+  }
+}
+
 async function markDirtyAndPersist() {
   dirty = true;
   await persist();
@@ -186,6 +429,33 @@ function parseNodeRow(row: any): NodeRecord {
     isChunk: Number(row.is_chunk || 0) === 1,
     parentDocumentId: row.parent_document_id ? String(row.parent_document_id) : null,
     chunkOrder: row.chunk_order ? Number(row.chunk_order) : null,
+  };
+}
+
+function parseDocumentRow(row: any): DocumentRecord {
+  return {
+    id: String(row.id),
+    title: String(row.title),
+    body: String(row.body),
+    metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
+    version: Number(row.version),
+    rootNodeId: row.root_node_id ? String(row.root_node_id) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+function parseDocumentChunkRow(row: any): DocumentChunkRecord {
+  return {
+    documentId: String(row.document_id),
+    segmentId: String(row.segment_id),
+    nodeId: String(row.node_id),
+    offset: Number(row.offset),
+    length: Number(row.length),
+    chunkOrder: Number(row.chunk_order),
+    checksum: String(row.checksum),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
   };
 }
 
@@ -301,6 +571,23 @@ export async function updateNodeIndexData(
   await markDirtyAndPersist();
 }
 
+export async function updateNodeChunkOrder(id: string, chunkOrder: number): Promise<void> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `UPDATE nodes
+     SET chunk_order = :chunkOrder, updated_at = :updatedAt
+     WHERE id = :id`
+  );
+  stmt.bind({
+    ':chunkOrder': chunkOrder,
+    ':updatedAt': new Date().toISOString(),
+    ':id': id,
+  });
+  stmt.step();
+  stmt.free();
+  await markDirtyAndPersist();
+}
+
 export async function listNodes(): Promise<NodeRecord[]> {
   const db = await ensureDatabase();
   const stmt = db.prepare('SELECT * FROM nodes');
@@ -390,6 +677,159 @@ export async function searchNodes(term: string, limit = 25): Promise<SearchMatch
     }));
 
   return scored;
+}
+
+export async function listDocuments(): Promise<DocumentRecord[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT * FROM documents ORDER BY updated_at DESC');
+  const documents: DocumentRecord[] = [];
+  while (stmt.step()) {
+    documents.push(parseDocumentRow(stmt.getAsObject()));
+  }
+  stmt.free();
+  return documents;
+}
+
+export async function getDocumentById(id: string): Promise<DocumentRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT * FROM documents WHERE id = :id LIMIT 1');
+  stmt.bind({ ':id': id });
+  const document = stmt.step() ? parseDocumentRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return document;
+}
+
+export async function getDocumentByRootNode(rootNodeId: string): Promise<DocumentRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT * FROM documents WHERE root_node_id = :root LIMIT 1');
+  stmt.bind({ ':root': rootNodeId });
+  const document = stmt.step() ? parseDocumentRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return document;
+}
+
+export async function getDocumentForNode(nodeId: string): Promise<DocumentWithChunk | null> {
+  const db = await ensureDatabase();
+  const mappingStmt = db.prepare('SELECT * FROM document_chunks WHERE node_id = :node LIMIT 1');
+  mappingStmt.bind({ ':node': nodeId });
+  const mapping = mappingStmt.step() ? parseDocumentChunkRow(mappingStmt.getAsObject()) : null;
+  mappingStmt.free();
+  if (!mapping) return null;
+
+  const documentStmt = db.prepare('SELECT * FROM documents WHERE id = :id LIMIT 1');
+  documentStmt.bind({ ':id': mapping.documentId });
+  const document = documentStmt.step() ? parseDocumentRow(documentStmt.getAsObject()) : null;
+  documentStmt.free();
+  if (!document) return null;
+
+  return { document, chunk: mapping };
+}
+
+export async function getDocumentChunks(documentId: string): Promise<DocumentChunkRecord[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT * FROM document_chunks WHERE document_id = :id ORDER BY chunk_order ASC`
+  );
+  stmt.bind({ ':id': documentId });
+  const chunks: DocumentChunkRecord[] = [];
+  while (stmt.step()) {
+    chunks.push(parseDocumentChunkRow(stmt.getAsObject()));
+  }
+  stmt.free();
+  return chunks;
+}
+
+export async function upsertDocument(record: DocumentRecord): Promise<void> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `INSERT INTO documents (id, title, body, metadata, version, root_node_id, created_at, updated_at)
+     VALUES (:id, :title, :body, :metadata, :version, :rootNodeId, :createdAt, :updatedAt)
+     ON CONFLICT(id)
+     DO UPDATE SET
+       title = excluded.title,
+       body = excluded.body,
+       metadata = excluded.metadata,
+       version = excluded.version,
+       root_node_id = excluded.root_node_id,
+       updated_at = excluded.updated_at`
+  );
+  stmt.bind({
+    ':id': record.id,
+    ':title': record.title,
+    ':body': record.body,
+    ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
+    ':version': record.version,
+    ':rootNodeId': record.rootNodeId,
+    ':createdAt': record.createdAt,
+    ':updatedAt': record.updatedAt,
+  });
+  stmt.step();
+  stmt.free();
+  await markDirtyAndPersist();
+}
+
+export async function replaceDocumentChunks(
+  documentId: string,
+  chunks: DocumentChunkRecord[]
+): Promise<void> {
+  const db = await ensureDatabase();
+  const deleteStmt = db.prepare('DELETE FROM document_chunks WHERE document_id = :id');
+  deleteStmt.bind({ ':id': documentId });
+  deleteStmt.step();
+  const deleted = db.getRowsModified();
+  deleteStmt.free();
+
+  if (chunks.length === 0) {
+    if (deleted > 0) {
+      await markDirtyAndPersist();
+    }
+    return;
+  }
+
+  const insertStmt = db.prepare(
+    `INSERT INTO document_chunks
+      (document_id, segment_id, node_id, offset, length, chunk_order, checksum, created_at, updated_at)
+     VALUES
+      (:documentId, :segmentId, :nodeId, :offset, :length, :chunkOrder, :checksum, :createdAt, :updatedAt)`
+  );
+
+  for (const chunk of chunks) {
+    insertStmt.bind({
+      ':documentId': chunk.documentId,
+      ':segmentId': chunk.segmentId,
+      ':nodeId': chunk.nodeId,
+      ':offset': chunk.offset,
+      ':length': chunk.length,
+      ':chunkOrder': chunk.chunkOrder,
+      ':checksum': chunk.checksum,
+      ':createdAt': chunk.createdAt,
+      ':updatedAt': chunk.updatedAt,
+    });
+    insertStmt.step();
+    insertStmt.reset();
+  }
+  insertStmt.free();
+
+  await markDirtyAndPersist();
+}
+
+export async function deleteDocumentChunksForNodes(nodeIds: string[]): Promise<void> {
+  if (nodeIds.length === 0) return;
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `DELETE FROM document_chunks WHERE node_id IN (${nodeIds.map((_, i) => `:n${i}`).join(', ')})`
+  );
+  const params: Record<string, string> = {};
+  nodeIds.forEach((nodeId, index) => {
+    params[`:n${index}`] = nodeId;
+  });
+  stmt.bind(params as any);
+  stmt.step();
+  const changes = db.getRowsModified();
+  stmt.free();
+  if (changes > 0) {
+    await markDirtyAndPersist();
+  }
 }
 
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
@@ -569,6 +1009,15 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
     countStmt.free();
   }
 
+  let chunkMappingRemoved = false;
+  {
+    const deleteMapping = db.prepare('DELETE FROM document_chunks WHERE node_id = :id');
+    deleteMapping.bind({ ':id': id });
+    deleteMapping.step();
+    chunkMappingRemoved = db.getRowsModified() > 0;
+    deleteMapping.free();
+  }
+
   // Delete edges
   const delEdges = db.prepare('DELETE FROM edges WHERE source_id = :id OR target_id = :id');
   delEdges.bind({ ':id': id });
@@ -582,7 +1031,7 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
   const nodeRemoved = db.getRowsModified() > 0;
   delNode.free();
 
-  if (edgesRemoved > 0 || nodeRemoved) {
+  if (edgesRemoved > 0 || nodeRemoved || chunkMappingRemoved) {
     await markDirtyAndPersist();
   }
   return { edgesRemoved, nodeRemoved };

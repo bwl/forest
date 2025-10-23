@@ -2,8 +2,21 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import { createHash } from 'crypto';
 
-import { NodeRecord, deleteNode, updateNode, listNodes, listEdges } from '../../lib/db';
+import {
+  NodeRecord,
+  deleteNode,
+  updateNode,
+  listNodes,
+  listEdges,
+  DocumentRecord,
+  DocumentChunkRecord,
+  DocumentMetadata,
+  upsertDocument,
+  replaceDocumentChunks,
+  updateNodeChunkOrder,
+} from '../../lib/db';
 import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
@@ -19,6 +32,14 @@ import {
   resolveNodeReference,
 } from '../shared/utils';
 import { rescoreNode } from '../shared/linking';
+import {
+  loadDocumentSessionForNode,
+  buildDocumentEditorBuffer,
+  parseDocumentEditorBuffer,
+  type LoadedDocumentSession,
+  type DocumentSegment,
+  type ParsedDocumentEdit,
+} from '../shared/document-session';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
@@ -698,18 +719,29 @@ async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags
   });
 
   const autoLink = computeAutoLinkIntent(flags);
+  const updatedAt = new Date().toISOString();
+  const updatedNode: NodeRecord = {
+    ...node,
+    title: nextTitle,
+    body: nextBody,
+    tags,
+    tokenCounts,
+    embedding,
+    updatedAt,
+  };
+
+  // Persist updated node to database
+  await updateNode(node.id, {
+    title: nextTitle,
+    body: nextBody,
+    tags,
+    tokenCounts,
+    embedding,
+  });
 
   let accepted = 0;
   let suggested = 0;
   if (autoLink) {
-    const updatedNode: NodeRecord = {
-      ...node,
-      title: nextTitle,
-      body: nextBody,
-      tags,
-      tokenCounts,
-      embedding,
-    };
     ({ accepted, suggested } = await rescoreNode(updatedNode));
   }
 
@@ -720,6 +752,29 @@ async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags
     console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
   } else {
     console.log('   links: rescoring skipped (--no-auto-link)');
+  }
+
+  if (updatedNode.isChunk && updatedNode.parentDocumentId) {
+    const session = await loadDocumentSessionForNode(updatedNode);
+    if (session) {
+      const target = session.segments.find((segment) => segment.node.id === updatedNode.id);
+      if (target) {
+        const overrides = new Map([[target.mapping.segmentId, normalizeEditorContent(nextBody)]]);
+        const { updatedDocument, changedSegmentIds } = await applyDocumentChunkUpdates(
+          session,
+          overrides,
+          updatedAt,
+          updatedNode.id
+        );
+        if (changedSegmentIds.size > 0 || updatedDocument.version !== session.document.version) {
+          console.log(
+            `   document updated: ${updatedDocument.title} (version ${session.document.version} → ${updatedDocument.version}, segments touched: ${changedSegmentIds.size})`
+          );
+        } else {
+          console.log(`   document unchanged (no structural delta)`);
+        }
+      }
+    }
   }
 }
 
@@ -737,6 +792,8 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
     return;
   }
 
+  const documentSession = await loadDocumentSessionForNode(node);
+
   let editorCommand: EditorCommand;
   try {
     editorCommand = resolveEditorCommand(flags.editor);
@@ -747,8 +804,24 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
   }
 
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'forest-edit-'));
-  const filePath = path.join(tempDir, `${formatId(node.id)}.md`);
-  const initialBuffer = buildEditorDraft(node);
+  const fileName = documentSession
+    ? `${formatId((documentSession.document.rootNodeId ?? documentSession.document.id))}-doc.md`
+    : `${formatId(node.id)}.md`;
+  const filePath = path.join(tempDir, fileName);
+
+  const focusSegmentId =
+    documentSession?.segments.find((segment) => segment.node.id === node.id)?.mapping.segmentId ?? undefined;
+
+  const initialBuffer = documentSession
+    ? buildDocumentEditorBuffer(documentSession, { focusSegmentId })
+    : buildEditorDraft(node);
+
+  if (documentSession) {
+    console.log(
+      `Editing node within document: ${documentSession.document.title} (${documentSession.segments.length} segments)`
+    );
+  }
+
   await fs.writeFile(filePath, initialBuffer, 'utf8');
 
   let preserveTempDir = false;
@@ -771,54 +844,25 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
     }
 
     const editedBuffer = await fs.readFile(filePath, 'utf8');
-    let parsed: ParsedEditorDraft;
-    try {
-      parsed = parseEditorDraft(editedBuffer);
-    } catch (error) {
-      console.error(`✖ ${String((error as Error).message)}`);
-      console.error(`   Temporary file preserved at: ${filePath}`);
-      preserveTempDir = true;
-      process.exitCode = 1;
-      return;
-    }
-
-    const { title, tags: explicitTags, body } = parsed;
-    const combinedText = `${title}\n${body}`;
-    const tokenCounts = tokenize(combinedText);
-    const tags =
-      explicitTags.length > 0 ? explicitTags : extractTags(combinedText, tokenCounts);
-    const embedding = await computeEmbeddingForNode({ title, body });
-
-    await updateNode(node.id, {
-      title,
-      body,
-      tags,
-      tokenCounts,
-      embedding,
-    });
-
-    const autoLink = computeAutoLinkIntent(flags);
-    let accepted = 0;
-    let suggested = 0;
-    if (autoLink) {
-      const updatedNode: NodeRecord = {
-        ...node,
-        title,
-        body,
-        tags,
-        tokenCounts,
-        embedding,
-      };
-      ({ accepted, suggested } = await rescoreNode(updatedNode));
-    }
-
-    console.log(`✔ Saved note: ${title}`);
-    console.log(`   id: ${node.id}`);
-    if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
-    if (autoLink) {
-      console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+    if (documentSession) {
+      const outcome = await applyDocumentEditSession({
+        node,
+        session: documentSession,
+        flags,
+        initialBuffer,
+        editedBuffer,
+        filePath,
+      });
+      preserveTempDir = outcome.preserveTempDir;
     } else {
-      console.log('   links: rescoring skipped (--no-auto-link)');
+      const outcome = await applySingleNodeEdit({
+        node,
+        flags,
+        initialBuffer,
+        editedBuffer,
+        filePath,
+      });
+      preserveTempDir = outcome.preserveTempDir;
     }
   } finally {
     if (!preserveTempDir) {
@@ -1072,6 +1116,328 @@ function parseEditorDraft(content: string): ParsedEditorDraft {
 
   const body = meaningful.join('\n');
   return { title, tags, body };
+}
+
+type SingleNodeEditContext = {
+  node: NodeRecord;
+  flags: NodeEditFlags;
+  initialBuffer: string;
+  editedBuffer: string;
+  filePath: string;
+};
+
+type DocumentEditContext = {
+  node: NodeRecord;
+  session: LoadedDocumentSession;
+  flags: NodeEditFlags;
+  initialBuffer: string;
+  editedBuffer: string;
+  filePath: string;
+};
+
+type EditOutcome = { preserveTempDir: boolean };
+
+function normalizeEditorContent(buffer: string): string {
+  return buffer.replace(/\r\n/g, '\n');
+}
+
+function hashContent(content: string): string {
+  return createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+async function applyDocumentChunkUpdates(
+  session: LoadedDocumentSession,
+  overrides: Map<string, string>,
+  updatedAt: string,
+  editedNodeId: string
+): Promise<{ updatedDocument: DocumentRecord; changedSegmentIds: Set<string> }> {
+  const segments = [...session.segments].sort((a, b) => a.mapping.chunkOrder - b.mapping.chunkOrder);
+  const canonicalParts: string[] = [];
+  const chunkRecords: DocumentChunkRecord[] = [];
+  const changedSegmentIds = new Set<string>();
+
+  let offset = 0;
+  segments.forEach((segment, index) => {
+    const override = overrides.get(segment.mapping.segmentId);
+    const body = normalizeEditorContent(override ?? segment.node.body);
+    const originalBody = normalizeEditorContent(segment.node.body);
+    const isChanged = override !== undefined && body !== originalBody;
+    if (isChanged) changedSegmentIds.add(segment.mapping.segmentId);
+
+    canonicalParts.push(body);
+    chunkRecords.push({
+      documentId: session.document.id,
+      segmentId: segment.mapping.segmentId,
+      nodeId: segment.node.id,
+      offset,
+      length: body.length,
+      chunkOrder: segment.mapping.chunkOrder,
+      checksum: hashContent(body),
+      createdAt: segment.mapping.createdAt,
+      updatedAt: isChanged ? updatedAt : segment.mapping.updatedAt,
+    });
+    offset += body.length;
+    if (index < segments.length - 1) offset += 2;
+  });
+
+  const canonicalBody = canonicalParts.join('\n\n');
+  if (changedSegmentIds.size === 0 && canonicalBody === session.document.body) {
+    return { updatedDocument: session.document, changedSegmentIds };
+  }
+  const updatedMetadata: DocumentMetadata = {
+    ...(session.document.metadata ?? {}),
+    lastEditedAt: updatedAt,
+    lastEditedNodeId: editedNodeId,
+  };
+
+  const updatedDocument: DocumentRecord = {
+    ...session.document,
+    body: canonicalBody,
+    metadata: updatedMetadata,
+    version: session.document.version + 1,
+    updatedAt,
+  };
+
+  await upsertDocument(updatedDocument);
+  await replaceDocumentChunks(session.document.id, chunkRecords);
+
+  return { updatedDocument, changedSegmentIds };
+}
+
+async function applySingleNodeEdit(context: SingleNodeEditContext): Promise<EditOutcome> {
+  const { node, flags, initialBuffer, editedBuffer, filePath } = context;
+
+  if (normalizeEditorContent(editedBuffer) === normalizeEditorContent(initialBuffer)) {
+    console.log('No changes detected. Nothing to save.');
+    return { preserveTempDir: false };
+  }
+
+  let parsed: ParsedEditorDraft;
+  try {
+    parsed = parseEditorDraft(editedBuffer);
+  } catch (error) {
+    console.error(`✖ ${String((error as Error).message)}`);
+    console.error(`   Temporary file preserved at: ${filePath}`);
+    process.exitCode = 1;
+    return { preserveTempDir: true };
+  }
+
+  const { title, tags: explicitTags, body } = parsed;
+  const combinedText = `${title}\n${body}`;
+  const tokenCounts = tokenize(combinedText);
+  const tags = explicitTags.length > 0 ? explicitTags : extractTags(combinedText, tokenCounts);
+  const embedding = await computeEmbeddingForNode({ title, body });
+
+  await updateNode(node.id, {
+    title,
+    body,
+    tags,
+    tokenCounts,
+    embedding,
+  });
+
+  const autoLink = computeAutoLinkIntent(flags);
+  let accepted = 0;
+  let suggested = 0;
+  if (autoLink) {
+    const updatedNode: NodeRecord = {
+      ...node,
+      title,
+      body,
+      tags,
+      tokenCounts,
+      embedding,
+    };
+    ({ accepted, suggested } = await rescoreNode(updatedNode));
+  }
+
+  console.log(`✔ Saved note: ${title}`);
+  console.log(`   id: ${node.id}`);
+  if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
+  if (autoLink) {
+    console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+  } else {
+    console.log('   links: rescoring skipped (--no-auto-link)');
+  }
+
+  return { preserveTempDir: false };
+}
+
+async function applyDocumentEditSession(context: DocumentEditContext): Promise<EditOutcome> {
+  const { node, session, flags, initialBuffer, editedBuffer, filePath } = context;
+
+  if (normalizeEditorContent(editedBuffer) === normalizeEditorContent(initialBuffer)) {
+    console.log('No changes detected. Nothing to save.');
+    return { preserveTempDir: false };
+  }
+
+  let parsedEdit: ParsedDocumentEdit;
+  try {
+    parsedEdit = parseDocumentEditorBuffer(session, editedBuffer);
+  } catch (error) {
+    console.error(`✖ ${String((error as Error).message)}`);
+    console.error(`   Temporary file preserved at: ${filePath}`);
+    process.exitCode = 1;
+    return { preserveTempDir: true };
+  }
+
+  try {
+    const segmentMap = new Map(session.segments.map((segment) => [segment.mapping.segmentId, segment]));
+
+    const contentChanges: {
+      segment: DocumentSegment;
+      content: string;
+      newOrder: number;
+    }[] = [];
+    let orderChanged = false;
+
+    for (let index = 0; index < parsedEdit.segments.length; index += 1) {
+      const parsedSegment = parsedEdit.segments[index]!;
+      const segment = segmentMap.get(parsedSegment.segmentId);
+      if (!segment) {
+        throw new Error(`Unknown segment ${parsedSegment.segmentId} encountered during save.`);
+      }
+      if (segment.node.id !== parsedSegment.nodeId) {
+        throw new Error(
+          `Segment ${parsedSegment.segmentId} references node ${parsedSegment.nodeId}, expected ${segment.node.id}.`
+        );
+      }
+      const originalBody = normalizeEditorContent(segment.node.body);
+      const newBody = normalizeEditorContent(parsedSegment.content);
+      const contentChanged = originalBody !== newBody;
+      if (segment.mapping.chunkOrder !== index) {
+        orderChanged = true;
+      }
+      if (contentChanged) {
+        contentChanges.push({
+          segment,
+          content: parsedSegment.content,
+          newOrder: index,
+        });
+      }
+    }
+
+    if (contentChanges.length === 0 && !orderChanged) {
+      console.log('No segment changes detected. Nothing to save.');
+      return { preserveTempDir: false };
+    }
+
+    const now = new Date().toISOString();
+    const updatedMetadata: DocumentMetadata = {
+      ...(session.document.metadata ?? {}),
+      lastEditedAt: now,
+      lastEditedNodeId: node.id,
+    };
+
+    const updatedDocument: DocumentRecord = {
+      ...session.document,
+      body: parsedEdit.canonicalBody,
+      metadata: updatedMetadata,
+      version: session.document.version + 1,
+      updatedAt: now,
+    };
+
+    const autoLink = computeAutoLinkIntent(flags);
+    let totalAccepted = 0;
+    let totalSuggested = 0;
+
+    for (const { segment, content, newOrder } of contentChanges) {
+      const combinedText = `${segment.node.title}\n${content}`;
+      const tokenCounts = tokenize(combinedText);
+      // Preserve existing tags - only auto-extract if node had no tags
+      const tags = segment.node.tags.length > 0 ? segment.node.tags : extractTags(combinedText, tokenCounts);
+      const embedding = await computeEmbeddingForNode({ title: segment.node.title, body: content });
+
+      await updateNode(segment.node.id, {
+        body: content,
+        tags,
+        tokenCounts,
+        embedding,
+      });
+
+      if (autoLink) {
+        const updatedNode: NodeRecord = {
+          ...segment.node,
+          body: content,
+          tags,
+          tokenCounts,
+          embedding,
+          chunkOrder: newOrder,
+          updatedAt: now,
+        };
+        const rescore = await rescoreNode(updatedNode);
+        totalAccepted += rescore.accepted;
+        totalSuggested += rescore.suggested;
+      }
+    }
+
+    for (let index = 0; index < parsedEdit.segments.length; index += 1) {
+      const parsedSegment = parsedEdit.segments[index]!;
+      const segment = segmentMap.get(parsedSegment.segmentId)!;
+      if (segment.node.chunkOrder !== index) {
+        try {
+          await updateNodeChunkOrder(segment.node.id, index);
+        } catch (error) {
+          console.warn(`⚠ Failed to update chunk order for node ${segment.node.id}: ${(error as Error).message}`);
+        }
+      }
+    }
+
+    await upsertDocument(updatedDocument);
+
+    const contentChangeMap = new Map(contentChanges.map((entry) => [entry.segment.mapping.segmentId, entry]));
+    const updatedChunkRecords: DocumentChunkRecord[] = [];
+    let offset = 0;
+    for (let index = 0; index < parsedEdit.segments.length; index += 1) {
+      const parsedSegment = parsedEdit.segments[index]!;
+      const segment = segmentMap.get(parsedSegment.segmentId)!;
+      const length = parsedSegment.content.length;
+      const contentChanged = contentChangeMap.has(parsedSegment.segmentId);
+
+      updatedChunkRecords.push({
+        documentId: session.document.id,
+        segmentId: parsedSegment.segmentId,
+        nodeId: segment.node.id,
+        offset,
+        length,
+        chunkOrder: index,
+        checksum: hashContent(parsedSegment.content),
+        createdAt: segment.mapping.createdAt,
+        updatedAt: contentChanged || segment.mapping.chunkOrder !== index ? now : segment.mapping.updatedAt,
+      });
+
+      offset += length;
+      if (index < parsedEdit.segments.length - 1) {
+        offset += 2;
+      }
+    }
+
+    await replaceDocumentChunks(session.document.id, updatedChunkRecords);
+
+    console.log(`✔ Updated document: ${updatedDocument.title}`);
+    console.log(`   version: ${session.document.version} → ${updatedDocument.version}`);
+    console.log(`   segments changed: ${contentChanges.length}/${parsedEdit.segments.length}`);
+    if (contentChanges.length > 0) {
+      contentChanges.forEach(({ segment }) => {
+        console.log(`     • ${formatId(segment.node.id)} ${segment.node.title}`);
+      });
+    }
+    if (orderChanged) {
+      console.log('   segment order updated');
+    }
+    if (autoLink) {
+      console.log(`   links rescored: ${totalAccepted} accepted, ${totalSuggested} pending`);
+    } else {
+      console.log('   links: rescoring skipped (--no-auto-link)');
+    }
+
+    return { preserveTempDir: false };
+  } catch (error) {
+    console.error(`✖ ${String((error as Error).message)}`);
+    console.error(`   Temporary file preserved at: ${filePath}`);
+    process.exitCode = 1;
+    return { preserveTempDir: true };
+  }
 }
 
 async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {

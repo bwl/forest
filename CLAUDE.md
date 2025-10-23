@@ -327,12 +327,119 @@ When implementing a new feature that should be available in both CLI and API:
 Uses **sql.js** (SQLite compiled to WASM) with in-memory database persisted to disk on mutation.
 
 **Core types:**
-- `NodeRecord`: Nodes with id, title, body, tags, tokenCounts, optional embedding
-- `EdgeRecord`: Edges with sourceId, targetId, score, status ('accepted' | 'suggested')
+- `NodeRecord`: Nodes with id, title, body, tags, tokenCounts, optional embedding, isChunk, parentDocumentId, chunkOrder
+- `EdgeRecord`: Edges with sourceId, targetId, score, status ('accepted' | 'suggested'), edgeType
+- `DocumentRecord`: Canonical documents with id, title, body, metadata, version, rootNodeId, timestamps
+- `DocumentChunkRecord`: Segment mappings with documentId, segmentId, nodeId, offset, length, chunkOrder, checksum, timestamps
 
 **Key pattern**: Database is lazily initialized on first access. All mutations set `dirty = true` and persist to disk.
 
 Database path controlled by `FOREST_DB_PATH` env var (default: `forest.db` in cwd).
+
+**Database Schema:**
+```sql
+-- Core node storage
+nodes: id, title, body, tags, token_counts, embedding, created_at, updated_at,
+       is_chunk, parent_document_id, chunk_order
+
+-- Edge relationships
+edges: id, source_id, target_id, score, status, edge_type, metadata, created_at, updated_at
+
+-- Canonical document storage
+documents: id, title, body, metadata, version, root_node_id, created_at, updated_at
+
+-- Document-to-node mappings
+document_chunks: document_id, segment_id, node_id, offset, length, chunk_order, checksum,
+                 created_at, updated_at
+
+-- Edge event history (for undo)
+edge_events: id, edge_id, source_id, target_id, prev_status, next_status, payload,
+             created_at, undone
+
+-- Metadata key-value store
+metadata: key, value
+```
+
+### Canonical Document Model (src/lib/db.ts, src/core/import.ts)
+
+Forest treats multi-chunk imports as first-class documents with versioned canonical storage.
+
+**Architecture:**
+- **Canonical body**: Stored in `documents.body` as the authoritative source, reconstructed from `\n\n`-joined segment bodies
+- **Chunk mappings**: `document_chunks` table tracks byte offsets, lengths, and SHA-256 checksums for each segment
+- **Version tracking**: `documents.version` increments on every edit; metadata stores `lastEditedAt` and `lastEditedNodeId`
+- **Automatic backfill**: On startup, `backfillCanonicalDocuments()` scans for chunk nodes without canonical entries (idempotent)
+
+**Lifecycle:**
+
+1. **Import** (`importDocumentCore` in `src/core/import.ts`)
+   - Chunks document via `chunkDocument()` using headers/size/hybrid strategy
+   - Creates root node (optional summary) and chunk nodes with `isChunk=true`, `parentDocumentId` set
+   - Inserts canonical document record with metadata (chunkStrategy, maxTokens, overlap, etc.)
+   - Creates `document_chunks` mappings with offsets and checksums
+   - Builds structural edges: parent-child (root→chunks) and sequential (chunk[i]→chunk[i+1])
+   - Optionally auto-links against existing graph
+
+2. **Edit** (`forest node edit <chunk-id>`)
+   - Detects chunk membership via `loadDocumentSessionForNode()`
+   - Renders full document with `<!-- forest:segment -->` markers (HTML comments)
+   - User edits in their preferred editor
+   - Parser validates all segments present, IDs match, no orphans
+   - Only modified segments get re-embedded and rescored (selective performance optimization)
+   - Canonical body, version, and chunk records updated atomically
+   - Console shows: "document updated: <title> (version 1 → 2, segments touched: 2)"
+
+3. **Refresh** (`forest node refresh <chunk-id>`)
+   - Updates chunk node via flags/files/stdin
+   - Detects chunk membership and rebuilds canonical document
+   - Version bumps, checksums and offsets recalculated
+   - Logs: "document updated" or "document unchanged (no structural delta)"
+
+4. **Standalone notes**
+   - Nodes with `isChunk=false` bypass document session entirely
+   - Edited as independent entities with no canonical storage
+
+**Key behaviors:**
+- **Selective re-embedding**: Unchanged segments retain embeddings and edges (avoids expensive recomputation)
+- **Checksum-based change detection**: SHA-256 of normalized content enables efficient diffing
+- **Temp file preservation**: Parse failures save edited content to `/tmp/forest-edit-*` for debugging
+- **Segment reordering**: Parser detects order changes; `chunkOrder` updated accordingly
+- **Error recovery**: Validation errors show line numbers; user can fix and retry
+
+**Editor buffer format example:**
+```markdown
+# Forest Document Editor
+# Document: My Research Paper (7fa7acb2)
+# Total segments: 3
+
+<!-- forest:segment start segment_id=seg-1 node_id=abc123 order=0 title="Introduction" -->
+This is the introduction content...
+<!-- forest:segment end segment_id=seg-1 -->
+
+<!-- forest:segment start segment_id=seg-2 node_id=def456 order=1 title="Methods" focus=true -->
+This is the methods section...
+<!-- forest:segment end segment_id=seg-2 -->
+```
+
+**Metadata schema** (DocumentRecord.metadata):
+```typescript
+{
+  // Import settings
+  chunkStrategy: 'headers' | 'size' | 'hybrid',
+  maxTokens: number,
+  overlap: number,
+  chunkCount: number,
+  source: 'import' | 'backfill',
+
+  // Edit tracking
+  lastEditedAt: ISO8601 timestamp,
+  lastEditedNodeId: UUID,
+
+  // Backfill flags
+  backfill: boolean,
+  chunkOrdersProvided: boolean
+}
+```
 
 ### Scoring Algorithm (src/lib/scoring.ts)
 

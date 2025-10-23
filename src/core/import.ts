@@ -3,8 +3,20 @@
  * Implements 3-layer architecture: pure business logic, no I/O dependencies
  */
 
-import { randomUUID } from 'crypto';
-import { NodeRecord, insertNode, listNodes, insertOrUpdateEdge, updateNode, EdgeRecord } from '../lib/db';
+import { randomUUID, createHash } from 'crypto';
+import {
+  NodeRecord,
+  insertNode,
+  listNodes,
+  insertOrUpdateEdge,
+  updateNode,
+  EdgeRecord,
+  DocumentRecord,
+  DocumentChunkRecord,
+  DocumentMetadata,
+  upsertDocument,
+  replaceDocumentChunks,
+} from '../lib/db';
 import { extractTags, tokenize, pickTitle } from '../lib/text';
 import { computeEmbeddingForNode } from '../lib/embeddings';
 import { linkAgainstExisting } from '../cli/shared/linking';
@@ -140,6 +152,60 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     await insertNode(node);
     chunkNodes.push({ node, chunk });
   }
+
+  // Register canonical document + segment mappings
+  const canonicalBody = chunkNodes.map((entry) => entry.node.body.replace(/\r\n/g, '\n')).join('\n\n');
+  const documentMetadata: DocumentMetadata = {
+    chunkStrategy,
+    maxTokens,
+    overlap,
+    autoLink,
+    createParent,
+    linkSequential,
+    chunkCount: chunkNodes.length,
+    source: 'import',
+  };
+
+  const documentId = rootNode ? rootNode.id : rootId;
+  const docCreatedAt = rootNode?.createdAt ?? chunkNodes[0]?.node.createdAt ?? new Date().toISOString();
+  const docUpdatedAt = rootNode?.updatedAt ?? chunkNodes[chunkNodes.length - 1]?.node.updatedAt ?? docCreatedAt;
+
+  const canonicalDocument: DocumentRecord = {
+    id: documentId,
+    title: documentTitle,
+    body: canonicalBody,
+    metadata: documentMetadata,
+    version: 1,
+    rootNodeId: rootNode ? rootNode.id : null,
+    createdAt: docCreatedAt,
+    updatedAt: docUpdatedAt,
+  };
+
+  let offset = 0;
+  const chunkRecords: DocumentChunkRecord[] = chunkNodes
+    .sort((a, b) => (a.node.chunkOrder ?? 0) - (b.node.chunkOrder ?? 0))
+    .map((entry, index) => {
+      const body = entry.node.body.replace(/\r\n/g, '\n');
+      const record: DocumentChunkRecord = {
+        documentId,
+        segmentId: entry.node.id,
+        nodeId: entry.node.id,
+        offset,
+        length: body.length,
+        chunkOrder: entry.node.chunkOrder ?? index,
+        checksum: createHash('sha256').update(body, 'utf8').digest('hex'),
+        createdAt: entry.node.createdAt,
+        updatedAt: entry.node.updatedAt,
+      };
+      offset += body.length;
+      if (index < chunkNodes.length - 1) {
+        offset += 2;
+      }
+      return record;
+    });
+
+  await upsertDocument(canonicalDocument);
+  await replaceDocumentChunks(documentId, chunkRecords);
 
   // Update root node with full structure including chunk IDs
   if (rootNode) {

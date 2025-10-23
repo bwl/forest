@@ -8,7 +8,9 @@
       "WebFetch(domain:platform.openai.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(gh pr view:*)",
-      "Bash(gh pr diff:*)"
+      "Bash(gh pr diff:*)",
+      "Bash(bun test:*)",
+      "Bash(bun run lint)"
     ],
     "deny": [],
     "ask": []

@@ -8,6 +8,7 @@ import { registerExportCommands } from './commands/export';
 import { registerEdgesCommands } from './commands/edges';
 import { registerNodeCommands } from './commands/node';
 import { registerTagsCommands } from './commands/tags';
+import { registerDocumentsCommands } from './commands/documents';
 import { createStatsCommand } from './commands/stats';
 import { createHealthCommand } from './commands/health';
 import { createServeCommand } from './commands/serve';
@@ -56,6 +57,7 @@ export async function createForestCli() {
   registerNodeCommands(cli, clerc);
   registerEdgesCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
+  registerDocumentsCommands(cli, clerc);
   registerExportCommands(cli, clerc);
 
   return cli;
