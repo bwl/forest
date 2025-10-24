@@ -1,0 +1,59 @@
+[package]
+name = "forest-desktop"
+version = "0.1.0"
+description = "Forest knowledge base - unified GUI and CLI"
+authors = ["Forest Contributors"]
+license = "MIT"
+repository = "https://github.com/your-org/forest"
+default-run = "forest-desktop"
+edition = "2021"
+rust-version = "1.70"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+# Tauri v2 core
+tauri = { version = "2.0", features = [] }
+tauri-plugin-shell = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Tauri v2 plugins
+tauri-plugin-cli = "2.0"
+tauri-plugin-sql = { version = "2.0", features = ["sqlite"] }
+tauri-plugin-store = "2.0"
+
+# Database (must match tauri-plugin-sql's version)
+sqlx = { version = "0.8", features = ["migrate", "runtime-tokio-native-tls", "sqlite"] }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+lazy_static = "1.4"
+regex = "1.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# CLI parsing
+clap = { version = "4.4", features = ["derive"] }
+sha2 = "0.10.9"
+
+# Embeddings
+fastembed = "4.2"
+reqwest = { version = "0.12", features = ["json"] }
+
+[features]
+# This feature is used for production builds or when `devPath` points to the filesystem
+# and the built-in dev server is disabled.
+# If you use cargo directly instead of tauri's cli you can use this feature flag to switch
+# between tauri's `dev` and `build` modes.
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

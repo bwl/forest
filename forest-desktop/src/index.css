@@ -1,0 +1,105 @@
+/* Tufte CSS base - minimal, elegant typography */
+@import url('https://edwardtufte.github.io/tufte-css/tufte.css');
+
+/* Tailwind for utility classes */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom overrides for Forest */
+body {
+  background-color: #fffff8;
+}
+
+article {
+  padding: 5% 12.5%;
+  max-width: none;
+}
+
+/* Search and interactive elements with Tailwind-like utilities */
+.forest-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.forest-input:focus {
+  outline: none;
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.1);
+}
+
+.forest-button {
+  padding: 0.75rem 1.5rem;
+  background: #111;
+  color: #fffff8;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.forest-button:hover {
+  background: #333;
+}
+
+.forest-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.forest-card {
+  background: white;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.forest-card:hover {
+  border-color: #ccc;
+}
+
+.forest-tag {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+  background: #f4f4f4;
+  border-radius: 3px;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.forest-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.forest-stat-card {
+  text-align: center;
+  padding: 1.5rem;
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.forest-stat-value {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #111;
+  margin: 0;
+}
+
+.forest-stat-label {
+  font-size: 0.875rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+}
