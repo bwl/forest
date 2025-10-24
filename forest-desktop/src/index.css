@@ -103,3 +103,32 @@ article {
   letter-spacing: 0.05em;
   margin-top: 0.5rem;
 }
+
+/* Graph-based UI styles */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.command-palette-handle {
+  cursor: move;
+}
+
+.forest-tag {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #f0f0f0;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #666;
+}

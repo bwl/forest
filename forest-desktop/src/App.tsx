@@ -1,19 +1,68 @@
-import { StatsDisplay } from './components/StatsDisplay'
-import { SearchInterface } from './components/SearchInterface'
+import { useState } from 'react'
+import { GraphCanvas } from './components/GraphCanvas'
+import { CommandPalette } from './components/CommandPalette'
+import { NodeDetailPanel } from './components/NodeDetailPanel'
+import { searchNodes } from './lib/tauri-commands'
 
 function App() {
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [highlightedNodes, setHighlightedNodes] = useState<string[]>([])
+  const [showSettings, setShowSettings] = useState(false)
+
+  async function handleSearch(query: string) {
+    try {
+      const results = await searchNodes(query, 10)
+      const nodeIds = results.map((r) => r.id)
+      setHighlightedNodes(nodeIds)
+      console.log(`Search results: ${results.length} nodes found for "${query}"`)
+    } catch (err) {
+      console.error('Search failed:', err)
+    }
+  }
+
+  function handleNodeCreated() {
+    // Reload graph
+    window.location.reload()
+  }
+
   return (
-    <article>
-      <section>
-        <h1>Forest Desktop</h1>
-        <p className="subtitle">Graph-native knowledge base</p>
+    <div className="app-container">
+      <GraphCanvas
+        onNodeClick={setSelectedNode}
+        highlightedNodes={highlightedNodes}
+      />
 
-        <StatsDisplay />
+      <CommandPalette
+        onSearch={handleSearch}
+        onNodeCreated={handleNodeCreated}
+        onOpenSettings={() => setShowSettings(true)}
+      />
 
-        <h2>Search</h2>
-        <SearchInterface />
-      </section>
-    </article>
+      {selectedNode && (
+        <NodeDetailPanel
+          nodeId={selectedNode}
+          onClose={() => setSelectedNode(null)}
+        />
+      )}
+
+      {showSettings && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1001,
+        }}>
+          <div style={{ background: 'white', padding: '2rem', borderRadius: '8px' }}>
+            <h2>Settings</h2>
+            <p>Settings panel coming soon!</p>
+            <button onClick={() => setShowSettings(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 

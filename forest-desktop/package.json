@@ -8,16 +8,21 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "bun run tauri build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.0.0",
     "@tauri-apps/api": "^2.9.0",
+    "@types/dagre": "^0.7.53",
+    "@xyflow/react": "^12.9.0",
+    "dagre": "^0.8.5",
     "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-draggable": "^4.5.0",
     "react-markdown": "^9.0.0",
-    "reactflow": "^11.10.0",
+    "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.0",
     "zustand": "^4.4.0"
   },

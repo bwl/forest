@@ -25,6 +25,17 @@ async fn main() -> anyhow::Result<()> {
         .invoke_handler(tauri::generate_handler![
             commands::get_stats,
             commands::search_nodes,
+            commands::get_node,
+            commands::get_node_connections,
+            commands::create_node,
+            commands::get_edge_proposals,
+            commands::accept_edge,
+            commands::reject_edge,
+            commands::get_graph_data,
+            commands::update_node_position,
+            commands::update_node,
+            commands::create_node_quick,
+            commands::log_to_terminal,
         ])
         .setup(|_app| {
             // Setup hook - will be called before the main event loop starts

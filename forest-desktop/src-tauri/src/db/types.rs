@@ -46,6 +46,10 @@ pub struct NodeRecord {
     pub is_chunk: bool,
     pub parent_document_id: Option<String>,
     pub chunk_order: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_x: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_y: Option<f64>,
 }
 
 /// Edge status enum
@@ -216,6 +220,8 @@ pub struct NewNode {
     pub is_chunk: bool,
     pub parent_document_id: Option<String>,
     pub chunk_order: Option<i64>,
+    pub position_x: Option<f64>,
+    pub position_y: Option<f64>,
 }
 
 /// Helper for creating new edges

@@ -453,6 +453,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let b = NodeRecord {
@@ -467,6 +469,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let result = compute_score(&a, &b);
@@ -493,6 +497,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let mut b_tokens = HashMap::new();
@@ -510,6 +516,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let result = compute_score(&a, &b);

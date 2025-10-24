@@ -7,7 +7,7 @@
     "beforeBuildCommand": "bun run build",
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
-    "frontendDist": "dist"
+    "frontendDist": "../dist"
   },
   "bundle": {
     "active": true,
@@ -159,6 +159,72 @@
                   "description": "Skip confirmation prompt",
                   "takesValue": false,
                   "short": "f"
+                }
+              ]
+            },
+            "edit": {
+              "description": "Edit node in $EDITOR",
+              "args": [
+                {
+                  "name": "id",
+                  "description": "Node ID",
+                  "takesValue": true,
+                  "required": true,
+                  "index": 1
+                }
+              ]
+            },
+            "link": {
+              "description": "Manually link two nodes",
+              "args": [
+                {
+                  "name": "id1",
+                  "description": "First node ID",
+                  "takesValue": true,
+                  "required": true,
+                  "index": 1
+                },
+                {
+                  "name": "id2",
+                  "description": "Second node ID",
+                  "takesValue": true,
+                  "required": true,
+                  "index": 2
+                }
+              ]
+            }
+          }
+        },
+        "health": {
+          "description": "System health check (database, embeddings)"
+        },
+        "edges": {
+          "description": "Edge management",
+          "subcommands": {
+            "propose": {
+              "description": "List suggested edges"
+            },
+            "accept": {
+              "description": "Accept a suggested edge",
+              "args": [
+                {
+                  "name": "id",
+                  "description": "Edge ID",
+                  "takesValue": true,
+                  "required": true,
+                  "index": 1
+                }
+              ]
+            },
+            "reject": {
+              "description": "Reject a suggested edge",
+              "args": [
+                {
+                  "name": "id",
+                  "description": "Edge ID",
+                  "takesValue": true,
+                  "required": true,
+                  "index": 1
                 }
               ]
             }

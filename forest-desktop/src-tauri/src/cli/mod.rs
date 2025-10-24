@@ -5,6 +5,8 @@ mod stats;
 mod capture;
 mod search;
 mod node;
+mod health;
+mod edges;
 
 /// CLI command router
 ///
@@ -31,6 +33,14 @@ pub async fn handle_cli(app: &tauri::AppHandle) -> Result<bool> {
             }
             "node" => {
                 node::handle_node_command(&subcommand).await?;
+                return Ok(true);
+            }
+            "health" => {
+                health::handle_health_command(&subcommand).await?;
+                return Ok(true);
+            }
+            "edges" => {
+                edges::handle_edges_command(&subcommand).await?;
                 return Ok(true);
             }
             _ => {

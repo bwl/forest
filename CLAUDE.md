@@ -83,6 +83,54 @@ cd tldr-agent-spec
 
 **For full TLDR documentation**: See `tldr-agent-spec/README.md`
 
+## Development Workflow & Agent Specialization
+
+Forest Desktop development is split into two primary domains, each with specialized agents:
+
+### Frontend Development (Primary for App Features)
+
+**Agent**: `react-tauri-frontend` - Use this agent for:
+- Building/modifying React components, hooks, and UI layouts
+- Debugging React-specific issues (render cycles, state management, prop drilling)
+- Implementing UI/UX features, animations, and responsive designs
+- Fixing console errors using browser DevTools
+- Writing TypeScript wrappers for Tauri commands
+- Optimizing component performance
+- Implementing error boundaries and accessibility
+- Integrating with Tauri's window management and events from the frontend
+- Polishing existing interfaces with better UX patterns
+
+**When to use**: Any work in `forest-desktop/src/` (React components, TypeScript, CSS)
+
+### Backend/Core Development (When Needed)
+
+**Agent**: `rust-tauri-implementor` - Use this agent for:
+- Implementing new Tauri commands and Rust backend logic
+- Database schema changes and migrations
+- Core algorithms (scoring, linking, search, embeddings)
+- Performance-critical operations requiring native code
+- SQLite query optimization
+- CLI command implementation in Rust
+
+**When to use**: Any work in `forest-desktop/src-tauri/` (Rust code, migrations, core logic)
+
+### Current Phase: App Features & Polish
+
+We now have a **solid backend foundation** with all core Tauri commands implemented. Most development should use the `react-tauri-frontend` agent to:
+- Fix React console errors
+- Implement search highlighting
+- Add node editing UI
+- Build settings panel
+- Enhance command palette UX
+- Improve graph visualization controls
+- Add keyboard shortcuts and accessibility features
+
+**Reserve `rust-tauri-implementor` for**:
+- New backend features requiring Tauri commands
+- Database schema changes
+- Core algorithm improvements
+- Performance optimization in Rust
+
 ## Development Commands
 
 ```bash

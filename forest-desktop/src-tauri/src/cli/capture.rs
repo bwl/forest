@@ -5,8 +5,8 @@
 
 use anyhow::{Context, Result};
 use tauri_plugin_cli::SubcommandMatches;
-use forest_desktop::db::{Database, NewNode, NewEdge, EdgeType, Pagination};
-use forest_desktop::core::{text, scoring};
+use forest_desktop::db::{Database, NewNode};
+use forest_desktop::core::{text, linking};
 use forest_desktop::EMBEDDING_SERVICE;
 
 /// Handle the `capture` CLI command
@@ -64,6 +64,8 @@ pub async fn handle_capture_command(matches: &SubcommandMatches) -> Result<()> {
         is_chunk: false,
         parent_document_id: None,
         chunk_order: None,
+        position_x: None,
+        position_y: None,
     };
 
     let node_record = db.insert_node(new_node).await?;
@@ -81,7 +83,7 @@ pub async fn handle_capture_command(matches: &SubcommandMatches) -> Result<()> {
     // Auto-link if enabled
     if auto_link {
         println!("\nAuto-linking...");
-        let link_result = auto_link_node(&db, &node_record).await?;
+        let link_result = linking::auto_link_node(&db, &node_record).await?;
 
         if link_result.accepted > 0 || link_result.suggested > 0 {
             println!("  {} accepted, {} suggested",
@@ -93,65 +95,6 @@ pub async fn handle_capture_command(matches: &SubcommandMatches) -> Result<()> {
 
     db.close().await;
     Ok(())
-}
-
-/// Auto-linking logic: score new node against all existing nodes
-///
-/// Creates edges based on score classification:
-/// - score >= 0.5: accepted (auto-created)
-/// - 0.25 <= score < 0.5: suggested (for review)
-/// - score < 0.25: discarded (not stored)
-async fn auto_link_node(db: &Database, new_node: &forest_desktop::db::NodeRecord) -> Result<LinkingResult> {
-    let mut accepted = 0;
-    let mut suggested = 0;
-
-    // Get all existing nodes (except the one we just created)
-    let all_nodes = db.list_nodes(Pagination { limit: 10000, offset: 0 }).await?;
-
-    for other in all_nodes {
-        if other.id == new_node.id {
-            continue;
-        }
-
-        // Compute hybrid score
-        let score_result = scoring::compute_score(new_node, &other);
-        let classification = scoring::classify_score(score_result.score);
-
-        // Convert classification to edge status
-        let status = match scoring::classification_to_status(classification) {
-            Some(s) => s,
-            None => continue, // Discard - don't store
-        };
-
-        // Normalize edge pair (sourceId < targetId)
-        let (source, target) = scoring::normalize_edge_pair(&new_node.id, &other.id);
-
-        // Create edge
-        let new_edge = NewEdge {
-            source_id: source,
-            target_id: target,
-            score: score_result.score,
-            status,
-            edge_type: EdgeType::Semantic,
-            metadata: None,
-        };
-
-        db.upsert_edge(new_edge).await?;
-
-        // Track counts
-        match status {
-            forest_desktop::db::EdgeStatus::Accepted => accepted += 1,
-            forest_desktop::db::EdgeStatus::Suggested => suggested += 1,
-        }
-    }
-
-    Ok(LinkingResult { accepted, suggested })
-}
-
-/// Result of auto-linking operation
-struct LinkingResult {
-    accepted: usize,
-    suggested: usize,
 }
 
 /// Get body input from --body, --file, or --stdin (priority order)

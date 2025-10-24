@@ -123,6 +123,11 @@ impl Database {
         nodes::search_nodes_by_title(&self.pool, query).await
     }
 
+    /// Update node position for graph visualization
+    pub async fn update_node_position(&self, id: &str, x: f64, y: f64) -> Result<()> {
+        nodes::update_node_position(&self.pool, id, x, y).await
+    }
+
     // ===== Edge Operations =====
 
     /// Insert or update an edge (upsert)

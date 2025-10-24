@@ -4,18 +4,17 @@
 
 use anyhow::Result;
 use tauri_plugin_cli::SubcommandMatches;
-use forest_desktop::db::{Database, Pagination};
-use forest_desktop::core::scoring;
+use forest_desktop::db::Database;
+use forest_desktop::core::search;
 use forest_desktop::EMBEDDING_SERVICE;
 
 /// Handle the `search` CLI command
 ///
 /// Workflow:
-/// 1. Compute query embedding
-/// 2. Load all nodes with embeddings
-/// 3. Compute cosine similarity for each node
-/// 4. Sort by similarity descending
-/// 5. Display top N results
+/// 1. Parse arguments
+/// 2. Check if embeddings are enabled
+/// 3. Perform semantic search using core module
+/// 4. Display results
 pub async fn handle_search_command(matches: &SubcommandMatches) -> Result<()> {
     // Parse arguments
     let query = get_arg_value(matches, "query")
@@ -27,55 +26,41 @@ pub async fn handle_search_command(matches: &SubcommandMatches) -> Result<()> {
 
     println!("Searching for: \"{}\"", query);
 
-    // Compute query embedding
-    let query_embedding = EMBEDDING_SERVICE.embed_text(&query).await?;
-
-    if query_embedding.is_none() {
+    // Check if embeddings are enabled
+    let test_embedding = EMBEDDING_SERVICE.embed_text("test").await?;
+    if test_embedding.is_none() {
         eprintln!("Warning: Embeddings are disabled (FOREST_EMBED_PROVIDER=none)");
         eprintln!("Semantic search requires embeddings. Use 'local', 'openai', or 'mock' provider.");
         std::process::exit(1);
     }
 
-    let query_emb = query_embedding.unwrap();
-
-    // Load all nodes
+    // Perform semantic search using core module
     let db = Database::new().await?;
-    let all_nodes = db.list_nodes(Pagination { limit: 10000, offset: 0 }).await?;
-
-    // Compute similarities
-    let mut results: Vec<(&forest_desktop::db::NodeRecord, f64)> = all_nodes.iter()
-        .filter_map(|node| {
-            if let Some(node_emb) = &node.embedding {
-                let similarity = scoring::cosine_embeddings(
-                    Some(&query_emb),
-                    Some(node_emb)
-                );
-                Some((node, similarity))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Sort by similarity descending
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    results.truncate(limit);
+    let results = search::semantic_search(&db, &query, limit).await?;
+    let total_with_embeddings = db.list_nodes(forest_desktop::db::Pagination {
+        limit: 10000,
+        offset: 0
+    }).await?
+        .iter()
+        .filter(|n| n.embedding.is_some())
+        .count();
+    db.close().await;
 
     // Display results
     if results.is_empty() {
         println!("No results found");
     } else {
         println!("\nResults:\n");
-        for (i, (node, similarity)) in results.iter().enumerate() {
-            let sim_pct = similarity * 100.0;
+        for (i, result) in results.iter().enumerate() {
+            let sim_pct = result.similarity * 100.0;
 
             // Show position, ID, title, and similarity
-            println!("{}. {} - {}", i + 1, format_short_id(&node.id), node.title);
+            println!("{}. {} - {}", i + 1, format_short_id(&result.node.id), result.node.title);
             println!("   Similarity: {:.1}%", sim_pct);
 
             // Show tags if present
-            if !node.tags.is_empty() {
-                println!("   Tags: {}", node.tags.iter()
+            if !result.node.tags.is_empty() {
+                println!("   Tags: {}", result.node.tags.iter()
                     .map(|t| format!("#{}", t))
                     .collect::<Vec<_>>()
                     .join(" "));
@@ -86,11 +71,10 @@ pub async fn handle_search_command(matches: &SubcommandMatches) -> Result<()> {
 
         println!("Showing {} of {} results with embeddings",
             results.len(),
-            all_nodes.iter().filter(|n| n.embedding.is_some()).count()
+            total_with_embeddings
         );
     }
 
-    db.close().await;
     Ok(())
 }
 

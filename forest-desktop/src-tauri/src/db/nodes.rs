@@ -16,8 +16,9 @@ pub async fn insert_node(pool: &SqlitePool, node: NewNode) -> Result<NodeRecord>
         r#"
         INSERT INTO nodes (
             id, title, body, tags, token_counts, embedding,
-            created_at, updated_at, is_chunk, parent_document_id, chunk_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            created_at, updated_at, is_chunk, parent_document_id, chunk_order,
+            position_x, position_y
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#
     )
     .bind(&id)
@@ -31,6 +32,8 @@ pub async fn insert_node(pool: &SqlitePool, node: NewNode) -> Result<NodeRecord>
     .bind(bool_to_int(node.is_chunk))
     .bind(node.parent_document_id.as_ref())
     .bind(node.chunk_order)
+    .bind(node.position_x)
+    .bind(node.position_y)
     .execute(pool)
     .await
     .context("Failed to insert node")?;
@@ -47,6 +50,8 @@ pub async fn insert_node(pool: &SqlitePool, node: NewNode) -> Result<NodeRecord>
         is_chunk: node.is_chunk,
         parent_document_id: node.parent_document_id,
         chunk_order: node.chunk_order,
+        position_x: node.position_x,
+        position_y: node.position_y,
     })
 }
 
@@ -76,7 +81,8 @@ async fn try_get_exact_node(pool: &SqlitePool, id: &str) -> Result<Option<NodeRe
     let row = sqlx::query(
         r#"
         SELECT id, title, body, tags, token_counts, embedding,
-               created_at, updated_at, is_chunk, parent_document_id, chunk_order
+               created_at, updated_at, is_chunk, parent_document_id, chunk_order,
+               position_x, position_y
         FROM nodes
         WHERE id = ?
         LIMIT 1
@@ -97,7 +103,8 @@ async fn find_nodes_by_prefix(pool: &SqlitePool, prefix: &str) -> Result<Vec<Nod
     let rows = sqlx::query(
         r#"
         SELECT id, title, body, tags, token_counts, embedding,
-               created_at, updated_at, is_chunk, parent_document_id, chunk_order
+               created_at, updated_at, is_chunk, parent_document_id, chunk_order,
+               position_x, position_y
         FROM nodes
         WHERE lower(id) LIKE ?
         "#
@@ -124,6 +131,8 @@ fn parse_node_row(row: &sqlx::sqlite::SqliteRow) -> Result<NodeRecord> {
     let is_chunk_int: i64 = row.try_get("is_chunk")?;
     let parent_document_id: Option<String> = row.try_get("parent_document_id")?;
     let chunk_order: Option<i64> = row.try_get("chunk_order")?;
+    let position_x: Option<f64> = row.try_get("position_x")?;
+    let position_y: Option<f64> = row.try_get("position_y")?;
 
     Ok(NodeRecord {
         id,
@@ -137,6 +146,8 @@ fn parse_node_row(row: &sqlx::sqlite::SqliteRow) -> Result<NodeRecord> {
         is_chunk: int_to_bool(is_chunk_int),
         parent_document_id,
         chunk_order,
+        position_x,
+        position_y,
     })
 }
 
@@ -226,7 +237,8 @@ pub async fn list_nodes(pool: &SqlitePool, pagination: Pagination) -> Result<Vec
     let rows = sqlx::query(
         r#"
         SELECT id, title, body, tags, token_counts, embedding,
-               created_at, updated_at, is_chunk, parent_document_id, chunk_order
+               created_at, updated_at, is_chunk, parent_document_id, chunk_order,
+               position_x, position_y
         FROM nodes
         ORDER BY updated_at DESC
         LIMIT ? OFFSET ?
@@ -247,7 +259,8 @@ pub async fn search_nodes_by_title(pool: &SqlitePool, query: &str) -> Result<Vec
     let rows = sqlx::query(
         r#"
         SELECT id, title, body, tags, token_counts, embedding,
-               created_at, updated_at, is_chunk, parent_document_id, chunk_order
+               created_at, updated_at, is_chunk, parent_document_id, chunk_order,
+               position_x, position_y
         FROM nodes
         WHERE lower(title) LIKE ?
         ORDER BY updated_at DESC
@@ -296,6 +309,21 @@ pub async fn update_node_chunk_order(pool: &SqlitePool, id: &str, chunk_order: i
     Ok(())
 }
 
+/// Update node position (used for graph visualization persistence)
+pub async fn update_node_position(pool: &SqlitePool, id: &str, x: f64, y: f64) -> Result<()> {
+    let existing = get_node_by_id(pool, id).await?;
+    let full_id = &existing.id;
+
+    sqlx::query("UPDATE nodes SET position_x = ?, position_y = ? WHERE id = ?")
+        .bind(x)
+        .bind(y)
+        .bind(full_id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,6 +351,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let inserted = insert_node(&pool, new_node).await.unwrap();
@@ -353,6 +383,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let inserted = insert_node(&pool, new_node).await.unwrap();
@@ -381,6 +413,8 @@ mod tests {
             is_chunk: false,
             parent_document_id: None,
             chunk_order: None,
+            position_x: None,
+            position_y: None,
         };
 
         let inserted = insert_node(&pool, new_node).await.unwrap();
@@ -408,6 +442,8 @@ mod tests {
                 is_chunk: false,
                 parent_document_id: None,
                 chunk_order: None,
+                position_x: None,
+                position_y: None,
             };
             insert_node(&pool, new_node).await.unwrap();
         }
