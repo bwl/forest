@@ -6,13 +6,24 @@ interface Props {
   onSearch: (query: string) => void
   onNodeCreated: () => void
   onOpenSettings: () => void
+  onExpandedChange?: (expanded: boolean) => void
 }
 
-export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Props) {
+export function CommandPalette({
+  onSearch,
+  onNodeCreated,
+  onOpenSettings,
+  onExpandedChange,
+}: Props) {
   const [expanded, setExpanded] = useState(false)
   const [value, setValue] = useState('')
   const [creating, setCreating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const setExpandedState = (next: boolean) => {
+    setExpanded(next)
+    onExpandedChange?.(next)
+  }
 
   // Focus input when expanded
   useEffect(() => {
@@ -27,11 +38,11 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
       // Cmd+K or Ctrl+K to focus
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setExpanded(true)
+        setExpandedState(true)
       }
       // Esc to collapse
       if (e.key === 'Escape') {
-        setExpanded(false)
+        setExpandedState(false)
         setValue('')
       }
     }
@@ -49,16 +60,19 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
         // Search command
         const query = value.slice(8).trim()
         onSearch(query)
+        setExpandedState(false)
         setValue('')
       } else if (value === '/settings') {
         // Settings command
         onOpenSettings()
+        setExpandedState(false)
         setValue('')
       } else {
         // Plain text = create node
         setCreating(true)
         await invoke('create_node_quick', { text: value })
         onNodeCreated()
+        setExpandedState(false)
         setValue('')
       }
     } catch (err) {
@@ -84,7 +98,7 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
           {!expanded ? (
             <div
               className="command-palette-collapsed"
-              onClick={() => setExpanded(true)}
+              onClick={() => setExpandedState(true)}
               style={{
                 padding: '0.75rem 1.5rem',
                 background: 'rgba(255, 255, 255, 0.95)',
