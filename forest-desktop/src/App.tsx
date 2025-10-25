@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { GraphCanvas } from './components/GraphCanvas'
+import { GameViewport } from './components/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
 import { searchNodes } from './lib/tauri-commands'
@@ -27,7 +27,7 @@ function App() {
 
   return (
     <div className="app-container">
-      <GraphCanvas
+      <GameViewport
         onNodeClick={setSelectedNode}
         highlightedNodes={highlightedNodes}
       />
