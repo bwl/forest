@@ -3,14 +3,16 @@
     "allow": [
       "Bash(forest:*)",
       "WebSearch",
-      "Bash(curl -s http://localhost:3000/api/v1/health)",
-      "Bash(curl -s \"http://localhost:3000/api/v1/nodes?limit=5\")",
       "WebFetch(domain:platform.openai.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(gh pr view:*)",
       "Bash(gh pr diff:*)",
       "Bash(bun test:*)",
-      "Bash(bun run lint)"
+      "Bash(bun run lint)",
+      "Bash(cargo build:*)",
+      "WebFetch(domain:v2.tauri.app)",
+      "WebFetch(domain:edwardtufte.github.io)",
+      "WebFetch(domain:docs.rs)"
     ],
     "deny": [],
     "ask": []
