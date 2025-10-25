@@ -12,14 +12,17 @@
     "release": "bun run tauri build"
   },
   "dependencies": {
+    "@react-three/drei": "^9.111.0",
+    "@react-three/fiber": "^8.16.2",
     "@tanstack/react-query": "^5.0.0",
     "@tauri-apps/api": "^2.9.0",
     "@types/dagre": "^0.7.53",
-    "@react-three/drei": "^9.111.0",
-    "@react-three/fiber": "^8.16.2",
+    "@xstate/react": "^3.2.2",
     "@xyflow/react": "^12.9.0",
     "dagre": "^0.8.5",
     "framer-motion": "^11.0.0",
+    "gsap": "^3.12.5",
+    "leva": "^0.9.48",
     "lucide-react": "^0.292.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -28,6 +31,7 @@
     "reactflow": "^11.11.4",
     "remark-gfm": "^4.0.0",
     "three": "^0.168.0",
+    "xstate": "^5.13.2",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
