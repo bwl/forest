@@ -175,8 +175,9 @@ export function GraphCanvas({ onNodeClick, highlightedNodes = [] }: Props) {
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh' }}>
+    <div style={{ width: '100%', height: '100%' }}>
       <ReactFlow
+        className="graph-canvas"
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
@@ -187,7 +188,7 @@ export function GraphCanvas({ onNodeClick, highlightedNodes = [] }: Props) {
         minZoom={0.1}
         maxZoom={2}
       >
-        <Background />
+        <Background color="rgba(148, 163, 184, 0.45)" gap={32} />
         <Controls />
       </ReactFlow>
     </div>

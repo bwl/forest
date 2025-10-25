@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
+import { RenderBudgetOverlay } from './components/RenderBudgetOverlay'
+import { WebGLScene } from './components/WebGLScene'
 import { searchNodes } from './lib/tauri-commands'
 
 function App() {
@@ -26,42 +28,44 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <GraphCanvas
-        onNodeClick={setSelectedNode}
-        highlightedNodes={highlightedNodes}
-      />
+    <div className="app-shell">
+      <div className="scene-layer">
+        <WebGLScene highlightedNodes={highlightedNodes} />
+      </div>
 
-      <CommandPalette
-        onSearch={handleSearch}
-        onNodeCreated={handleNodeCreated}
-        onOpenSettings={() => setShowSettings(true)}
-      />
-
-      {selectedNode && (
-        <NodeDetailPanel
-          nodeId={selectedNode}
-          onClose={() => setSelectedNode(null)}
+      <div className="hud-layer">
+        <GraphCanvas
+          onNodeClick={setSelectedNode}
+          highlightedNodes={highlightedNodes}
         />
-      )}
 
-      {showSettings && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001,
-        }}>
-          <div style={{ background: 'white', padding: '2rem', borderRadius: '8px' }}>
-            <h2>Settings</h2>
-            <p>Settings panel coming soon!</p>
-            <button onClick={() => setShowSettings(false)}>Close</button>
+        <CommandPalette
+          onSearch={handleSearch}
+          onNodeCreated={handleNodeCreated}
+          onOpenSettings={() => setShowSettings(true)}
+        />
+
+        {selectedNode && (
+          <NodeDetailPanel
+            nodeId={selectedNode}
+            onClose={() => setSelectedNode(null)}
+          />
+        )}
+
+        {showSettings && (
+          <div className="glass-modal">
+            <div className="glass-surface">
+              <h2>Settings</h2>
+              <p>Settings panel coming soon!</p>
+              <button className="glass-button" onClick={() => setShowSettings(false)}>
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      <RenderBudgetOverlay />
     </div>
   )
 }
