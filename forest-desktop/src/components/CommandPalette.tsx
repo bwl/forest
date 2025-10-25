@@ -77,7 +77,7 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
           left: '50%',
           top: '50%',
           transform: 'translate(-50%, -50%)',
-          zIndex: 1000,
+          zIndex: 1200,
         }}
       >
         <div className="command-palette-handle">
@@ -86,15 +86,16 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
               className="command-palette-collapsed"
               onClick={() => setExpanded(true)}
               style={{
-                padding: '0.75rem 1.5rem',
-                background: 'rgba(255, 255, 255, 0.95)',
-                borderRadius: '24px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                padding: '0.85rem 1.75rem',
+                background: 'rgba(15, 23, 42, 0.72)',
+                borderRadius: '28px',
+                boxShadow: '0 18px 40px rgba(8, 15, 35, 0.45)',
                 cursor: 'pointer',
-                border: '1px solid #ddd',
+                border: '1px solid rgba(148, 163, 184, 0.35)',
+                backdropFilter: 'blur(26px) saturate(160%)',
               }}
             >
-              <span style={{ color: '#888', fontSize: '0.9rem' }}>
+              <span style={{ color: 'rgba(226, 232, 240, 0.7)', fontSize: '0.95rem', letterSpacing: '0.04em' }}>
                 Type to create... (⌘K)
               </span>
             </div>
@@ -110,13 +111,15 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
                 className="command-palette-input"
                 style={{
                   width: '400px',
-                  padding: '0.75rem 1rem',
+                  padding: '0.85rem 1rem',
                   fontSize: '1rem',
-                  border: '2px solid #0066cc',
-                  borderRadius: '8px',
+                  border: '1px solid rgba(148, 163, 184, 0.45)',
+                  borderRadius: '16px',
                   outline: 'none',
-                  background: 'white',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+                  background: 'rgba(15, 23, 42, 0.75)',
+                  color: '#e2e8f0',
+                  boxShadow: '0 24px 55px rgba(8, 15, 35, 0.55)',
+                  backdropFilter: 'blur(26px) saturate(160%)',
                 }}
               />
             </form>
@@ -127,11 +130,13 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
           <div
             style={{
               marginTop: '0.5rem',
-              padding: '0.5rem',
-              background: 'rgba(255, 255, 255, 0.95)',
-              borderRadius: '8px',
+              padding: '0.6rem 0.75rem',
+              background: 'rgba(15, 23, 42, 0.72)',
+              borderRadius: '14px',
               fontSize: '0.85rem',
-              color: '#666',
+              color: 'rgba(226, 232, 240, 0.75)',
+              border: '1px solid rgba(148, 163, 184, 0.3)',
+              backdropFilter: 'blur(22px) saturate(150%)',
             }}
           >
             {value.startsWith('/') ? (

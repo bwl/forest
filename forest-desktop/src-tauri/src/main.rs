@@ -7,6 +7,8 @@ extern crate forest_desktop;
 mod cli;
 mod commands;
 
+use tauri::{window::Color, Manager};
+
 /// Main entry point for Forest Desktop
 ///
 /// This application supports two modes:
@@ -37,9 +39,34 @@ async fn main() -> anyhow::Result<()> {
             commands::create_node_quick,
             commands::log_to_terminal,
         ])
-        .setup(|_app| {
-            // Setup hook - will be called before the main event loop starts
-            // We need to determine mode here to prevent window creation in CLI mode
+        .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_decorations(false);
+                let _ = window.set_shadow(true);
+                let _ = window.set_background_color(Some(Color::from_rgba(0, 0, 0, 0)));
+
+                #[cfg(target_os = "macos")]
+                {
+                    use tauri::TitleBarStyle;
+                    let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
+                    let _ = window.set_full_size_content_view(true);
+                }
+
+                #[cfg(target_os = "windows")]
+                {
+                    use tauri::window::effects::EffectsBuilder;
+                    let acrylic = EffectsBuilder::new().acrylic().color((24, 32, 48, 200)).build();
+                    if let Ok(effects) = acrylic {
+                        let _ = window.apply_effects(effects);
+                    } else {
+                        let mica = EffectsBuilder::new().mica().build();
+                        if let Ok(effect) = mica {
+                            let _ = window.apply_effects(effect);
+                        }
+                    }
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
