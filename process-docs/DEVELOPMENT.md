@@ -32,6 +32,33 @@ All browser console logs (including errors) are piped to your terminal with pref
 
 This means **you get immediate feedback in your terminal** when there are React errors or any JavaScript issues.
 
+### GPU Acceleration & VSync
+
+The glassmorphic UI and WebGL scene lean on GPU compositing. If the window looks flat or frame pacing drifts above 16 ms, force hardware acceleration and vsync using the platform toggles below:
+
+**macOS / Linux (WebKit)**
+
+```bash
+# Force compositing in WebKit and keep GPU paths on
+WEBKIT_DISABLE_GPU=0 \
+WEBKIT_FORCE_COMPOSITING_MODE=1 \
+WEBKIT_DISABLE_DMABUF_RENDERER=0 \
+bun run tauri dev
+```
+
+Verify acceleration by opening DevTools (`Cmd+Opt+I`) → **Rendering** → enable “FPS meter”. The meter should report a GPU process and hover around 60 fps while idle.
+
+**Windows (WebView2)**
+
+```powershell
+# In PowerShell before launching the dev server
+$env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--enable-features=UseAngleRasterization,UseSkiaRenderer --disable-features=CalculateNativeWinOcclusion --ignore-gpu-blocklist"
+$env:WEBVIEW2_ENABLE_WINDOWLESS_FRAME_RATE="60"  # lock vsync to the desktop refresh rate
+bun run tauri dev
+```
+
+Open DevTools (`Ctrl+Shift+I`) → **Performance** to confirm stable frame times (GPU column active, frame budget line at ~16 ms).
+
 ## Current Status (2025-10-24)
 
 ### ✅ What's Working

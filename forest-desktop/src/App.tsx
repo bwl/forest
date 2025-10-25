@@ -3,6 +3,7 @@ import { GameViewport } from './components/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
 import { SceneIntroOverlay } from './components/SceneIntroOverlay'
+import { RenderBudgetOverlay } from './components/RenderBudgetOverlay'
 import { HUDLayer } from './components/hud/HUDLayer'
 import {
   SceneStateProvider,
@@ -85,6 +86,7 @@ function AppContent() {
         />
       </div>
       <SceneIntroOverlay />
+      <RenderBudgetOverlay />
       <div className={hudClassName}>
         <CommandPalette
           onSearch={handleSearch}
