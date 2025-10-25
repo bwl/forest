@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { GraphCanvas } from './components/GraphCanvas'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
+import { HUDLayer } from './components/hud/HUDLayer'
 import { searchNodes } from './lib/tauri-commands'
 
 function App() {
@@ -26,11 +27,10 @@ function App() {
   }
 
   return (
-    <div className="app-container">
-      <GraphCanvas
-        onNodeClick={setSelectedNode}
-        highlightedNodes={highlightedNodes}
-      />
+    <HUDLayer>
+      <div className="app-container">
+        <GraphCanvas onNodeClick={setSelectedNode} highlightedNodes={highlightedNodes} />
+      </div>
 
       <CommandPalette
         onSearch={handleSearch}
@@ -39,30 +39,21 @@ function App() {
       />
 
       {selectedNode && (
-        <NodeDetailPanel
-          nodeId={selectedNode}
-          onClose={() => setSelectedNode(null)}
-        />
+        <NodeDetailPanel nodeId={selectedNode} onClose={() => setSelectedNode(null)} />
       )}
 
       {showSettings && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1001,
-        }}>
-          <div style={{ background: 'white', padding: '2rem', borderRadius: '8px' }}>
+        <div className="app-settings-overlay">
+          <div className="app-settings-card">
             <h2>Settings</h2>
             <p>Settings panel coming soon!</p>
-            <button onClick={() => setShowSettings(false)}>Close</button>
+            <button onClick={() => setShowSettings(false)} className="forest-button">
+              Close
+            </button>
           </div>
         </div>
       )}
-    </div>
+    </HUDLayer>
   )
 }
 

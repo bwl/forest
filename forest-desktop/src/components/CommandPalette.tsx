@@ -1,11 +1,74 @@
-import { useState, useRef, useEffect } from 'react'
-import Draggable from 'react-draggable'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { HUDWindow } from './hud/HUDWindow'
 
 interface Props {
   onSearch: (query: string) => void
   onNodeCreated: () => void
   onOpenSettings: () => void
+}
+
+interface CommandPaletteContentProps {
+  expanded: boolean
+  value: string
+  creating: boolean
+  onExpand: () => void
+  onCollapse: () => void
+  onChange: (value: string) => void
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
+  inputRef: React.RefObject<HTMLInputElement>
+}
+
+export function CommandPaletteContent({
+  expanded,
+  value,
+  creating,
+  onExpand,
+  onCollapse,
+  onChange,
+  onSubmit,
+  inputRef,
+}: CommandPaletteContentProps) {
+  return (
+    <div className="command-palette">
+      {!expanded ? (
+        <button type="button" className="command-palette-collapsed" onClick={onExpand}>
+          <span>Type to create... (⌘K)</span>
+        </button>
+      ) : (
+        <>
+          <form onSubmit={onSubmit} className="command-palette-form">
+            <input
+              ref={inputRef}
+              type="text"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="Type text or /search, /settings..."
+              disabled={creating}
+              className="command-palette-input"
+            />
+          </form>
+          {value && (
+            <div className="command-palette-preview">
+              {value.startsWith('/') ? (
+                <div>
+                  {value.startsWith('/search ') && `🔍 Search for: ${value.slice(8)}`}
+                  {value === '/settings' && '⚙️ Open settings'}
+                </div>
+              ) : (
+                <div>✨ Create note: "{value.slice(0, 40)}{value.length > 40 ? '...' : ''}"</div>
+              )}
+            </div>
+          )}
+          <div className="command-palette-actions">
+            <button type="button" onClick={onCollapse} className="command-palette-secondary">
+              Collapse
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Props) {
@@ -14,23 +77,29 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
   const [creating, setCreating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Focus input when expanded
+  const initialPosition = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return { x: 0, y: 0 }
+    }
+    const width = 420
+    const x = window.innerWidth / 2 - width / 2
+    const y = window.innerHeight * 0.18
+    return { x, y }
+  }, [])
+
   useEffect(() => {
     if (expanded && inputRef.current) {
       inputRef.current.focus()
     }
   }, [expanded])
 
-  // Keyboard shortcuts
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K or Ctrl+K to focus
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
         setExpanded(true)
       }
-      // Esc to collapse
-      if (e.key === 'Escape') {
+      if (event.key === 'Escape') {
         setExpanded(false)
         setValue('')
       }
@@ -40,22 +109,19 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
     if (!value.trim()) return
 
     try {
       if (value.startsWith('/search ')) {
-        // Search command
         const query = value.slice(8).trim()
         onSearch(query)
         setValue('')
       } else if (value === '/settings') {
-        // Settings command
         onOpenSettings()
         setValue('')
       } else {
-        // Plain text = create node
         setCreating(true)
         await invoke('create_node_quick', { text: value })
         onNodeCreated()
@@ -69,82 +135,30 @@ export function CommandPalette({ onSearch, onNodeCreated, onOpenSettings }: Prop
   }
 
   return (
-    <Draggable handle=".command-palette-handle">
-      <div
-        className="command-palette"
-        style={{
-          position: 'fixed',
-          left: '50%',
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 1000,
+    <HUDWindow
+      id="command-palette"
+      title="Command Palette"
+      isOpen
+      initialPosition={initialPosition}
+      chrome
+      onClose={() => {
+        setExpanded(false)
+        setValue('')
+      }}
+    >
+      <CommandPaletteContent
+        expanded={expanded}
+        value={value}
+        creating={creating}
+        onExpand={() => setExpanded(true)}
+        onCollapse={() => {
+          setExpanded(false)
+          setValue('')
         }}
-      >
-        <div className="command-palette-handle">
-          {!expanded ? (
-            <div
-              className="command-palette-collapsed"
-              onClick={() => setExpanded(true)}
-              style={{
-                padding: '0.75rem 1.5rem',
-                background: 'rgba(255, 255, 255, 0.95)',
-                borderRadius: '24px',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                cursor: 'pointer',
-                border: '1px solid #ddd',
-              }}
-            >
-              <span style={{ color: '#888', fontSize: '0.9rem' }}>
-                Type to create... (⌘K)
-              </span>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit}>
-              <input
-                ref={inputRef}
-                type="text"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="Type text or /search, /settings..."
-                disabled={creating}
-                className="command-palette-input"
-                style={{
-                  width: '400px',
-                  padding: '0.75rem 1rem',
-                  fontSize: '1rem',
-                  border: '2px solid #0066cc',
-                  borderRadius: '8px',
-                  outline: 'none',
-                  background: 'white',
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-                }}
-              />
-            </form>
-          )}
-        </div>
-
-        {value && expanded && (
-          <div
-            style={{
-              marginTop: '0.5rem',
-              padding: '0.5rem',
-              background: 'rgba(255, 255, 255, 0.95)',
-              borderRadius: '8px',
-              fontSize: '0.85rem',
-              color: '#666',
-            }}
-          >
-            {value.startsWith('/') ? (
-              <div>
-                {value.startsWith('/search ') && '🔍 Search for: ' + value.slice(8)}
-                {value === '/settings' && '⚙️ Open settings'}
-              </div>
-            ) : (
-              <div>✨ Create note: "{value.slice(0, 40)}{value.length > 40 ? '...' : ''}"</div>
-            )}
-          </div>
-        )}
-      </div>
-    </Draggable>
+        onChange={setValue}
+        onSubmit={handleSubmit}
+        inputRef={inputRef}
+      />
+    </HUDWindow>
   )
 }

@@ -118,6 +118,7 @@ article {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
 
 .command-palette-handle {
@@ -131,4 +132,310 @@ article {
   border-radius: 4px;
   font-size: 0.85rem;
   color: #666;
+}
+
+/* Heads-up display layer */
+.hud-host {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.hud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.hud-window {
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 18px;
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.25);
+  backdrop-filter: blur(18px) saturate(140%);
+  min-width: 320px;
+  max-width: 480px;
+  color: #1f2937;
+}
+
+.hud-window--active {
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.35);
+  border-color: rgba(99, 102, 241, 0.45);
+}
+
+.hud-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  cursor: grab;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.65));
+}
+
+.hud-window-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.hud-window-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: #6b7280;
+  transition: color 0.2s ease;
+}
+
+.hud-window-close:hover {
+  color: #111827;
+}
+
+.hud-window-body {
+  padding: 1rem 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Command palette styling */
+.command-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 360px;
+}
+
+.command-palette-collapsed {
+  border: 1px dashed rgba(99, 102, 241, 0.5);
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  color: #6366f1;
+  font-weight: 500;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.command-palette-collapsed:hover {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(79, 70, 229, 0.7);
+}
+
+.command-palette-form {
+  display: flex;
+}
+
+.command-palette-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 2px solid rgba(79, 70, 229, 0.45);
+  font-size: 1rem;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.15);
+}
+
+.command-palette-input:focus {
+  outline: none;
+  border-color: rgba(79, 70, 229, 0.75);
+  box-shadow: 0 18px 40px rgba(79, 70, 229, 0.25);
+}
+
+.command-palette-preview {
+  font-size: 0.85rem;
+  color: #4b5563;
+  background: rgba(248, 250, 252, 0.9);
+  border: 1px solid rgba(203, 213, 225, 0.6);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+}
+
+.command-palette-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.command-palette-secondary {
+  background: rgba(226, 232, 240, 0.85);
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #475569;
+}
+
+.command-palette-secondary:hover {
+  background: rgba(203, 213, 225, 0.95);
+}
+
+/* Node detail panel styling */
+.node-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  cursor: grab;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.7));
+}
+
+.node-detail-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.node-detail-close {
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.node-detail-close:hover {
+  color: #1f2937;
+}
+
+.node-detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.node-detail-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.node-detail-body {
+  white-space: pre-wrap;
+  line-height: 1.6;
+  color: #1f2937;
+}
+
+.node-detail-body-input {
+  width: 100%;
+  min-height: 200px;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  border: 2px solid rgba(79, 70, 229, 0.45);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.node-detail-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.node-detail-secondary {
+  background: rgba(226, 232, 240, 0.85);
+  border: none;
+  border-radius: 10px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  color: #475569;
+}
+
+.node-detail-secondary:hover {
+  background: rgba(203, 213, 225, 0.95);
+}
+
+.node-detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.node-detail-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.node-detail-connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(203, 213, 225, 0.8);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.95);
+}
+
+.node-detail-connection-title {
+  font-weight: 500;
+  color: #1f2937;
+}
+
+.node-detail-connection-score {
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.node-detail-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.node-detail-edit-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+}
+
+.node-detail-title-input {
+  border-radius: 10px;
+  border: 2px solid rgba(79, 70, 229, 0.45);
+  padding: 0.6rem 0.8rem;
+  font-size: 1rem;
+}
+
+.node-detail-loading {
+  padding: 1rem;
+  font-size: 0.95rem;
+  color: #475569;
+}
+
+/* App overlays */
+.app-settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  backdrop-filter: blur(8px);
+}
+
+.app-settings-card {
+  background: rgba(255, 255, 255, 0.95);
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
+  min-width: 320px;
+  text-align: center;
 }
