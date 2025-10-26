@@ -1,10 +1,18 @@
 #!/bin/bash
 set -e
 
-echo "Building Forest CLI and embedding helper..."
-
 # Navigate to project root
 cd "$(dirname "$0")/../.."
+
+# Read version from VERSION file (single source of truth)
+export FOREST_VERSION=$(cat VERSION)
+echo "Building Forest CLI v${FOREST_VERSION}..."
+
+# Update package.json version to match VERSION file
+sed -i '' "s/\"version\": \".*\"/\"version\": \"$FOREST_VERSION\"/" package.json
+
+# Update tauri.conf.json version to match VERSION file
+sed -i '' "3s/\"version\": \".*\"/\"version\": \"$FOREST_VERSION\"/" forest-desktop/src-tauri/tauri.conf.json
 
 # Embed WASM file as base64 for standalone distribution
 echo "Embedding sql-wasm.wasm..."
