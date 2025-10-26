@@ -1,146 +1,140 @@
 import { createPortal } from 'react-dom'
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-  type ReactNode,
-  type PointerEvent as ReactPointerEvent,
-} from 'react'
-import { motion, useDragControls, useSpring } from 'framer-motion'
+import { useEffect, useId, useRef, useState, type ReactNode, type PointerEvent } from 'react'
 import { useHUDLayer } from './HUDLayer'
-
-export interface HUDAnchor {
-  getPosition: () => { x: number; y: number } | null
-  offset?: { x: number; y: number }
-}
 
 interface HUDWindowProps {
   id?: string
   title?: string
-  isOpen: boolean
-  initialPosition?: { x: number; y: number }
-  anchor?: HUDAnchor
-  followAnchor?: boolean
+  initialX?: number
+  initialY?: number
   onClose?: () => void
   children: ReactNode
   className?: string
-  chrome?: boolean
-  header?: (utils: { onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void; isFocused: boolean }) => ReactNode
+}
+
+interface DragState {
+  isDragging: boolean
+  startX: number
+  startY: number
+  offsetX: number
+  offsetY: number
 }
 
 export function HUDWindow({
   id,
   title,
-  isOpen,
-  initialPosition,
-  anchor,
-  followAnchor = false,
+  initialX = 100,
+  initialY = 100,
   onClose,
   children,
   className,
-  chrome = true,
-  header,
 }: HUDWindowProps) {
   const generatedId = useId()
   const windowId = id ?? generatedId
   const hud = useHUDLayer()
+  const windowRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLDivElement>(null)
 
-  const dragControls = useDragControls()
-  const [isDragging, setIsDragging] = useState(false)
+  const [position, setPosition] = useState({ x: initialX, y: initialY })
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    startX: 0,
+    startY: 0,
+    offsetX: 0,
+    offsetY: 0,
+  })
+
+  // Extract stable functions to avoid depending on entire hud object
+  const { registerWindow, unregisterWindow } = hud
 
   useEffect(() => {
-    hud.registerWindow(windowId)
-    return () => hud.unregisterWindow(windowId)
-  }, [hud, windowId])
+    registerWindow(windowId)
+    return () => unregisterWindow(windowId)
+  }, [registerWindow, unregisterWindow, windowId])
+
+  // Simplified: Use React synthetic events directly - no manual addEventListener!
+  function handlePointerDown(e: PointerEvent<HTMLDivElement>) {
+    e.preventDefault()
+    const header = e.currentTarget
+
+    // Only bring to front if not already topmost
+    if (hud.topmostId !== windowId) {
+      hud.bringToFront(windowId)
+    }
+
+    setDragState({
+      isDragging: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      offsetX: position.x,
+      offsetY: position.y,
+    })
+
+    header.setPointerCapture(e.pointerId)
+  }
+
+  function handlePointerMove(e: PointerEvent<HTMLDivElement>) {
+    if (!dragState.isDragging) return
+
+    const dx = e.clientX - dragState.startX
+    const dy = e.clientY - dragState.startY
+
+    setPosition({
+      x: dragState.offsetX + dx,
+      y: dragState.offsetY + dy,
+    })
+  }
+
+  function handlePointerUp(e: PointerEvent<HTMLDivElement>) {
+    if (dragState.isDragging) {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+      setDragState(prev => ({ ...prev, isDragging: false }))
+    }
+  }
+
+  if (!hud.container) return null
 
   const zIndex = hud.getZIndex(windowId)
   const isTopmost = hud.topmostId === windowId
 
-  const startingPosition = useMemo(() => {
-    if (initialPosition) return initialPosition
-    if (typeof window !== 'undefined') {
-      return { x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 }
-    }
-    return { x: 0, y: 0 }
-  }, [initialPosition])
-
-  const x = useSpring(startingPosition.x, { stiffness: 300, damping: 30 })
-  const y = useSpring(startingPosition.y, { stiffness: 300, damping: 30 })
-  const scale = useSpring(isOpen ? 1 : 0.95, { stiffness: 250, damping: 25 })
-  const opacity = useSpring(isOpen ? 1 : 0, { stiffness: 200, damping: 25 })
-
-  useEffect(() => {
-    scale.set(isOpen ? 1 : 0.95)
-    opacity.set(isOpen ? 1 : 0)
-  }, [isOpen, opacity, scale])
-
-  useEffect(() => {
-    if (!anchor || !followAnchor || isDragging) return
-
-    let frame: number
-    const updatePosition = () => {
-      const next = anchor.getPosition()
-      if (next) {
-        const offset = anchor.offset ?? { x: 0, y: 0 }
-        x.set(next.x + offset.x)
-        y.set(next.y + offset.y)
-      }
-      frame = window.requestAnimationFrame(updatePosition)
-    }
-    frame = window.requestAnimationFrame(updatePosition)
-    return () => window.cancelAnimationFrame(frame)
-  }, [anchor, followAnchor, isDragging, x, y])
-
-  if (!hud.container) return null
-
-  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    hud.bringToFront(windowId)
-    if (chrome || header) {
-      dragControls.start(event.nativeEvent)
-    }
-  }
-
   return createPortal(
-    <motion.div
+    <div
+      ref={windowRef}
       role="dialog"
       aria-modal="false"
-      initial={false}
-      animate={{}}
       style={{
         position: 'absolute',
-        x,
-        y,
-        scale,
-        opacity,
+        left: `${position.x}px`,
+        top: `${position.y}px`,
         zIndex,
-        pointerEvents: isOpen ? 'auto' : 'none',
+        cursor: dragState.isDragging ? 'grabbing' : 'auto',
       }}
-      drag
-      dragControls={dragControls}
-      dragListener={!chrome && !header}
-      dragMomentum
-      dragElastic={0.2}
-      onDragStart={() => setIsDragging(true)}
-      onDragEnd={() => setIsDragging(false)}
       className={`hud-window${isTopmost ? ' hud-window--active' : ''}${className ? ` ${className}` : ''}`}
-      data-state={isOpen ? 'open' : 'closed'}
-      onPointerDown={() => hud.bringToFront(windowId)}
+      onPointerDown={() => {
+        // Only bring to front if not already topmost - prevents redundant stack updates
+        if (!isTopmost) {
+          hud.bringToFront(windowId)
+        }
+      }}
     >
-      {header
-        ? header({ onPointerDown: handlePointerDown, isFocused: isTopmost })
-        : chrome && (
-            <div className="hud-window-header" onPointerDown={(event) => handlePointerDown(event)}>
-              <div className="hud-window-title">{title}</div>
-              {onClose && (
-                <button type="button" className="hud-window-close" onClick={onClose} aria-label="Close window">
-                  ×
-                </button>
-              )}
-            </div>
-          )}
+      <div
+        ref={headerRef}
+        className="hud-window-header"
+        style={{ cursor: dragState.isDragging ? 'grabbing' : 'grab' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        <div className="hud-window-title">{title}</div>
+        {onClose && (
+          <button type="button" className="hud-window-close" onClick={onClose} aria-label="Close window">
+            ×
+          </button>
+        )}
+      </div>
       <div className="hud-window-body">{children}</div>
-    </motion.div>,
+    </div>,
     hud.container
   )
 }

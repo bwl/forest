@@ -1,73 +1,42 @@
-import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-
-interface ForestStats {
-  nodes: number
-  edges: number
-  suggested: number
-}
+import { useStats } from '../queries/forest'
 
 export function StatsDisplay() {
-  const [stats, setStats] = useState<ForestStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: stats, isLoading, refetch } = useStats()
 
-  useEffect(() => {
-    loadStats()
-  }, [])
-
-  async function loadStats() {
-    try {
-      setLoading(true)
-      setError(null)
-      const result = await invoke<ForestStats>('get_stats')
-      setStats(result)
-    } catch (err) {
-      console.error('Failed to load stats:', err)
-      setError(String(err))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="forest-stats">
-        <p>Loading stats...</p>
+      <div className="glass-panel rounded-xl p-4">
+        <p className="text-slate-300">Loading stats...</p>
       </div>
     )
   }
 
-  if (error) {
+  if (!stats) {
     return (
-      <div className="forest-stats">
-        <p style={{ color: '#d00' }}>Error: {error}</p>
-        <button className="forest-button" onClick={loadStats}>
+      <div className="glass-panel rounded-xl p-4">
+        <p className="text-red-400 mb-3">No stats available</p>
+        <button className="btn-primary" onClick={() => refetch()}>
           Retry
         </button>
       </div>
     )
   }
 
-  if (!stats) {
-    return null
-  }
-
   return (
-    <div className="forest-stats">
-      <div className="forest-stat-card">
-        <p className="forest-stat-value">{stats.nodes}</p>
-        <p className="forest-stat-label">Nodes</p>
+    <div className="flex gap-4">
+      <div className="glass-panel rounded-xl p-4 text-center">
+        <p className="text-3xl font-bold text-slate-50">{stats.nodes}</p>
+        <p className="text-xs text-slate-400 uppercase tracking-wider mt-1">Nodes</p>
       </div>
 
-      <div className="forest-stat-card">
-        <p className="forest-stat-value">{stats.edges}</p>
-        <p className="forest-stat-label">Connections</p>
+      <div className="glass-panel rounded-xl p-4 text-center">
+        <p className="text-3xl font-bold text-slate-50">{stats.edges}</p>
+        <p className="text-xs text-slate-400 uppercase tracking-wider mt-1">Connections</p>
       </div>
 
-      <div className="forest-stat-card">
-        <p className="forest-stat-value">{stats.suggested}</p>
-        <p className="forest-stat-label">Suggestions</p>
+      <div className="glass-panel rounded-xl p-4 text-center">
+        <p className="text-3xl font-bold text-slate-50">{stats.suggested}</p>
+        <p className="text-xs text-slate-400 uppercase tracking-wider mt-1">Suggestions</p>
       </div>
     </div>
   )

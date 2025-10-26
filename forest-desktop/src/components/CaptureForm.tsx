@@ -27,7 +27,6 @@ export function CaptureForm({ onNodeCreated }: Props) {
 
       const result = await createNode(title, body, tagArray, autoLink)
 
-      // Reset form
       setTitle('')
       setBody('')
       setTags('')
@@ -42,22 +41,22 @@ export function CaptureForm({ onNodeCreated }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="forest-card">
-      <h2>Create Note</h2>
+    <form onSubmit={handleSubmit} className="glass-panel rounded-2xl p-6">
+      <h2 className="text-2xl font-bold text-slate-50 mb-6">Create Note</h2>
 
       {error && (
-        <div style={{ padding: '1rem', marginBottom: '1rem', backgroundColor: '#fee', color: '#d00', borderRadius: '4px' }}>
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-4">
           {error}
         </div>
       )}
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+      <div className="mb-4">
+        <label className="block mb-2 font-semibold text-slate-200">
           Title
         </label>
         <input
           type="text"
-          className="forest-input"
+          className="input"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Note title..."
@@ -65,40 +64,39 @@ export function CaptureForm({ onNodeCreated }: Props) {
         />
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+      <div className="mb-4">
+        <label className="block mb-2 font-semibold text-slate-200">
           Content
         </label>
         <textarea
-          className="forest-input"
+          className="input resize-vertical min-h-[200px]"
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Write your thoughts..."
-          rows={8}
           required
-          style={{ resize: 'vertical', fontFamily: 'inherit' }}
         />
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+      <div className="mb-4">
+        <label className="block mb-2 font-semibold text-slate-200">
           Tags (comma-separated, optional)
         </label>
         <input
           type="text"
-          className="forest-input"
+          className="input"
           value={tags}
           onChange={(e) => setTags(e.target.value)}
           placeholder="rust, programming, ideas"
         />
       </div>
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+      <div className="mb-6">
+        <label className="flex items-center gap-2 cursor-pointer text-slate-200">
           <input
             type="checkbox"
             checked={autoLink}
             onChange={(e) => setAutoLink(e.target.checked)}
+            className="w-4 h-4"
           />
           <span>Auto-link to existing notes</span>
         </label>
@@ -106,7 +104,7 @@ export function CaptureForm({ onNodeCreated }: Props) {
 
       <button
         type="submit"
-        className="forest-button"
+        className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
         disabled={loading || !title.trim() || !body.trim()}
       >
         {loading ? 'Creating...' : 'Create Note'}

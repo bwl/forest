@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
-import { getNode, getNodeConnections, updateNode, type NodeDetail, type NodeConnection } from '../lib/tauri-commands'
+import { useState } from 'react'
+import { useNode, useConnections, useUpdateNode } from '../queries/forest'
+import { useKeyboard } from '../hooks/useKeyboard'
 
 interface Props {
   nodeId: string
@@ -7,141 +8,67 @@ interface Props {
 }
 
 export function NodeDetailPanel({ nodeId, onClose }: Props) {
-  const [node, setNode] = useState<NodeDetail | null>(null)
-  const [connections, setConnections] = useState<NodeConnection[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: node, isLoading } = useNode(nodeId)
+  const { data: connections = [] } = useConnections(nodeId)
+  const updateMutation = useUpdateNode()
+
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editBody, setEditBody] = useState('')
-  const [saving, setSaving] = useState(false)
 
-  const loadNode = useCallback(async () => {
-    try {
-      setLoading(true)
-      const [nodeData, conns] = await Promise.all([
-        getNode(nodeId),
-        getNodeConnections(nodeId),
-      ])
-      setNode(nodeData)
-      setConnections(conns)
-      setEditTitle(nodeData.title)
-      setEditBody(nodeData.body)
-    } catch (err) {
-      console.error('Failed to load node:', err)
-    } finally {
-      setLoading(false)
+  // Centralized keyboard handling
+  useKeyboard((e) => {
+    if (e.key === 'Escape') {
+      onClose()
     }
-  }, [nodeId])
+  }, [onClose])
 
-  const handleSave = async () => {
+  async function handleSave() {
     if (!node) return
-    try {
-      setSaving(true)
-      await updateNode(node.id, editTitle, editBody)
-      // Reload to get updated data
-      await loadNode()
-      setEditing(false)
-      console.log('Node updated successfully')
-    } catch (err) {
-      console.error('Failed to update node:', err)
-    } finally {
-      setSaving(false)
-    }
+    await updateMutation.mutateAsync({ id: node.id, title: editTitle, body: editBody })
+    setEditing(false)
   }
 
-  const handleCancelEdit = () => {
+  function handleCancelEdit() {
     if (!node) return
     setEditTitle(node.title)
     setEditBody(node.body)
     setEditing(false)
   }
 
-  useEffect(() => {
-    loadNode()
-  }, [loadNode])
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  if (loading || !node) {
+  if (isLoading || !node) {
     return (
-      <div className="node-detail-panel">
-        <p>Loading...</p>
+      <div className="glass-panel rounded-2xl p-6">
+        <p className="text-slate-300">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div
-      className="node-detail-panel"
-      style={{
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        width: '400px',
-        height: '100vh',
-        background: 'rgba(15, 23, 42, 0.78)',
-        boxShadow: '-12px 0 45px rgba(8, 15, 35, 0.6)',
-        padding: '2.25rem',
-        overflowY: 'auto',
-        animation: 'slideIn 0.3s ease-out',
-        zIndex: 1100,
-        backdropFilter: 'blur(26px) saturate(160%)',
-        borderLeft: '1px solid rgba(148, 163, 184, 0.35)',
-        color: '#e2e8f0',
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+    <div className="glass-panel fixed right-0 top-0 w-[400px] h-screen p-9 overflow-y-auto z-[1100] border-l animate-[slideIn_0.3s_ease-out]">
+      <div className="flex justify-between items-center mb-4">
         {editing ? (
           <input
             type="text"
             value={editTitle}
             onChange={(e) => setEditTitle(e.target.value)}
-            style={{
-              fontSize: '1.5rem',
-              fontWeight: 'bold',
-              border: '1px solid rgba(148, 163, 184, 0.45)',
-              borderRadius: '10px',
-              padding: '0.4rem 0.75rem',
-              flex: 1,
-              marginRight: '0.5rem',
-              background: 'rgba(15, 23, 42, 0.6)',
-              color: '#f8fafc',
-            }}
+            className="input flex-1 mr-2 text-xl font-bold px-3 py-2"
           />
         ) : (
-          <h2 style={{ margin: 0, color: '#f8fafc' }}>{node.title}</h2>
+          <h2 className="text-2xl font-bold text-slate-50 m-0">{node.title}</h2>
         )}
         <button
           onClick={onClose}
-          style={{
-            background: 'rgba(15, 23, 42, 0.6)',
-            border: '1px solid rgba(148, 163, 184, 0.3)',
-            color: '#cbd5f5',
-            fontSize: '1.25rem',
-            cursor: 'pointer',
-            borderRadius: '999px',
-            width: '32px',
-            height: '32px',
-            display: 'grid',
-            placeItems: 'center',
-          }}
+          className="bg-slate-900/60 border border-slate-400/30 text-slate-300 text-xl cursor-pointer rounded-full w-8 h-8 grid place-items-center"
         >
           ×
         </button>
       </div>
 
       {node.tags.length > 0 && (
-        <div style={{ marginBottom: '1rem' }}>
+        <div className="mb-4">
           {node.tags.map((tag) => (
-            <span key={tag} className="forest-tag" style={{ marginRight: '0.5rem' }}>
+            <span key={tag} className="tag">
               #{tag}
             </span>
           ))}
@@ -152,100 +79,64 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
         <textarea
           value={editBody}
           onChange={(e) => setEditBody(e.target.value)}
-          style={{
-            width: '100%',
-            minHeight: '200px',
-            border: '1px solid rgba(148, 163, 184, 0.45)',
-            borderRadius: '12px',
-            padding: '0.75rem',
-            fontSize: '1rem',
-            lineHeight: '1.6',
-            fontFamily: 'inherit',
-            marginBottom: '1rem',
-            resize: 'vertical',
-            background: 'rgba(15, 23, 42, 0.6)',
-            color: '#e2e8f0',
-          }}
+          className="input w-full min-h-[200px] resize-vertical mb-4 leading-relaxed"
         />
       ) : (
-        <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', marginBottom: '2rem', color: 'rgba(226, 232, 240, 0.9)' }}>
+        <div className="whitespace-pre-wrap leading-relaxed mb-8 text-slate-200/90">
           {node.body}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+      <div className="flex gap-2 mb-4">
         {editing ? (
           <>
             <button
               onClick={handleSave}
-              disabled={saving}
-              style={{
-                padding: '0.55rem 1.35rem',
-                background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.35), rgba(6, 182, 212, 0.2))',
-                color: '#f0fdfa',
-                border: '1px solid rgba(94, 234, 212, 0.5)',
-                borderRadius: '999px',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                opacity: saving ? 0.6 : 1,
-                boxShadow: '0 12px 30px rgba(13, 148, 136, 0.35)',
-              }}
+              disabled={updateMutation.isPending}
+              className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {updateMutation.isPending ? 'Saving...' : 'Save'}
             </button>
             <button
               onClick={handleCancelEdit}
-              disabled={saving}
-              style={{
-                padding: '0.55rem 1.35rem',
-                background: 'rgba(100, 116, 139, 0.35)',
-                border: '1px solid rgba(148, 163, 184, 0.45)',
-                borderRadius: '999px',
-                cursor: saving ? 'not-allowed' : 'pointer',
-                color: 'rgba(226, 232, 240, 0.85)',
-              }}
+              disabled={updateMutation.isPending}
+              className="btn-ghost disabled:cursor-not-allowed"
             >
               Cancel
             </button>
           </>
         ) : (
           <button
-            onClick={() => setEditing(true)}
-            style={{
-              padding: '0.55rem 1.35rem',
-              background: 'linear-gradient(135deg, rgba(45, 212, 191, 0.35), rgba(14, 165, 233, 0.2))',
-              color: '#f0fdfa',
-              border: '1px solid rgba(125, 211, 252, 0.45)',
-              borderRadius: '999px',
-              cursor: 'pointer',
-              boxShadow: '0 12px 30px rgba(14, 165, 233, 0.25)',
+            onClick={() => {
+              if (!node) return
+              // Initialize edit state when entering edit mode (not in useEffect!)
+              setEditTitle(node.title)
+              setEditBody(node.body)
+              setEditing(true)
             }}
+            className="btn-primary"
           >
             Edit
           </button>
         )}
       </div>
 
-      <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '2rem' }}>
-        <p>Created: {new Date(node.created_at).toLocaleString()}</p>
+      <div className="text-xs text-slate-400 mb-8">
+        <p className="mb-1">Created: {new Date(node.created_at).toLocaleString()}</p>
         <p>Updated: {new Date(node.updated_at).toLocaleString()}</p>
       </div>
 
       {connections.length > 0 && (
         <div>
-          <h3>Connected Notes ({connections.length})</h3>
+          <h3 className="text-lg font-semibold mb-3 text-slate-100">Connected Notes ({connections.length})</h3>
           {connections.map((conn) => (
             <div
               key={conn.node_id}
-              style={{
-                padding: '0.75rem',
-                marginBottom: '0.5rem',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-              }}
+              className="glass-panel rounded-xl p-3 mb-2"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>{conn.title}</span>
-                <span style={{ fontSize: '0.85rem', color: '#666' }}>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-200">{conn.title}</span>
+                <span className="text-xs text-slate-400">
                   {(conn.score * 100).toFixed(0)}%
                 </span>
               </div>

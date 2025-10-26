@@ -1,37 +1,13 @@
 import { useState } from 'react'
-import { invoke } from '@tauri-apps/api/core'
-
-interface SearchResult {
-  id: string
-  title: string
-  body: string
-  tags: string[]
-  similarity: number
-}
+import { useSearchNodes } from '../queries/forest'
 
 export function SearchInterface() {
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const searchMutation = useSearchNodes()
 
   async function handleSearch() {
     if (!query.trim()) return
-
-    try {
-      setLoading(true)
-      setError(null)
-      const searchResults = await invoke<SearchResult[]>('search_nodes', {
-        query,
-        limit: 20,
-      })
-      setResults(searchResults)
-    } catch (err) {
-      console.error('Search failed:', err)
-      setError(String(err))
-    } finally {
-      setLoading(false)
-    }
+    searchMutation.mutate({ query, limit: 20 })
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -40,44 +16,46 @@ export function SearchInterface() {
     }
   }
 
+  const results = searchMutation.data ?? []
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+      <div className="flex gap-4 mb-8">
         <input
           type="text"
-          className="forest-input"
+          className="input flex-1"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Search your knowledge base..."
         />
         <button
-          className="forest-button"
+          className="btn-primary"
           onClick={handleSearch}
-          disabled={loading}
+          disabled={searchMutation.isPending}
         >
-          {loading ? 'Searching...' : 'Search'}
+          {searchMutation.isPending ? 'Searching...' : 'Search'}
         </button>
       </div>
 
-      {error && (
-        <div className="forest-card" style={{ borderColor: '#d00', color: '#d00' }}>
-          {error}
+      {searchMutation.isError && (
+        <div className="glass-panel rounded-xl p-4 border-red-400 text-red-400">
+          {String(searchMutation.error)}
         </div>
       )}
 
       {results.length > 0 && (
-        <div>
+        <div className="space-y-3">
           {results.map((result) => (
-            <div key={result.id} className="forest-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                <h3 style={{ margin: '0 0 0.5rem 0' }}>{result.title}</h3>
-                <span style={{ fontSize: '0.875rem', color: '#666', fontFamily: 'monospace' }}>
+            <div key={result.id} className="glass-panel rounded-xl p-4">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-lg font-semibold text-slate-50 m-0">{result.title}</h3>
+                <span className="text-xs text-slate-400 font-mono">
                   {(result.similarity * 100).toFixed(1)}%
                 </span>
               </div>
 
-              <p style={{ color: '#444', marginBottom: '1rem' }}>
+              <p className="text-slate-300 mb-3">
                 {result.body.length > 200
                   ? result.body.substring(0, 200) + '...'
                   : result.body}
@@ -86,7 +64,7 @@ export function SearchInterface() {
               {result.tags.length > 0 && (
                 <div>
                   {result.tags.map((tag) => (
-                    <span key={tag} className="forest-tag">
+                    <span key={tag} className="tag">
                       #{tag}
                     </span>
                   ))}
@@ -97,10 +75,10 @@ export function SearchInterface() {
         </div>
       )}
 
-      {results.length === 0 && !loading && !error && query && (
-        <div className="forest-card" style={{ textAlign: 'center', color: '#888' }}>
-          <p>No results found for "{query}"</p>
-          <p style={{ fontSize: '0.875rem' }}>
+      {results.length === 0 && !searchMutation.isPending && !searchMutation.isError && query && (
+        <div className="glass-panel rounded-xl p-8 text-center">
+          <p className="text-slate-400 mb-2">No results found for "{query}"</p>
+          <p className="text-xs text-slate-500">
             Try a different search term or capture some notes first
           </p>
         </div>

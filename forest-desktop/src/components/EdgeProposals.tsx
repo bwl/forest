@@ -1,108 +1,81 @@
-import { useEffect, useState, useCallback } from 'react'
-import { getEdgeProposals, acceptEdge, rejectEdge, type EdgeProposal } from '../lib/tauri-commands'
+import { useEdgeProposals, useAcceptEdge, useRejectEdge } from '../queries/edges'
 
 export function EdgeProposals() {
-  const [proposals, setProposals] = useState<EdgeProposal[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const loadProposals = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const data = await getEdgeProposals(20)
-      setProposals(data)
-    } catch (err) {
-      console.error('Failed to load proposals:', err)
-      setError(String(err))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadProposals()
-  }, [loadProposals])
+  const { data: proposals = [], isLoading, error, refetch } = useEdgeProposals(20)
+  const acceptMutation = useAcceptEdge()
+  const rejectMutation = useRejectEdge()
 
   async function handleAccept(sourceId: string, targetId: string) {
-    try {
-      await acceptEdge(sourceId, targetId)
-      // Remove from list
-      setProposals(proposals.filter(p => !(p.source_id === sourceId && p.target_id === targetId)))
-    } catch (err) {
-      console.error('Failed to accept edge:', err)
-      setError(String(err))
-    }
+    await acceptMutation.mutateAsync({ sourceId, targetId })
   }
 
   async function handleReject(sourceId: string, targetId: string) {
-    try {
-      await rejectEdge(sourceId, targetId)
-      // Remove from list
-      setProposals(proposals.filter(p => !(p.source_id === sourceId && p.target_id === targetId)))
-    } catch (err) {
-      console.error('Failed to reject edge:', err)
-      setError(String(err))
-    }
+    await rejectMutation.mutateAsync({ sourceId, targetId })
   }
 
-  if (loading) {
-    return <div className="forest-card"><p>Loading proposals...</p></div>
+  if (isLoading) {
+    return (
+      <div className="glass-panel rounded-xl p-4">
+        <p className="text-slate-300">Loading proposals...</p>
+      </div>
+    )
   }
 
   if (error) {
     return (
-      <div className="forest-card">
-        <p style={{ color: '#d00' }}>Error: {error}</p>
-        <button className="forest-button" onClick={loadProposals}>Retry</button>
+      <div className="glass-panel rounded-xl p-4">
+        <p className="text-red-400 mb-3">Error: {String(error)}</p>
+        <button className="btn-primary" onClick={() => refetch()}>Retry</button>
       </div>
     )
   }
 
   return (
     <div>
-      <h2>Edge Proposals</h2>
+      <h2 className="text-2xl font-bold text-slate-50 mb-6">Edge Proposals</h2>
 
       {proposals.length === 0 && (
-        <div className="forest-card" style={{ textAlign: 'center', color: '#888' }}>
-          <p>No pending proposals!</p>
-          <p style={{ fontSize: '0.875rem' }}>
+        <div className="glass-panel rounded-xl p-8 text-center">
+          <p className="text-slate-400 mb-2">No pending proposals!</p>
+          <p className="text-xs text-slate-500">
             All suggested connections have been reviewed.
           </p>
         </div>
       )}
 
-      {proposals.map((proposal) => (
-        <div key={proposal.edge_id} className="forest-card" style={{ marginBottom: '1rem' }}>
-          <div style={{ marginBottom: '1rem' }}>
-            <div style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-              <strong>{proposal.source_title}</strong>
-              {' ↔ '}
-              <strong>{proposal.target_title}</strong>
+      <div className="space-y-4">
+        {proposals.map((proposal) => (
+          <div key={proposal.edge_id} className="glass-panel rounded-xl p-4">
+            <div className="mb-4">
+              <div className="text-lg mb-2 text-slate-100">
+                <strong>{proposal.source_title}</strong>
+                {' ↔ '}
+                <strong>{proposal.target_title}</strong>
+              </div>
+              <div className="text-xs text-slate-400">
+                Similarity: {(proposal.score * 100).toFixed(1)}%
+              </div>
             </div>
-            <div style={{ fontSize: '0.875rem', color: '#666' }}>
-              Similarity: {(proposal.score * 100).toFixed(1)}%
-            </div>
-          </div>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              className="forest-button"
-              onClick={() => handleAccept(proposal.source_id, proposal.target_id)}
-              style={{ backgroundColor: '#0a0', color: '#fff' }}
-            >
-              Accept
-            </button>
-            <button
-              className="forest-button"
-              onClick={() => handleReject(proposal.source_id, proposal.target_id)}
-              style={{ backgroundColor: '#d00', color: '#fff' }}
-            >
-              Reject
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="btn bg-green-600/30 border-green-400/50 text-green-50 hover:bg-green-600/40"
+                onClick={() => handleAccept(proposal.source_id, proposal.target_id)}
+                disabled={acceptMutation.isPending || rejectMutation.isPending}
+              >
+                Accept
+              </button>
+              <button
+                className="btn bg-red-600/30 border-red-400/50 text-red-50 hover:bg-red-600/40"
+                onClick={() => handleReject(proposal.source_id, proposal.target_id)}
+                disabled={acceptMutation.isPending || rejectMutation.isPending}
+              >
+                Reject
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }

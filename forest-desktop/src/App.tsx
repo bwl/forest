@@ -1,127 +1,88 @@
-import { useEffect, useMemo, useState } from 'react'
-import { GameViewport } from './components/GameViewport'
+import { GameViewport } from './components/3d/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
-import { SceneIntroOverlay } from './components/SceneIntroOverlay'
 import { RenderBudgetOverlay } from './components/RenderBudgetOverlay'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { HUDLayer } from './components/hud/HUDLayer'
-import {
-  SceneStateProvider,
-  useSceneMode,
-  useSceneSend,
-  useSceneValue,
-} from './lib/sceneState'
-import { searchNodes } from './lib/tauri-commands'
+import { HUDWindow } from './components/hud/HUDWindow'
+import { ForestEventsBridge } from './hooks/useForestEvents'
+import { useUI } from './store/ui'
+import { useSearchNodes } from './queries/forest'
 
 function AppContent() {
-  const send = useSceneSend()
-  const mode = useSceneMode()
-  const settingsOpen = useSceneValue((state) => state.context.settingsOpen)
-  const [selectedNode, setSelectedNode] = useState<string | null>(null)
-  const [highlightedNodes, setHighlightedNodes] = useState<string[]>([])
-  const [reloadingGraph, setReloadingGraph] = useState(false)
+  const selectedNodeId = useUI((s) => s.selectedNodeId)
+  const setSelectedNodeId = useUI((s) => s.setSelectedNodeId)
+  const setHighlightedNodeIds = useUI((s) => s.setHighlightedNodeIds)
+  const settingsOpen = useUI((s) => s.settingsOpen)
+  const setSettingsOpen = useUI((s) => s.setSettingsOpen)
+
+  const searchMutation = useSearchNodes()
 
   async function handleSearch(query: string) {
     try {
-      const results = await searchNodes(query, 10)
+      const results = await searchMutation.mutateAsync({ query, limit: 10 })
       const nodeIds = results.map((r) => r.id)
-      setHighlightedNodes(nodeIds)
-      send({ type: 'ENTER_EXPLORE' })
-      console.log(`Search results: ${results.length} nodes found for "${query}"`)
+      setHighlightedNodeIds(nodeIds)
     } catch (err) {
-      console.error('Search failed:', err)
+      console.error('Search failed', err)
     }
   }
 
-  function handleNodeCreated() {
-    send({ type: 'ENTER_BUILD' })
-    setReloadingGraph(true)
-    // Give the backend a brief moment before reloading the graph dataset.
-    window.setTimeout(() => {
-      window.location.reload()
-    }, 400)
-  }
-
-  const hudClassName = useMemo(() => {
-    return ['hud-layer', `hud-layer--${mode}`].join(' ')
-  }, [mode])
-
-  useEffect(() => {
-    if (!reloadingGraph) return
-    const timeout = window.setTimeout(() => {
-      setReloadingGraph(false)
-      send({ type: 'ENTER_EXPLORE' })
-    }, 1200)
-    return () => window.clearTimeout(timeout)
-  }, [reloadingGraph, send])
-
-  const handleNodeClick = (nodeId: string) => {
-    setSelectedNode(nodeId)
-    send({ type: 'ENTER_FOCUS', nodeId })
-  }
-
-  const handleCloseNode = () => {
-    setSelectedNode(null)
-    send({ type: 'EXIT_FOCUS' })
-  }
-
-  const handlePaletteExpanded = (expanded: boolean) => {
-    send({ type: expanded ? 'OPEN_COMMAND' : 'CLOSE_COMMAND' })
-  }
-
-  const handleOpenSettings = () => {
-    send({ type: 'OPEN_SETTINGS' })
-  }
-
-  const handleCloseSettings = () => {
-    send({ type: 'CLOSE_SETTINGS' })
-  }
-
   return (
-    <HUDLayer>
-      <div className={`app-container scene-mode-${mode}`}>
-        <GameViewport
-          onNodeClick={handleNodeClick}
-          highlightedNodes={highlightedNodes}
-        />
-      </div>
-      <SceneIntroOverlay />
-      <RenderBudgetOverlay />
-      <div className={hudClassName}>
-        <CommandPalette
-          onSearch={handleSearch}
-          onNodeCreated={handleNodeCreated}
-          onOpenSettings={handleOpenSettings}
-          onExpandedChange={handlePaletteExpanded}
-        />
+    <>
+      <ForestEventsBridge />
+      <HUDLayer>
+        <div className="app-container">
+          <ErrorBoundary level="component">
+            <GameViewport onNodeClick={setSelectedNodeId} />
+          </ErrorBoundary>
+        </div>
 
-        {selectedNode && (
-          <div className="hud-window hud-window--detail">
-            <NodeDetailPanel nodeId={selectedNode} onClose={handleCloseNode} />
+        <RenderBudgetOverlay />
+
+        <ErrorBoundary level="component">
+          <HUDWindow id="command-palette" title="Command" initialX={20} initialY={20}>
+            <CommandPalette
+              onSearch={handleSearch}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </HUDWindow>
+        </ErrorBoundary>
+
+        {selectedNodeId && (
+          <ErrorBoundary level="component">
+            <HUDWindow id="node-detail" title="Node Detail" initialX={400} initialY={20}>
+              {/* key prop resets component state when node changes - no useEffect needed! */}
+              <NodeDetailPanel
+                key={selectedNodeId}
+                nodeId={selectedNodeId}
+                onClose={() => setSelectedNodeId(null)}
+              />
+            </HUDWindow>
+          </ErrorBoundary>
+        )}
+
+        {settingsOpen && (
+          <div className="hud-overlay">
+            <div className="glass-panel rounded-2xl p-8 max-w-md">
+              <h2 className="text-2xl font-bold mb-4">Settings</h2>
+              <p className="text-slate-300 mb-6">Settings panel coming soon!</p>
+              <button className="btn-primary" onClick={() => setSettingsOpen(false)}>
+                Close
+              </button>
+            </div>
           </div>
         )}
-      </div>
-
-      {settingsOpen && (
-        <div className="hud-overlay">
-          <div className="hud-overlay__content">
-            <h2>Settings</h2>
-            <p>Settings panel coming soon!</p>
-            <button className="forest-button" onClick={handleCloseSettings}>
-              Close
-            </button>
-          </div>
-        </div>
-      )}
-    </HUDLayer>
+      </HUDLayer>
+    </>
   )
 }
 
 function App() {
   return (
-    <SceneStateProvider>
+    <ErrorBoundary level="root">
       <AppContent />
-    </SceneStateProvider>
+    </ErrorBoundary>
   )
 }
 
