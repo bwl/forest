@@ -56,17 +56,32 @@ end
 
 ## Release Process
 
-### 1. Build the App
+### 1. Update VERSION File
+```bash
+# Update the VERSION file (single source of truth)
+echo "0.X.Y" > VERSION
+git add VERSION
+git commit -m "chore: Bump version to 0.X.Y"
+git push origin thinNtauri
+```
+
+The VERSION file automatically syncs to both:
+- `package.json` (CLI version)
+- `forest-desktop/src-tauri/tauri.conf.json` (desktop app version)
+
+### 2. Build the App
 ```bash
 cd forest-desktop
 bun run tauri build
 ```
 
+The build script (`scripts/build-cli.sh`) reads VERSION and updates both package.json and tauri.conf.json automatically.
+
 Creates:
 - `src-tauri/target/release/bundle/macos/Forest Desktop.app`
-- `src-tauri/target/release/bundle/dmg/Forest Desktop_0.1.0_aarch64.dmg`
+- `src-tauri/target/release/bundle/dmg/Forest Desktop_0.X.Y_aarch64.dmg`
 
-### 2. Create GitHub Release
+### 3. Create GitHub Release
 ```bash
 # Tag the version
 git tag v0.X.Y
@@ -76,13 +91,13 @@ git push origin v0.X.Y
 gh release create v0.X.Y \
   --title "Forest v0.X.Y" \
   --notes "Release notes here" \
-  "forest-desktop/src-tauri/target/release/bundle/dmg/Forest Desktop_0.1.0_aarch64.dmg#Forest-0.X.Y-darwin-aarch64.dmg"
+  "forest-desktop/src-tauri/target/release/bundle/dmg/Forest Desktop_0.X.Y_aarch64.dmg#Forest.Desktop_0.X.Y_aarch64.dmg"
 ```
 
-### 3. Update Cask
+### 4. Update Cask
 ```bash
 # Calculate SHA256
-shasum -a 256 forest-desktop/src-tauri/target/release/bundle/dmg/Forest\ Desktop_0.1.0_aarch64.dmg
+shasum -a 256 forest-desktop/src-tauri/target/release/bundle/dmg/Forest\ Desktop_0.X.Y_aarch64.dmg
 
 # Update Casks/forest.rb
 cd /opt/homebrew/Library/Taps/bwl/homebrew-ettio
@@ -92,7 +107,7 @@ git commit -m "Update forest to v0.X.Y"
 git push origin main
 ```
 
-### 4. Test
+### 5. Test
 ```bash
 brew uninstall --cask forest
 brew install --cask bwl/ettio/forest
