@@ -1,9 +1,9 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use forest_desktop::db::{Database, EdgeStatus, EdgeFilters, Pagination, NewNode, NewEdge};
+use tauri::{AppHandle, Emitter, State};
+use forest_desktop::db::{EdgeStatus, EdgeFilters, Pagination, NewNode, NewEdge};
 use forest_desktop::core::{search, text, linking};
-use forest_desktop::EMBEDDING_SERVICE;
+use forest_desktop::{AppState, ForestError, ForestResult, EMBEDDING_SERVICE};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ForestStats {
@@ -59,9 +59,9 @@ pub struct EdgeProposal {
 
 /// Get graph statistics
 #[tauri::command]
-pub async fn get_stats() -> Result<ForestStats, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
-    let stats = db.get_stats().await.map_err(|e| e.to_string())?;
+pub async fn get_stats(state: State<'_, AppState>) -> ForestResult<ForestStats> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
+    let stats = db.get_stats().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
     db.close().await;
 
     Ok(ForestStats {
@@ -73,12 +73,16 @@ pub async fn get_stats() -> Result<ForestStats, String> {
 
 /// Search nodes using semantic similarity
 #[tauri::command]
-pub async fn search_nodes(query: String, limit: usize) -> Result<Vec<SearchResult>, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn search_nodes(
+    state: State<'_, AppState>,
+    query: String,
+    limit: usize,
+) -> ForestResult<Vec<SearchResult>> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     let results = search::semantic_search(&db, &query, limit)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ForestError::EmbeddingError(e.to_string()))?;
 
     db.close().await;
 
@@ -99,9 +103,9 @@ pub async fn search_nodes(query: String, limit: usize) -> Result<Vec<SearchResul
 
 /// Get a single node by ID
 #[tauri::command]
-pub async fn get_node(id: String) -> Result<NodeDetail, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
-    let node = db.get_node_by_id(&id).await.map_err(|e| e.to_string())?;
+pub async fn get_node(state: State<'_, AppState>, id: String) -> ForestResult<NodeDetail> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
+    let node = db.get_node_by_id(&id).await.map_err(|_| ForestError::NodeNotFound(id.clone()))?;
     db.close().await;
 
     Ok(NodeDetail {
@@ -116,11 +120,14 @@ pub async fn get_node(id: String) -> Result<NodeDetail, String> {
 
 /// Get connected nodes for a given node
 #[tauri::command]
-pub async fn get_node_connections(id: String) -> Result<Vec<NodeConnection>, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn get_node_connections(
+    state: State<'_, AppState>,
+    id: String,
+) -> ForestResult<Vec<NodeConnection>> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Get all edges involving this node
-    let edges = db.get_edges_for_node(&id).await.map_err(|e| e.to_string())?;
+    let edges = db.get_edges_for_node(&id).await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     let mut connections = Vec::new();
 
@@ -138,7 +145,7 @@ pub async fn get_node_connections(id: String) -> Result<Vec<NodeConnection>, Str
         };
 
         // Fetch the other node
-        let other_node = db.get_node_by_id(other_id).await.map_err(|e| e.to_string())?;
+        let other_node = db.get_node_by_id(other_id).await.map_err(|_| ForestError::NodeNotFound(other_id.clone()))?;
 
         connections.push(NodeConnection {
             node_id: other_node.id.clone(),
@@ -155,12 +162,14 @@ pub async fn get_node_connections(id: String) -> Result<Vec<NodeConnection>, Str
 /// Create a new node with auto-linking
 #[tauri::command]
 pub async fn create_node(
+    app: AppHandle,
+    state: State<'_, AppState>,
     title: String,
     body: String,
     tags: Option<Vec<String>>,
     auto_link: bool,
-) -> Result<NodeCreationResult, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+) -> ForestResult<NodeCreationResult> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Process text
     let token_counts = text::tokenize(&body);
@@ -174,7 +183,7 @@ pub async fn create_node(
 
     // Compute embedding
     let embedding = EMBEDDING_SERVICE.embed_node(&title, &body)
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::EmbeddingError(e.to_string()))?;
 
     // Create node
     let new_node = NewNode {
@@ -190,7 +199,7 @@ pub async fn create_node(
         position_y: None,
     };
 
-    let node_record = db.insert_node(new_node).await.map_err(|e| e.to_string())?;
+    let node_record = db.insert_node(new_node).await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Auto-link if requested
     let mut accepted = 0;
@@ -198,25 +207,33 @@ pub async fn create_node(
 
     if auto_link {
         let link_result = linking::auto_link_node(&db, &node_record)
-            .await.map_err(|e| e.to_string())?;
+            .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
         accepted = link_result.accepted;
         suggested = link_result.suggested;
     }
 
     db.close().await;
 
-    Ok(NodeCreationResult {
-        id: node_record.id,
-        title: node_record.title,
+    let result = NodeCreationResult {
+        id: node_record.id.clone(),
+        title: node_record.title.clone(),
         accepted_edges: accepted,
         suggested_edges: suggested,
-    })
+    };
+
+    // Emit event to notify frontend
+    let _ = app.emit("node-created", &result);
+
+    Ok(result)
 }
 
 /// Get edge proposals (suggested edges)
 #[tauri::command]
-pub async fn get_edge_proposals(limit: usize) -> Result<Vec<EdgeProposal>, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn get_edge_proposals(
+    state: State<'_, AppState>,
+    limit: usize,
+) -> ForestResult<Vec<EdgeProposal>> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     let filters = EdgeFilters {
         status: Some(EdgeStatus::Suggested),
@@ -229,13 +246,13 @@ pub async fn get_edge_proposals(limit: usize) -> Result<Vec<EdgeProposal>, Strin
     };
 
     let suggestions = db.list_edges(filters, pagination)
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     let mut proposals = Vec::new();
 
     for edge in suggestions {
-        let source = db.get_node_by_id(&edge.source_id).await.map_err(|e| e.to_string())?;
-        let target = db.get_node_by_id(&edge.target_id).await.map_err(|e| e.to_string())?;
+        let source = db.get_node_by_id(&edge.source_id).await.map_err(|_| ForestError::NodeNotFound(edge.source_id.clone()))?;
+        let target = db.get_node_by_id(&edge.target_id).await.map_err(|_| ForestError::NodeNotFound(edge.target_id.clone()))?;
 
         proposals.push(EdgeProposal {
             edge_id: edge.id,
@@ -253,49 +270,82 @@ pub async fn get_edge_proposals(limit: usize) -> Result<Vec<EdgeProposal>, Strin
 
 /// Accept an edge proposal (change status from suggested to accepted)
 #[tauri::command]
-pub async fn accept_edge(source_id: String, target_id: String) -> Result<(), String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn accept_edge(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source_id: String,
+    target_id: String,
+) -> ForestResult<()> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Get the edge
     let edge = db.get_edges_for_node(&source_id)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| ForestError::DatabaseError(e.to_string()))?
         .into_iter()
         .find(|e| {
             (e.source_id == source_id && e.target_id == target_id) ||
             (e.source_id == target_id && e.target_id == source_id)
         })
-        .ok_or_else(|| "Edge not found".to_string())?;
+        .ok_or_else(|| ForestError::EdgeNotFound(source_id.clone(), target_id.clone()))?;
 
     // Update edge to accepted status
     let updated_edge = NewEdge {
-        source_id: edge.source_id,
-        target_id: edge.target_id,
+        source_id: edge.source_id.clone(),
+        target_id: edge.target_id.clone(),
         score: edge.score,
         status: EdgeStatus::Accepted,
         edge_type: edge.edge_type,
         metadata: edge.metadata,
     };
 
-    db.upsert_edge(updated_edge).await.map_err(|e| e.to_string())?;
+    db.upsert_edge(updated_edge).await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
     db.close().await;
+
+    // Emit event to notify frontend
+    #[derive(Serialize, Clone)]
+    struct EdgeAcceptedEvent {
+        source_id: String,
+        target_id: String,
+    }
+    let _ = app.emit("edge-accepted", EdgeAcceptedEvent {
+        source_id: edge.source_id,
+        target_id: edge.target_id,
+    });
+
     Ok(())
 }
 
 /// Reject an edge proposal (delete it)
 #[tauri::command]
-pub async fn reject_edge(source_id: String, target_id: String) -> Result<(), String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn reject_edge(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source_id: String,
+    target_id: String,
+) -> ForestResult<()> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
     let deleted = db.delete_edge(&source_id, &target_id)
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     db.close().await;
 
-    if deleted {
-        Ok(())
-    } else {
-        Err("Edge not found".to_string())
+    if !deleted {
+        return Err(ForestError::EdgeNotFound(source_id.clone(), target_id.clone()));
     }
+
+    // Emit event to notify frontend
+    #[derive(Serialize, Clone)]
+    struct EdgeRejectedEvent {
+        source_id: String,
+        target_id: String,
+    }
+    let _ = app.emit("edge-rejected", EdgeRejectedEvent {
+        source_id,
+        target_id,
+    });
+
+    Ok(())
 }
 
 // ===== Graph Visualization Commands =====
@@ -326,12 +376,12 @@ pub struct GraphEdge {
 
 /// Get all nodes and edges for graph visualization
 #[tauri::command]
-pub async fn get_graph_data() -> Result<GraphData, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn get_graph_data(state: State<'_, AppState>) -> ForestResult<GraphData> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Get all nodes
     let nodes = db.list_nodes(Pagination { limit: 10000, offset: 0 })
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Get all accepted edges
     let edges = db.list_edges(
@@ -341,7 +391,7 @@ pub async fn get_graph_data() -> Result<GraphData, String> {
         },
         Pagination { limit: 10000, offset: 0 }
     )
-    .await.map_err(|e| e.to_string())?;
+    .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Count connections per node
     let mut connection_counts: HashMap<String, usize> = HashMap::new();
@@ -373,15 +423,16 @@ pub async fn get_graph_data() -> Result<GraphData, String> {
 /// Update node position for graph persistence
 #[tauri::command]
 pub async fn update_node_position(
+    state: State<'_, AppState>,
     id: String,
     x: f64,
     y: f64,
-) -> Result<(), String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+) -> ForestResult<()> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     db.update_node_position(&id, x, y)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     db.close().await;
     Ok(())
@@ -390,17 +441,19 @@ pub async fn update_node_position(
 /// Update node content (title, body, tags)
 #[tauri::command]
 pub async fn update_node(
+    app: AppHandle,
+    state: State<'_, AppState>,
     id: String,
     title: Option<String>,
     body: Option<String>,
     tags: Option<Vec<String>>,
-) -> Result<(), String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+) -> ForestResult<()> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Get existing node to fill in any fields not being updated
     let node = db.get_node_by_id(&id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|_| ForestError::NodeNotFound(id.clone()))?;
 
     let updated_title = title.unwrap_or(node.title);
     let updated_body = body.unwrap_or(node.body);
@@ -410,13 +463,13 @@ pub async fn update_node(
     let token_counts = text::tokenize(&updated_body);
     let embedding = EMBEDDING_SERVICE.embed_node(&updated_title, &updated_body)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ForestError::EmbeddingError(e.to_string()))?;
 
     // Build update struct
     let update = forest_desktop::db::UpdateNode {
-        title: Some(updated_title),
-        body: Some(updated_body),
-        tags: Some(updated_tags),
+        title: Some(updated_title.clone()),
+        body: Some(updated_body.clone()),
+        tags: Some(updated_tags.clone()),
         token_counts: Some(token_counts),
         embedding: embedding,  // Already an Option<Vec<f64>>
     };
@@ -424,16 +477,32 @@ pub async fn update_node(
     // Update in database
     db.update_node(&id, update)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     db.close().await;
+
+    // Emit event to notify frontend
+    #[derive(Serialize, Clone)]
+    struct NodeUpdatedEvent {
+        id: String,
+        title: String,
+    }
+    let _ = app.emit("node-updated", NodeUpdatedEvent {
+        id: id.clone(),
+        title: updated_title,
+    });
+
     Ok(())
 }
 
 /// Quick node creation from command palette (text only)
 #[tauri::command]
-pub async fn create_node_quick(text: String) -> Result<NodeCreationResult, String> {
-    let db = Database::new().await.map_err(|e| e.to_string())?;
+pub async fn create_node_quick(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+) -> ForestResult<NodeCreationResult> {
+    let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Smart title/body split
     let (title, body) = if text.len() <= 80 {
@@ -449,7 +518,7 @@ pub async fn create_node_quick(text: String) -> Result<NodeCreationResult, Strin
 
     // Embed
     let embedding = EMBEDDING_SERVICE.embed_node(&title, &body)
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::EmbeddingError(e.to_string()))?;
 
     // Create node
     let new_node = NewNode {
@@ -465,20 +534,25 @@ pub async fn create_node_quick(text: String) -> Result<NodeCreationResult, Strin
         position_y: None,
     };
 
-    let node_record = db.insert_node(new_node).await.map_err(|e| e.to_string())?;
+    let node_record = db.insert_node(new_node).await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     // Auto-link
     let link_result = linking::auto_link_node(&db, &node_record)
-        .await.map_err(|e| e.to_string())?;
+        .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
     db.close().await;
 
-    Ok(NodeCreationResult {
-        id: node_record.id,
-        title: node_record.title,
+    let result = NodeCreationResult {
+        id: node_record.id.clone(),
+        title: node_record.title.clone(),
         accepted_edges: link_result.accepted,
         suggested_edges: link_result.suggested,
-    })
+    };
+
+    // Emit event to notify frontend
+    let _ = app.emit("node-created", &result);
+
+    Ok(result)
 }
 
 /// Log a message from the frontend to the terminal

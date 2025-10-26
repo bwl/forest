@@ -5,10 +5,15 @@
 
 pub mod db;
 pub mod core;
+pub mod state;
+pub mod errors;
+pub mod shell_integration;
 
 // Re-export key types for convenience
 pub use db::{Database, DatabaseStats};
 pub use core::{text, scoring, embeddings};
+pub use state::AppState;
+pub use errors::{ForestError, ForestResult};
 
 // Global embedding service (lazy initialization)
 use lazy_static::lazy_static;

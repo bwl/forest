@@ -34,3 +34,18 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# Tauri build artifacts
+forest-desktop/src-tauri/target/
+forest-desktop/src-tauri/binaries/*.dmg
+forest-desktop/src-tauri/binaries/*.app
+
+# Bun build cache
+.*.bun-build
+
+# Desktop build output
+forest-desktop/dist/
+
+# MCP socket files
+*.sock
+.mcp.json

@@ -5,9 +5,10 @@ import { useKeyboard } from '../hooks/useKeyboard'
 interface Props {
   onSearch: (query: string) => void
   onOpenSettings: () => void
+  onOpenCLIInstall: () => void
 }
 
-export function CommandPalette({ onSearch, onOpenSettings }: Props) {
+export function CommandPalette({ onSearch, onOpenSettings, onOpenCLIInstall }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [value, setValue] = useState('')
   const [creating, setCreating] = useState(false)
@@ -40,6 +41,10 @@ export function CommandPalette({ onSearch, onOpenSettings }: Props) {
         setValue('')
       } else if (value === '/settings') {
         onOpenSettings()
+        setExpanded(false)
+        setValue('')
+      } else if (value === '/cli-install') {
+        onOpenCLIInstall()
         setExpanded(false)
         setValue('')
       } else {
@@ -77,7 +82,7 @@ export function CommandPalette({ onSearch, onOpenSettings }: Props) {
             type="text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="Type text or /search, /settings..."
+            placeholder="Type text or /search, /settings, /cli-install..."
             disabled={creating}
             className="input w-[400px] px-4 py-3 text-base rounded-2xl shadow-[0_24px_55px_rgba(8,15,35,0.55)]"
           />
@@ -90,6 +95,7 @@ export function CommandPalette({ onSearch, onOpenSettings }: Props) {
             <div>
               {value.startsWith('/search ') && '🔍 Search for: ' + value.slice(8)}
               {value === '/settings' && '⚙️ Open settings'}
+              {value === '/cli-install' && '💻 Install Forest CLI to PATH'}
             </div>
           ) : (
             <div>✨ Create note: "{value.slice(0, 40)}{value.length > 40 ? '...' : ''}"</div>

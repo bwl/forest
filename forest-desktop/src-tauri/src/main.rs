@@ -7,7 +7,7 @@ extern crate forest_desktop;
 mod cli;
 mod commands;
 
-use tauri::{window::Color, Manager};
+use tauri::Manager;
 
 /// Main entry point for Forest Desktop
 ///
@@ -19,11 +19,31 @@ use tauri::{window::Color, Manager};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Build the Tauri application with all required plugins
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_cli::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_shell::init());
+
+    // Add DevTools in debug mode only
+    #[cfg(debug_assertions)]
+    {
+        // Clean up stale MCP socket file if it exists
+        let socket_path = std::path::Path::new("/tmp/tauri-mcp.sock");
+        if socket_path.exists() {
+            let _ = std::fs::remove_file(socket_path);
+        }
+
+        builder = builder
+            .plugin(tauri_plugin_devtools::init())
+            .plugin(tauri_plugin_mcp::init_with_config(
+                tauri_plugin_mcp::PluginConfig::new("forest-desktop".to_string())
+                    .start_socket_server(true)
+                    .socket_path("/tmp/tauri-mcp.sock".into())
+            ));
+    }
+
+    let app = builder
         .invoke_handler(tauri::generate_handler![
             commands::get_stats,
             commands::search_nodes,
@@ -38,18 +58,21 @@ async fn main() -> anyhow::Result<()> {
             commands::update_node,
             commands::create_node_quick,
             commands::log_to_terminal,
+            forest_desktop::shell_integration::get_cli_install_info,
+            forest_desktop::shell_integration::check_cli_in_path,
+            forest_desktop::shell_integration::auto_install_cli_path,
         ])
         .setup(|app| {
+            // Initialize Tauri-managed application state
+            app.manage(forest_desktop::AppState::new());
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_decorations(false);
                 let _ = window.set_shadow(true);
-                let _ = window.set_background_color(Some(Color::from_rgba(0, 0, 0, 0)));
 
                 #[cfg(target_os = "macos")]
                 {
                     use tauri::TitleBarStyle;
                     let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
-                    let _ = window.set_full_size_content_view(true);
                 }
 
                 #[cfg(target_os = "windows")]

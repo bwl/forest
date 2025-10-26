@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.forest.desktop",
   "build": {
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "scripts/build-cli.sh && bun run build",
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
@@ -20,6 +20,12 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/forest"
+    ],
+    "resources": [
+      "../../completions/*"
     ],
     "windows": {
       "certificateThumbprint": null,
@@ -41,7 +47,7 @@
         "fullscreen": false,
         "minWidth": 800,
         "minHeight": 600,
-        "transparent": true,
+        "transparent": false,
         "decorations": false,
         "shadow": true
       }

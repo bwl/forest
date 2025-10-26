@@ -5,9 +5,11 @@ import { RenderBudgetOverlay } from './components/RenderBudgetOverlay'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { HUDLayer } from './components/hud/HUDLayer'
 import { HUDWindow } from './components/hud/HUDWindow'
+import { CLIInstallDialog } from './components/CLIInstallDialog'
 import { ForestEventsBridge } from './hooks/useForestEvents'
 import { useUI } from './store/ui'
 import { useSearchNodes } from './queries/forest'
+import { useState } from 'react'
 
 function AppContent() {
   const selectedNodeId = useUI((s) => s.selectedNodeId)
@@ -15,6 +17,7 @@ function AppContent() {
   const setHighlightedNodeIds = useUI((s) => s.setHighlightedNodeIds)
   const settingsOpen = useUI((s) => s.settingsOpen)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
+  const [cliInstallOpen, setCLIInstallOpen] = useState(false)
 
   const searchMutation = useSearchNodes()
 
@@ -45,6 +48,7 @@ function AppContent() {
             <CommandPalette
               onSearch={handleSearch}
               onOpenSettings={() => setSettingsOpen(true)}
+              onOpenCLIInstall={() => setCLIInstallOpen(true)}
             />
           </HUDWindow>
         </ErrorBoundary>
@@ -73,6 +77,8 @@ function AppContent() {
             </div>
           </div>
         )}
+
+        <CLIInstallDialog isOpen={cliInstallOpen} onClose={() => setCLIInstallOpen(false)} />
       </HUDLayer>
     </>
   )

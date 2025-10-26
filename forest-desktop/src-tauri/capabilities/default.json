@@ -6,6 +6,15 @@
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-emit",
-    "core:event:allow-unlisten"
+    "core:event:allow-unlisten",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/forest",
+          "sidecar": true
+        }
+      ]
+    }
   ]
 }
