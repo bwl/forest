@@ -228,15 +228,21 @@ pub struct EdgeEventInput {
 
 /// Get the database file path from environment or use default
 fn get_database_path() -> PathBuf {
-    std::env::var("FOREST_DB_PATH")
-        .ok()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            // Default to forest.db in current working directory
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join("forest.db")
-        })
+    // Priority 1: Explicit FOREST_DB_PATH environment variable
+    if let Ok(path) = std::env::var("FOREST_DB_PATH") {
+        return PathBuf::from(path);
+    }
+
+    // Priority 2: Platform-appropriate app data directory
+    if let Some(data_dir) = dirs::data_dir() {
+        let app_dir = data_dir.join("com.ettio.forest.desktop");
+        return app_dir.join("forest.db");
+    }
+
+    // Fallback: current working directory (for edge cases)
+    std::env::current_dir()
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("forest.db")
 }
 
 #[cfg(test)]

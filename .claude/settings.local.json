@@ -12,9 +12,15 @@
       "Bash(cargo build:*)",
       "WebFetch(domain:v2.tauri.app)",
       "WebFetch(domain:edwardtufte.github.io)",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "Bash(bun install)",
+      "Bash(bun run build:*)",
+      "WebFetch(domain:docs.brew.sh)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enabledMcpjsonServers": [
+    "tauri-mcp"
+  ]
 }

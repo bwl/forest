@@ -24,6 +24,10 @@ Forest.app/
 The CLI is compiled into a standalone executable using `bun build --compile`:
 
 ```bash
+# First, embed sql-wasm.wasm as base64 for standalone distribution
+bun run scripts/embed-wasm.ts
+
+# Then compile to standalone binary
 bun build --compile --minify --sourcemap \
   --outfile forest-desktop/src-tauri/binaries/forest-aarch64-apple-darwin \
   src/index.ts
@@ -32,7 +36,24 @@ bun build --compile --minify --sourcemap \
 This creates a single 65MB binary with:
 - Bun runtime embedded
 - All dependencies bundled
+- **sql.js WASM file embedded as base64** (extracted to temp file at runtime)
+- **forest-embed helper bundled** (Rust binary for semantic embeddings)
 - No need for external `node_modules`
+
+**WASM Embedding Fix (v0.4.1):**
+Previous versions had hardcoded development paths to `sql-wasm.wasm`, causing ENOENT errors in distributed binaries. The fix:
+1. `scripts/embed-wasm.ts` converts WASM to base64 string
+2. `src/lib/db.ts` extracts to temp file at runtime (`/tmp/forest-sql-wasm-<pid>.wasm`)
+3. Temp file is cleaned up on process exit
+4. Falls back to development path when running from source
+
+**Embedding Parity (v0.4.3):**
+CLI and desktop app now use the same embedding engine for true feature parity:
+1. `forest-embed` Rust binary provides semantic embeddings to CLI
+2. Uses `fastembed` crate (same as desktop app)
+3. Both produce identical 384-dim embeddings (all-MiniLM-L6-v2)
+4. CLI shells out to helper binary, falls back to mock if not found
+5. Binary bundled alongside CLI in distribution
 
 ### 2. Tauri Bundle Configuration (`tauri.conf.json`)
 
@@ -56,7 +77,25 @@ Provides Tauri commands for:
 - `check_cli_in_path()` - Check if CLI is already in PATH
 - `auto_install_cli_path(shell)` - Auto-add to shell RC files
 
-### 4. Frontend Integration
+### 4. Shared Database Location (v0.4.2)
+
+Both the desktop app and CLI use the same database location for seamless integration:
+
+**Platform-specific locations:**
+- **macOS**: `~/Library/Application Support/com.ettio.forest.desktop/forest.db`
+- **Linux**: `~/.local/share/com.ettio.forest.desktop/forest.db`
+- **Windows**: `%APPDATA%\com.ettio.forest.desktop\forest.db`
+
+**Override:**
+Set `FOREST_DB_PATH` environment variable to use a custom location.
+
+This ensures:
+- ✅ CLI and desktop app always share the same data
+- ✅ Predictable, persistent storage location
+- ✅ Data survives app updates and reinstalls
+- ✅ No confusion about "where is my database"
+
+### 5. Frontend Integration
 
 **Command Palette** (`src/components/CommandPalette.tsx`):
 - Type `/cli-install` to open installation dialog

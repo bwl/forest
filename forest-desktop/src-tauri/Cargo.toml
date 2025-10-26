@@ -1,6 +1,6 @@
 [package]
 name = "forest-desktop"
-version = "0.1.0"
+version = "0.4.3"
 description = "Forest knowledge base - unified GUI and CLI"
 authors = ["Forest Contributors"]
 license = "MIT"
@@ -8,6 +8,10 @@ repository = "https://github.com/your-org/forest"
 default-run = "forest-desktop"
 edition = "2021"
 rust-version = "1.70"
+
+[[bin]]
+name = "forest-embed"
+path = "src/bin/forest-embed.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -39,6 +43,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.4"
 regex = "1.10"
+dirs = "5.0"
 
 # Error handling
 anyhow = "1.0"

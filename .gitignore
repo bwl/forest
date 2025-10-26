@@ -39,6 +39,10 @@ Thumbs.db
 forest-desktop/src-tauri/target/
 forest-desktop/src-tauri/binaries/*.dmg
 forest-desktop/src-tauri/binaries/*.app
+forest-desktop/src-tauri/binaries/*-aarch64-apple-darwin
+forest-desktop/src-tauri/binaries/*-x86_64-apple-darwin
+forest-desktop/src-tauri/binaries/*-x86_64-pc-windows-msvc.exe
+forest-desktop/src-tauri/binaries/*-x86_64-unknown-linux-gnu
 
 # Bun build cache
 .*.bun-build
@@ -49,3 +53,10 @@ forest-desktop/dist/
 # MCP socket files
 *.sock
 .mcp.json
+
+# Embedding model cache
+.fastembed_cache/
+
+# Local Claude settings
+.claude/settings.local.json
+forest-desktop/.claude/settings.local.json

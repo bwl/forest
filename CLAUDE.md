@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Forest is a graph-native knowledge base CLI that captures unstructured ideas and automatically links them using a hybrid scoring algorithm combining semantic embeddings and lexical similarity. All data is stored in a single SQLite database (`forest.db`).
 
+**Database Location (as of v0.4.2):**
+- **macOS**: `~/Library/Application Support/com.ettio.forest.desktop/forest.db`
+- **Linux**: `~/.local/share/com.ettio.forest.desktop/forest.db`
+- **Windows**: `%APPDATA%\com.ettio.forest.desktop\forest.db`
+- **Override**: Set `FOREST_DB_PATH` environment variable to use a custom location
+
 ## Agent-First TLDR Standard
 
 Forest implements the **TLDR Standard (v0.1)** for agent ingestion - a minimal, parseable command metadata format designed for AI agents.
@@ -382,7 +388,7 @@ Uses **sql.js** (SQLite compiled to WASM) with in-memory database persisted to d
 
 **Key pattern**: Database is lazily initialized on first access. All mutations set `dirty = true` and persist to disk.
 
-Database path controlled by `FOREST_DB_PATH` env var (default: `forest.db` in cwd).
+Database path controlled by `FOREST_DB_PATH` env var (default: app data directory, see above).
 
 **Database Schema:**
 ```sql
@@ -509,13 +515,23 @@ Then applies a 0.9× penalty if both `tagOverlap` and `titleSimilarity` are zero
 
 **Token downweighting**: Generic technical terms (flow, stream, pipe, branch, terminal) are weighted at 0.4× in token similarity to reduce over-connection of unrelated domains.
 
-### Embeddings (src/lib/embeddings.ts)
+### Embeddings
 
-Three providers via `FOREST_EMBED_PROVIDER`:
-1. **local** (default): Uses `@xenova/transformers` with model `Xenova/all-MiniLM-L6-v2` (384-dim)
+**Desktop App (Rust):** Uses `fastembed` crate with `all-MiniLM-L6-v2` (384-dim) - native, fast, bundled
+
+**CLI (TypeScript):** Three providers via `FOREST_EMBED_PROVIDER`:
+1. **local** (default): Uses `forest-embed` Rust helper (same fastembed engine as desktop app!)
+   - Ensures CLI and desktop app produce identical embeddings
+   - Binary located next to CLI executable
+   - Falls back to mock if binary not found
 2. **openai**: Calls OpenAI embeddings API (requires `OPENAI_API_KEY`)
 3. **mock**: Deterministic hash-based vectors for offline testing
 4. **none**: Disables embeddings (pure lexical scoring)
+
+**Architecture (v0.4.3):**
+- Desktop app: Direct fastembed integration
+- CLI: Shells out to `forest-embed` helper binary
+- Both use identical model → identical search results
 
 Embeddings are computed during capture/edit and stored as JSON arrays in the `embedding` column.
 
@@ -568,7 +584,7 @@ FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=... forest capture --stdin < test.tx
   - `::` - Dual-stack mode, listens on both IPv4 and IPv6
   - `0.0.0.0` - IPv4 only
   - `localhost` - Localhost only (may prefer IPv4 or IPv6 depending on OS)
-- `FOREST_DB_PATH` - Database file path (default: `forest.db` in cwd)
+- `FOREST_DB_PATH` - Database file path (default: see Database Location above)
 - `FOREST_EMBED_PROVIDER` - Embedding provider (default: `local`)
 
 **Network connectivity:**
