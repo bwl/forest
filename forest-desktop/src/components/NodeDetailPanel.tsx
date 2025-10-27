@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNode, useConnections, useUpdateNode } from '../queries/forest'
 import { useKeyboard } from '../hooks/useKeyboard'
+import { MonacoEditor } from './MonacoEditor'
 
 interface Props {
   nodeId: string
@@ -45,7 +46,7 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
   }
 
   return (
-    <div className="glass-panel fixed right-0 top-0 w-[400px] h-screen p-9 overflow-y-auto z-[1100] border-l animate-[slideIn_0.3s_ease-out]">
+    <div className="glass-panel fixed right-0 top-0 w-[700px] h-screen p-9 overflow-y-auto z-[1100] border-l animate-[slideIn_0.3s_ease-out]">
       <div className="flex justify-between items-center mb-4">
         {editing ? (
           <input
@@ -76,11 +77,14 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
       )}
 
       {editing ? (
-        <textarea
-          value={editBody}
-          onChange={(e) => setEditBody(e.target.value)}
-          className="input w-full min-h-[200px] resize-vertical mb-4 leading-relaxed"
-        />
+        <div className="mb-4">
+          <MonacoEditor
+            value={editBody}
+            onChange={setEditBody}
+            language="markdown"
+            height="500px"
+          />
+        </div>
       ) : (
         <div className="whitespace-pre-wrap leading-relaxed mb-8 text-slate-200/90">
           {node.body}
