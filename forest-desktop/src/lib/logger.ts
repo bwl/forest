@@ -8,6 +8,8 @@
  * - Color-coded console output
  */
 
+import { invoke } from '@tauri-apps/api/core'
+
 export enum LogLevel {
   DEBUG = 0,
   INFO = 1,
@@ -70,19 +72,13 @@ function log(level: LogLevel, category: string, message: string, data?: unknown)
 
   // Send to Tauri backend (for file logging, metrics, etc.)
   if (config.enableTauriLogging && level >= LogLevel.INFO) {
-    try {
-      // Use invoke directly to log to Tauri backend
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('log_to_terminal', {
-          level: label.toLowerCase(),
-          message: `[${category}] ${message}`,
-        }).catch(() => {
-          // Ignore logging errors to prevent infinite loops
-        })
-      })
-    } catch {
-      // Ignore if Tauri isn't available (e.g., in browser dev mode)
-    }
+    // Use invoke to log to Tauri backend (fire and forget)
+    invoke('log_to_terminal', {
+      level: label.toLowerCase(),
+      message: `[${category}] ${message}`,
+    }).catch(() => {
+      // Ignore logging errors to prevent infinite loops
+    })
   }
 }
 

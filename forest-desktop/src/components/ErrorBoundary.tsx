@@ -1,4 +1,5 @@
 import React, { Component, type ReactNode } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 import { createLogger } from '../lib/logger'
 
 const logger = createLogger('ErrorBoundary')
@@ -45,18 +46,12 @@ export class ErrorBoundary extends Component<Props, State> {
     this.props.onError?.(error, errorInfo)
 
     // Report to Tauri backend (for crash reporting, metrics, etc.)
-    try {
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('log_to_terminal', {
-          level: 'error',
-          message: `React Error: ${error.message}\n${errorInfo.componentStack}`,
-        }).catch(() => {
-          // Ignore logging errors
-        })
-      })
-    } catch {
-      // Ignore if Tauri isn't available (e.g., in browser dev mode)
-    }
+    invoke('log_to_terminal', {
+      level: 'error',
+      message: `React Error: ${error.message}\n${errorInfo.componentStack}`,
+    }).catch(() => {
+      // Ignore logging errors
+    })
   }
 
   resetError = () => {

@@ -65,30 +65,9 @@ async fn main() -> anyhow::Result<()> {
         .setup(|app| {
             // Initialize Tauri-managed application state
             app.manage(forest_desktop::AppState::new());
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_decorations(false);
-                let _ = window.set_shadow(true);
 
-                #[cfg(target_os = "macos")]
-                {
-                    use tauri::TitleBarStyle;
-                    let _ = window.set_title_bar_style(TitleBarStyle::Overlay);
-                }
-
-                #[cfg(target_os = "windows")]
-                {
-                    use tauri::window::effects::EffectsBuilder;
-                    let acrylic = EffectsBuilder::new().acrylic().color((24, 32, 48, 200)).build();
-                    if let Ok(effects) = acrylic {
-                        let _ = window.apply_effects(effects);
-                    } else {
-                        let mica = EffectsBuilder::new().mica().build();
-                        if let Ok(effect) = mica {
-                            let _ = window.apply_effects(effect);
-                        }
-                    }
-                }
-            }
+            // Window customization removed - using native decorations from tauri.conf.json
+            // This gives us native title bar with rounded corners on macOS
 
             Ok(())
         })

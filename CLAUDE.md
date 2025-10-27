@@ -12,6 +12,24 @@ Forest is a graph-native knowledge base CLI that captures unstructured ideas and
 - **Windows**: `%APPDATA%\com.ettio.forest.desktop\forest.db`
 - **Override**: Set `FOREST_DB_PATH` environment variable to use a custom location
 
+## Version Management
+
+**IMPORTANT**: The `VERSION` file is the single source of truth for version numbers (introduced in v0.4.2).
+
+- **To bump version**: Edit the `VERSION` file only
+- **Do NOT manually edit** `package.json` or `forest-desktop/package.json` version fields
+- Build scripts automatically sync version numbers from `VERSION` to all package files
+- This ensures CLI, desktop app, and releases stay in sync
+
+Example workflow:
+```bash
+# Update version
+echo "0.4.5" > VERSION
+
+# Build will sync to package.json files
+./dev.sh build all
+```
+
 ## Agent-First TLDR Standard
 
 Forest implements the **TLDR Standard (v0.1)** for agent ingestion - a minimal, parseable command metadata format designed for AI agents.
@@ -137,8 +155,57 @@ We now have a **solid backend foundation** with all core Tauri commands implemen
 - Core algorithm improvements
 - Performance optimization in Rust
 
-## Development Commands
+## Unified Development Script
 
+The `./dev.sh` script provides a unified interface for working with both CLI and desktop projects:
+
+**Development:**
+```bash
+./dev.sh dev cli              # Run CLI in dev mode
+./dev.sh dev desktop          # Run desktop app in Tauri dev mode
+./dev.sh dev server           # Run API server
+```
+
+**Building:**
+```bash
+./dev.sh build cli            # Build CLI TypeScript
+./dev.sh build desktop        # Build full Tauri app (Rust + frontend)
+./dev.sh build all            # Build both projects
+```
+
+**Testing:**
+```bash
+./dev.sh test cli             # Run CLI tests
+./dev.sh test desktop         # Run Rust tests
+./dev.sh test all             # Run all tests
+```
+
+**Type Checking:**
+```bash
+./dev.sh lint cli             # Type-check CLI
+./dev.sh lint desktop         # Type-check desktop (TypeScript + Rust)
+./dev.sh lint all             # Type-check both projects
+```
+
+**Cleanup:**
+```bash
+./dev.sh clean cli            # Remove CLI build artifacts
+./dev.sh clean desktop        # Remove desktop build artifacts
+./dev.sh clean all            # Clean both projects
+```
+
+**Setup:**
+```bash
+./dev.sh install              # Install dependencies for both projects
+```
+
+The script handles navigation between projects, provides colored output, and ensures proper build order (e.g., Rust backend before frontend for desktop).
+
+## Development Commands (Individual Projects)
+
+**Note**: For most workflows, use `./dev.sh` (see above). These commands are useful when working directly with individual projects.
+
+**CLI-specific commands:**
 ```bash
 bun install          # Install dependencies
 bun run build        # Compile TypeScript to dist/
@@ -158,6 +225,14 @@ forest serve --port 3000 --host ::    # Via CLI (requires Bun)
 
 # After building
 forest <command>     # Uses the compiled dist/index.js
+```
+
+**Desktop-specific commands:**
+```bash
+cd forest-desktop
+bun install                  # Install dependencies
+bun run tauri dev            # Run in dev mode
+bun run release              # Build production bundle
 ```
 
 ## Architecture
@@ -593,37 +668,3 @@ The server defaults to dual-stack mode (`::`) which accepts connections on both:
 - IPv6: `http://[::1]:3000`
 
 This prevents connection delays when clients (like Bun's fetch) try IPv6 first.
-
-## Database Schema
-
-```sql
-nodes: id (PK), title, body, tags (JSON), token_counts (JSON), embedding (JSON), created_at, updated_at
-edges: id (PK), source_id, target_id, score, status, metadata (JSON), created_at, updated_at
-edge_events: id (PK), edge_id, source_id, target_id, prev_status, next_status, payload (JSON), created_at, undone
-```
-
-The `edge_events` table supports undo of accept/reject actions via `forest edges undo`.
-
-## Command Migration Guide
-
-The CLI was reorganized in a recent update for better discoverability and consistency:
-
-**Node Operations (grouped under `forest node`)**
-- `forest read [id]` → `forest node read [id]`
-- `forest edit [id]` → `forest node edit [id]`
-- `forest delete [id]` → `forest node delete [id]`
-- `forest link [a] [b]` → `forest node link [a] [b]`
-
-**Edge Management (renamed from `insights` to `edges`)**
-- `forest insights list` → `forest edges propose`
-- `forest insights promote` → `forest edges promote`
-- `forest insights accept [ref]` → `forest edges accept [ref]`
-- `forest insights reject [ref]` → `forest edges reject [ref]`
-- `forest insights sweep` → `forest edges sweep`
-- `forest insights explain [ref]` → `forest edges explain [ref]`
-- `forest insights undo [ref]` → `forest edges undo [ref]`
-- NEW: `forest edges` shows recent accepted edges
-
-**System Commands**
-- `forest doctor` → `forest health` (now focuses on system health diagnostics)
-- `forest stats` enhanced with graph metrics (recent captures, high-degree nodes, top suggestions)
