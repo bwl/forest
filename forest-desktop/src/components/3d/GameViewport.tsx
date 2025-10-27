@@ -1,4 +1,4 @@
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useMemo, useState, useRef } from 'react'
 import { Canvas, extend } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
@@ -20,6 +20,9 @@ export function GameViewport({ onNodeClick }: Props) {
   const highlightedNodeIds = useUI((s) => s.highlightedNodeIds)
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
 
+  const cursorPosRef = useRef({ x: 0, y: 0 })
+  const tooltipRef = useRef<HTMLDivElement>(null)
+
   const graph = useMemo(() => {
     if (!graphData) return null
     return createPositionedGraph(graphData)
@@ -30,11 +33,39 @@ export function GameViewport({ onNodeClick }: Props) {
     return graph.nodes[hoveredIndex]?.id ?? null
   }, [graph, hoveredIndex])
 
+  const hoveredNode = useMemo(() => {
+    if (!graph || hoveredIndex === null) return null
+    return graph.nodes[hoveredIndex] ?? null
+  }, [graph, hoveredIndex])
+
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-gradient-to-b from-[#111733] to-[#02030f]">
+    <div
+      className="relative w-screen h-screen overflow-hidden bg-[#fdf6e3]"
+      onMouseMove={(e) => {
+        cursorPosRef.current = { x: e.clientX, y: e.clientY }
+        if (tooltipRef.current) {
+          tooltipRef.current.style.left = `${e.clientX + 15}px`
+          tooltipRef.current.style.top = `${e.clientY + 15}px`
+        }
+      }}
+    >
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center z-[2] text-white/70 tracking-wider text-sm">
+        <div className="absolute inset-0 flex items-center justify-center z-[2] text-[#586e75] tracking-wider text-sm">
           Loading galaxy...
+        </div>
+      )}
+
+      {/* Node title tooltip */}
+      {hoveredNode && (
+        <div
+          ref={tooltipRef}
+          className="absolute z-[10] pointer-events-none bg-[#eee8d5] text-[#073642] px-3 py-2 text-sm font-medium border border-[#93a1a1] max-w-[300px]"
+          style={{
+            left: `${cursorPosRef.current.x + 15}px`,
+            top: `${cursorPosRef.current.y + 15}px`
+          }}
+        >
+          {hoveredNode.title}
         </div>
       )}
 

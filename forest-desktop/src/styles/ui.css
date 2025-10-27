@@ -3,31 +3,27 @@
 @tailwind utilities;
 
 @layer components {
-  .glass-panel {
-    @apply bg-slate-900/75 backdrop-blur-xl border border-slate-400/30 text-slate-100 shadow-2xl;
-  }
-
   .hud-overlay {
     @apply fixed inset-0 z-[1200] flex items-center justify-center;
   }
 
   .btn {
-    @apply inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm cursor-pointer;
+    @apply inline-flex items-center gap-2 border px-4 py-2 text-sm cursor-pointer;
   }
 
   .btn-primary {
-    @apply btn border-cyan-300/40 text-cyan-50 bg-cyan-500/20 hover:bg-cyan-500/30 shadow-[0_12px_30px_rgba(14,165,233,0.25)];
+    @apply btn border-[#268bd2] text-[#fdf6e3] bg-[#268bd2] hover:bg-[#2aa198];
   }
 
   .btn-ghost {
-    @apply btn border-slate-400/30 text-slate-200 bg-slate-700/30 hover:bg-slate-700/40;
+    @apply btn border-[#93a1a1] text-[#586e75] bg-transparent hover:bg-[#eee8d5];
   }
 
   .input {
-    @apply w-full rounded-lg border border-slate-400/40 bg-slate-800/60 px-3 py-2 text-slate-100 outline-none;
+    @apply w-full border border-[#93a1a1] bg-[#fdf6e3] px-3 py-2 text-[#586e75] outline-none;
   }
 
   .tag {
-    @apply mr-2 rounded-full border border-slate-400/30 bg-slate-700/30 px-2 py-0.5 text-xs text-slate-200;
+    @apply mr-2 border border-[#93a1a1] bg-[#eee8d5] px-2 py-0.5 text-xs text-[#586e75];
   }
 }

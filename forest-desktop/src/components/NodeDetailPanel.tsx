@@ -39,14 +39,14 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
 
   if (isLoading || !node) {
     return (
-      <div className="glass-panel rounded-2xl p-6">
-        <p className="text-slate-300">Loading...</p>
+      <div className="bg-[#eee8d5] border border-[#93a1a1] p-6">
+        <p className="text-[#586e75]">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div className="glass-panel fixed right-0 top-0 w-[700px] h-screen p-9 overflow-y-auto z-[1100] border-l animate-[slideIn_0.3s_ease-out]">
+    <div className="bg-[#eee8d5] border-l border-[#93a1a1] fixed right-0 top-0 w-[700px] h-screen p-9 overflow-y-auto z-[1100]">
       <div className="flex justify-between items-center mb-4">
         {editing ? (
           <input
@@ -56,11 +56,11 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
             className="input flex-1 mr-2 text-xl font-bold px-3 py-2"
           />
         ) : (
-          <h2 className="text-2xl font-bold text-slate-50 m-0">{node.title}</h2>
+          <h2 className="text-2xl font-bold text-[#073642] m-0">{node.title}</h2>
         )}
         <button
           onClick={onClose}
-          className="bg-slate-900/60 border border-slate-400/30 text-slate-300 text-xl cursor-pointer rounded-full w-8 h-8 grid place-items-center"
+          className="bg-[#eee8d5] border border-[#93a1a1] text-[#586e75] text-xl cursor-pointer w-8 h-8 grid place-items-center hover:bg-[#dc322f] hover:text-[#fdf6e3]"
         >
           ×
         </button>
@@ -86,7 +86,7 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
           />
         </div>
       ) : (
-        <div className="whitespace-pre-wrap leading-relaxed mb-8 text-slate-200/90">
+        <div className="whitespace-pre-wrap leading-relaxed mb-8 text-[#586e75]">
           {node.body}
         </div>
       )}
@@ -125,22 +125,22 @@ export function NodeDetailPanel({ nodeId, onClose }: Props) {
         )}
       </div>
 
-      <div className="text-xs text-slate-400 mb-8">
+      <div className="text-xs text-[#93a1a1] mb-8">
         <p className="mb-1">Created: {new Date(node.created_at).toLocaleString()}</p>
         <p>Updated: {new Date(node.updated_at).toLocaleString()}</p>
       </div>
 
       {connections.length > 0 && (
         <div>
-          <h3 className="text-lg font-semibold mb-3 text-slate-100">Connected Notes ({connections.length})</h3>
+          <h3 className="text-lg font-semibold mb-3 text-[#073642]">Connected Notes ({connections.length})</h3>
           {connections.map((conn) => (
             <div
               key={conn.node_id}
-              className="glass-panel rounded-xl p-3 mb-2"
+              className="bg-[#fdf6e3] border border-[#93a1a1] p-3 mb-2"
             >
               <div className="flex justify-between items-center">
-                <span className="text-slate-200">{conn.title}</span>
-                <span className="text-xs text-slate-400">
+                <span className="text-[#586e75]">{conn.title}</span>
+                <span className="text-xs text-[#93a1a1]">
                   {(conn.score * 100).toFixed(0)}%
                 </span>
               </div>

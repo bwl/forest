@@ -15,16 +15,16 @@ export function EdgeProposals() {
 
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-xl p-4">
-        <p className="text-slate-300">Loading proposals...</p>
+      <div className="bg-[#eee8d5] border border-[#93a1a1] p-4">
+        <p className="text-[#586e75]">Loading proposals...</p>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="glass-panel rounded-xl p-4">
-        <p className="text-red-400 mb-3">Error: {String(error)}</p>
+      <div className="bg-[#eee8d5] border border-[#93a1a1] p-4">
+        <p className="text-[#dc322f] mb-3">Error: {String(error)}</p>
         <button className="btn-primary" onClick={() => refetch()}>Retry</button>
       </div>
     )
@@ -32,12 +32,12 @@ export function EdgeProposals() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-slate-50 mb-6">Edge Proposals</h2>
+      <h2 className="text-2xl font-bold text-[#073642] mb-6">Edge Proposals</h2>
 
       {proposals.length === 0 && (
-        <div className="glass-panel rounded-xl p-8 text-center">
-          <p className="text-slate-400 mb-2">No pending proposals!</p>
-          <p className="text-xs text-slate-500">
+        <div className="bg-[#eee8d5] border border-[#93a1a1] p-8 text-center">
+          <p className="text-[#93a1a1] mb-2">No pending proposals!</p>
+          <p className="text-xs text-[#93a1a1]">
             All suggested connections have been reviewed.
           </p>
         </div>
@@ -45,28 +45,28 @@ export function EdgeProposals() {
 
       <div className="space-y-4">
         {proposals.map((proposal) => (
-          <div key={proposal.edge_id} className="glass-panel rounded-xl p-4">
+          <div key={proposal.edge_id} className="bg-[#eee8d5] border border-[#93a1a1] p-4">
             <div className="mb-4">
-              <div className="text-lg mb-2 text-slate-100">
+              <div className="text-lg mb-2 text-[#586e75]">
                 <strong>{proposal.source_title}</strong>
                 {' ↔ '}
                 <strong>{proposal.target_title}</strong>
               </div>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-[#93a1a1]">
                 Similarity: {(proposal.score * 100).toFixed(1)}%
               </div>
             </div>
 
             <div className="flex gap-2">
               <button
-                className="btn bg-green-600/30 border-green-400/50 text-green-50 hover:bg-green-600/40"
+                className="btn bg-[#859900] border-[#859900] text-[#fdf6e3] hover:bg-[#2aa198]"
                 onClick={() => handleAccept(proposal.source_id, proposal.target_id)}
                 disabled={acceptMutation.isPending || rejectMutation.isPending}
               >
                 Accept
               </button>
               <button
-                className="btn bg-red-600/30 border-red-400/50 text-red-50 hover:bg-red-600/40"
+                className="btn bg-[#dc322f] border-[#dc322f] text-[#fdf6e3] hover:bg-[#cb4b16]"
                 onClick={() => handleReject(proposal.source_id, proposal.target_id)}
                 disabled={acceptMutation.isPending || rejectMutation.isPending}
               >

@@ -72,14 +72,14 @@ export function SettingsPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[2000]">
-      <div className="glass-panel rounded-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-[#002b36]/85 flex items-center justify-center z-[2000]">
+      <div className="bg-[#eee8d5] border border-[#93a1a1] max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-50">Settings</h2>
+        <div className="px-6 py-4 border-b border-[#93a1a1] flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-[#073642]">Settings</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors text-2xl leading-none"
+            className="text-[#586e75] hover:text-[#dc322f] text-2xl leading-none"
           >
             ✕
           </button>
@@ -87,43 +87,43 @@ export function SettingsPanel({ onClose }: Props) {
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <nav className="w-48 border-r border-slate-700/50 p-4 space-y-1">
+          <nav className="w-48 border-r border-[#93a1a1] p-4 space-y-1">
             <button
               onClick={() => handleTabChange('general')}
-              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+              className={`w-full text-left px-3 py-2 ${
                 activeTab === 'general'
-                  ? 'bg-blue-600/30 text-blue-100 border border-blue-400/50'
-                  : 'text-slate-300 hover:bg-slate-700/30'
+                  ? 'bg-[#268bd2] text-[#fdf6e3] border border-[#268bd2]'
+                  : 'text-[#586e75] hover:bg-[#fdf6e3]'
               }`}
             >
               General
             </button>
             <button
               onClick={() => handleTabChange('cli')}
-              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+              className={`w-full text-left px-3 py-2 ${
                 activeTab === 'cli'
-                  ? 'bg-blue-600/30 text-blue-100 border border-blue-400/50'
-                  : 'text-slate-300 hover:bg-slate-700/30'
+                  ? 'bg-[#268bd2] text-[#fdf6e3] border border-[#268bd2]'
+                  : 'text-[#586e75] hover:bg-[#fdf6e3]'
               }`}
             >
               CLI Tools
             </button>
             <button
               onClick={() => handleTabChange('graph')}
-              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+              className={`w-full text-left px-3 py-2 ${
                 activeTab === 'graph'
-                  ? 'bg-blue-600/30 text-blue-100 border border-blue-400/50'
-                  : 'text-slate-300 hover:bg-slate-700/30'
+                  ? 'bg-[#268bd2] text-[#fdf6e3] border border-[#268bd2]'
+                  : 'text-[#586e75] hover:bg-[#fdf6e3]'
               }`}
             >
               Graph
             </button>
             <button
               onClick={() => handleTabChange('database')}
-              className={`w-full text-left px-3 py-2 rounded transition-colors ${
+              className={`w-full text-left px-3 py-2 ${
                 activeTab === 'database'
-                  ? 'bg-blue-600/30 text-blue-100 border border-blue-400/50'
-                  : 'text-slate-300 hover:bg-slate-700/30'
+                  ? 'bg-[#268bd2] text-[#fdf6e3] border border-[#268bd2]'
+                  : 'text-[#586e75] hover:bg-[#fdf6e3]'
               }`}
             >
               Database
@@ -285,28 +285,28 @@ export function SettingsPanel({ onClose }: Props) {
 
             {activeTab === 'graph' && (
               <div className="space-y-6">
-                <h3 className="text-xl font-semibold text-slate-50 mb-4">Graph Statistics</h3>
+                <h3 className="text-xl font-semibold text-[#073642] mb-4">Graph Statistics</h3>
 
                 {stats ? (
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="glass-panel rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-blue-400 mb-1">{stats.nodes}</div>
-                      <div className="text-sm text-slate-400">Total Nodes</div>
+                    <div className="bg-[#eee8d5] border border-[#93a1a1] p-4 text-center">
+                      <div className="text-3xl font-bold text-[#268bd2] mb-1">{stats.nodes}</div>
+                      <div className="text-sm text-[#93a1a1]">Total Nodes</div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-green-400 mb-1">{stats.edges}</div>
-                      <div className="text-sm text-slate-400">Accepted Edges</div>
+                    <div className="bg-[#eee8d5] border border-[#93a1a1] p-4 text-center">
+                      <div className="text-3xl font-bold text-[#859900] mb-1">{stats.edges}</div>
+                      <div className="text-sm text-[#93a1a1]">Accepted Edges</div>
                     </div>
-                    <div className="glass-panel rounded-xl p-4 text-center">
-                      <div className="text-3xl font-bold text-yellow-400 mb-1">{stats.suggested}</div>
-                      <div className="text-sm text-slate-400">Pending Suggestions</div>
+                    <div className="bg-[#eee8d5] border border-[#93a1a1] p-4 text-center">
+                      <div className="text-3xl font-bold text-[#b58900] mb-1">{stats.suggested}</div>
+                      <div className="text-sm text-[#93a1a1]">Pending Suggestions</div>
                     </div>
                   </div>
                 ) : (
-                  <div className="text-slate-400">Loading statistics...</div>
+                  <div className="text-[#93a1a1]">Loading statistics...</div>
                 )}
 
-                <div className="border-t border-slate-700/50 pt-6">
+                <div className="border-t border-[#93a1a1] pt-6">
                   <h4 className="text-lg font-medium text-slate-100 mb-3">Graph Health</h4>
                   <p className="text-slate-400 text-sm">
                     Your knowledge graph is growing! Keep capturing ideas and reviewing edge proposals

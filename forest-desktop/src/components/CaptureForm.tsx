@@ -41,17 +41,17 @@ export function CaptureForm({ onNodeCreated }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="glass-panel rounded-2xl p-6">
-      <h2 className="text-2xl font-bold text-slate-50 mb-6">Create Note</h2>
+    <form onSubmit={handleSubmit} className="bg-[#eee8d5] border border-[#93a1a1] p-6">
+      <h2 className="text-2xl font-bold text-[#073642] mb-6">Create Note</h2>
 
       {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-xl mb-4">
+        <div className="bg-[#dc322f] text-[#fdf6e3] p-4 mb-4">
           {error}
         </div>
       )}
 
       <div className="mb-4">
-        <label className="block mb-2 font-semibold text-slate-200">
+        <label className="block mb-2 font-semibold text-[#586e75]">
           Title
         </label>
         <input
@@ -65,7 +65,7 @@ export function CaptureForm({ onNodeCreated }: Props) {
       </div>
 
       <div className="mb-4">
-        <label className="block mb-2 font-semibold text-slate-200">
+        <label className="block mb-2 font-semibold text-[#586e75]">
           Content
         </label>
         <textarea
@@ -78,7 +78,7 @@ export function CaptureForm({ onNodeCreated }: Props) {
       </div>
 
       <div className="mb-4">
-        <label className="block mb-2 font-semibold text-slate-200">
+        <label className="block mb-2 font-semibold text-[#586e75]">
           Tags (comma-separated, optional)
         </label>
         <input
@@ -91,7 +91,7 @@ export function CaptureForm({ onNodeCreated }: Props) {
       </div>
 
       <div className="mb-6">
-        <label className="flex items-center gap-2 cursor-pointer text-slate-200">
+        <label className="flex items-center gap-2 cursor-pointer text-[#586e75]">
           <input
             type="checkbox"
             checked={autoLink}
