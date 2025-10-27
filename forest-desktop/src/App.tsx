@@ -1,14 +1,14 @@
 import { GameViewport } from './components/3d/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
+import { EdgeProposals } from './components/EdgeProposals'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { HUDLayer } from './components/hud/HUDLayer'
 import { HUDWindow } from './components/hud/HUDWindow'
-import { CLIInstallDialog } from './components/CLIInstallDialog'
+import { SettingsPanel } from './components/SettingsPanel'
 import { ForestEventsBridge } from './hooks/useForestEvents'
 import { useUI } from './store/ui'
 import { useSearchNodes } from './queries/forest'
-import { useState } from 'react'
 
 function AppContent() {
   const selectedNodeId = useUI((s) => s.selectedNodeId)
@@ -16,7 +16,8 @@ function AppContent() {
   const setHighlightedNodeIds = useUI((s) => s.setHighlightedNodeIds)
   const settingsOpen = useUI((s) => s.settingsOpen)
   const setSettingsOpen = useUI((s) => s.setSettingsOpen)
-  const [cliInstallOpen, setCLIInstallOpen] = useState(false)
+  const proposalsOpen = useUI((s) => s.proposalsOpen)
+  const setProposalsOpen = useUI((s) => s.setProposalsOpen)
 
   const searchMutation = useSearchNodes()
 
@@ -45,7 +46,7 @@ function AppContent() {
             <CommandPalette
               onSearch={handleSearch}
               onOpenSettings={() => setSettingsOpen(true)}
-              onOpenCLIInstall={() => setCLIInstallOpen(true)}
+              onOpenProposals={() => setProposalsOpen(true)}
             />
           </HUDWindow>
         </ErrorBoundary>
@@ -63,19 +64,25 @@ function AppContent() {
           </ErrorBoundary>
         )}
 
-        {settingsOpen && (
-          <div className="hud-overlay">
-            <div className="glass-panel rounded-2xl p-8 max-w-md">
-              <h2 className="text-2xl font-bold mb-4">Settings</h2>
-              <p className="text-slate-300 mb-6">Settings panel coming soon!</p>
-              <button className="btn-primary" onClick={() => setSettingsOpen(false)}>
-                Close
-              </button>
-            </div>
-          </div>
+        {proposalsOpen && (
+          <ErrorBoundary level="component">
+            <HUDWindow
+              id="edge-proposals"
+              title="Edge Proposals"
+              initialX={20}
+              initialY={120}
+              onClose={() => setProposalsOpen(false)}
+            >
+              <EdgeProposals />
+            </HUDWindow>
+          </ErrorBoundary>
         )}
 
-        <CLIInstallDialog isOpen={cliInstallOpen} onClose={() => setCLIInstallOpen(false)} />
+        {settingsOpen && (
+          <ErrorBoundary level="component">
+            <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          </ErrorBoundary>
+        )}
       </HUDLayer>
     </>
   )
