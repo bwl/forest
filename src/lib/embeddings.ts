@@ -1,4 +1,6 @@
 import { NodeRecord } from './db';
+import path from 'path';
+import fs from 'fs';
 
 // Provider selection via env:
 //  - FOREST_EMBED_PROVIDER=mock | openai | none
@@ -83,20 +85,76 @@ export async function computeEmbeddingForNode(n: Pick<NodeRecord, 'title' | 'bod
   return embedNoteText(text);
 }
 
-// Local provider via @xenova/transformers
-let localExtractorPromise: Promise<any> | null = null;
-async function getLocalExtractor(): Promise<any> {
-  if (localExtractorPromise) return localExtractorPromise;
-  const model = process.env.FOREST_EMBED_LOCAL_MODEL || 'Xenova/all-MiniLM-L6-v2';
-  const mod = (await import('@xenova/transformers')) as any;
-  const pipeline = mod.pipeline as (task: string, model: string) => Promise<any>;
-  localExtractorPromise = pipeline('feature-extraction', model);
-  return localExtractorPromise;
+// Local provider via forest-embed Rust helper
+// This ensures CLI and desktop app use the same fastembed engine
+async function embedLocal(text: string): Promise<number[]> {
+  try {
+    // Try to find forest-embed binary
+    const binaryPath = await findForestEmbedBinary();
+
+    // Spawn the process and pass text via stdin
+    const proc = Bun.spawn([binaryPath], {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+
+    // Write text to stdin and close it
+    proc.stdin.write(text);
+    proc.stdin.end();
+
+    // Read output
+    const output = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
+    await proc.exited;
+
+    if (proc.exitCode !== 0) {
+      throw new Error(`forest-embed failed with code ${proc.exitCode}: ${stderr}`);
+    }
+
+    // Parse JSON array
+    const embedding: number[] = JSON.parse(output.trim());
+    if (!Array.isArray(embedding)) {
+      throw new Error('Invalid embedding format from forest-embed');
+    }
+
+    return embedding;
+  } catch (error) {
+    console.warn('Failed to use forest-embed, falling back to mock embeddings:', error);
+    console.warn('Install forest-embed or set FOREST_EMBED_PROVIDER=mock to suppress this warning');
+    // Fallback to mock embeddings
+    return embedMock(text);
+  }
 }
 
-async function embedLocal(text: string): Promise<number[]> {
-  const extractor = await getLocalExtractor();
-  const output = await extractor(text, { pooling: 'mean', normalize: true });
-  const arr: number[] = Array.from(output.data as Float32Array);
-  return arr;
+// Find the forest-embed binary
+export async function findForestEmbedBinary(): Promise<string> {
+  const candidates = [
+    // 1. Same directory as CLI (for bundled distribution)
+    path.join(path.dirname(process.execPath), 'forest-embed'),
+    path.join(path.dirname(process.execPath), 'forest-embed-aarch64-apple-darwin'),
+    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-apple-darwin'),
+    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-unknown-linux-gnu'),
+    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-pc-windows-msvc.exe'),
+
+    // 2. Development build location
+    path.join(__dirname, '..', '..', 'forest-desktop', 'src-tauri', 'target', 'release', 'forest-embed'),
+
+    // 3. In PATH
+    'forest-embed',
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      // Check if file exists and is executable
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // Continue to next candidate
+    }
+  }
+
+  throw new Error('forest-embed binary not found. Please build it with: cd forest-desktop/src-tauri && cargo build --release --bin forest-embed');
 }

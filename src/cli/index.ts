@@ -14,15 +14,11 @@ import { createHealthCommand } from './commands/health';
 import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
+import * as clerc from 'clerc';
 
-type ClercModule = typeof import('clerc');
-
-async function loadClerc(): Promise<ClercModule> {
-  return Function('return import("clerc")')();
-}
+type ClercModule = typeof clerc;
 
 export async function createForestCli() {
-  const clerc = await loadClerc();
   const {
     Clerc,
     completionsPlugin,

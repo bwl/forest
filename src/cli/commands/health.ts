@@ -73,8 +73,11 @@ async function runHealth(flags: HealthFlags) {
     console.log('');
   }
 
-  if (report.localTransformer) {
-    printCheck('Local Transformer', report.localTransformer);
+  if (report.forestEmbed) {
+    printCheck('Forest Embed Binary', report.forestEmbed);
+    if (report.forestEmbed.binaryPath) {
+      console.log(`  path: ${report.forestEmbed.binaryPath}`);
+    }
     console.log('');
   }
 

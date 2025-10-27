@@ -210,6 +210,194 @@ RELATED: explore,edges.propose,node.read
 SCHEMA_JSON: emits {"node":{"id":STR,...},...}
 ```
 
+---
+
+## Environment Validation
+
+### `forest-preflight.js` - Environment Check
+
+**Purpose**: Comprehensive environment validation before setting up Forest
+
+**Usage**:
+```bash
+# Basic check (local SQLite)
+node scripts/forest-preflight.js
+
+# Check remote database connectivity
+node scripts/forest-preflight.js --remote
+
+# Verbose output (show all checks)
+node scripts/forest-preflight.js --verbose
+```
+
+**What it checks**:
+- Core dependencies (Node.js, npm/Bun, Git)
+- Filesystem permissions and disk space
+- SQLite support (sql.js)
+- Environment variables (FOREST_*)
+- Remote PostgreSQL connectivity (optional)
+- OpenAI API key (if configured)
+
+**When to use**:
+- First time setting up Forest
+- Onboarding new team members
+- Troubleshooting environment issues
+- Before deploying to new environment
+- In CI/CD pipelines
+
+**Documentation**: See [PREFLIGHT_CHECK.md](../docs/PREFLIGHT_CHECK.md) for detailed guide
+
+**Example output**:
+```
+Forest Environment Preflight Check
+
+━━━ Core Dependencies ━━━
+
+✓ Node.js Version
+  Found Node.js 18.17.0
+
+✓ Bun
+  Found Bun 1.0.14
+
+━━━ Summary ━━━
+
+✓ Passed:  6
+✗ Failed:  0
+⚠ Warnings: 0
+
+✓ Environment is ready for Forest!
+```
+
+---
+
+## Bulk Import
+
+### `bulk-import.sh` - Populate Forest with Large Corpora
+
+**Purpose**: Bulk import documents from Project Gutenberg and other sources for testing/development
+
+**Usage**:
+```bash
+# Quick test (5 Shakespeare plays)
+./bulk-import.sh test
+
+# All Shakespeare plays
+./bulk-import.sh shakespeare individual
+
+# Shakespeare Complete Works (single chunked document)
+./bulk-import.sh shakespeare complete
+
+# Top 50 classic books from Project Gutenberg
+./bulk-import.sh classics 50
+```
+
+**Data Sources:**
+
+1. **Shakespeare** (`data-sources/shakespeare.sh`)
+   - All 37 plays (tragedies, comedies, histories)
+   - Poems (Venus and Adonis, The Rape of Lucrece)
+   - Downloaded from Project Gutenberg
+   - ~400-600 nodes when imported individually
+
+2. **Classic Literature** (`data-sources/classics.sh`)
+   - Top Project Gutenberg books by popularity
+   - Gothic/Horror: Frankenstein, Dracula, Dorian Gray
+   - Romance: Pride and Prejudice, Jane Eyre, Emma
+   - Mystery: Sherlock Holmes, Count of Monte Cristo
+   - Adventure: Moby Dick, Tom Sawyer, Huckleberry Finn
+   - Philosophy: The Republic, The Prince, Walden
+   - Epic: War and Peace, Les Misérables
+
+**Features:**
+- ✅ Automatic downloading from Project Gutenberg
+- ✅ Cleans PG headers/footers
+- ✅ Chunking by headers (chapters/sections)
+- ✅ Semantic auto-linking between chunks
+- ✅ Progress tracking
+- ✅ Retry logic for downloads
+- ✅ Configurable embedding provider
+
+**Environment Variables:**
+```bash
+# Use mock embeddings for faster testing
+FOREST_EMBED_PROVIDER=mock ./bulk-import.sh test
+
+# Use local embeddings (default, slower but better quality)
+FOREST_EMBED_PROVIDER=local ./bulk-import.sh shakespeare individual
+
+# Use OpenAI embeddings
+FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=sk-... ./bulk-import.sh classics 20
+```
+
+**Shared Utilities** (`import-helpers.sh`):
+- `download_file()` - Download with retry logic
+- `clean_gutenberg_text()` - Remove PG boilerplate
+- `import_document()` - Call forest node import
+- `show_progress()` - Visual progress bars
+- Colored logging (info, success, warning, error)
+
+**Performance Notes:**
+- **Mock embeddings**: ~1-2 seconds per document (testing only)
+- **Local embeddings**: ~5-10 seconds per chunk (production quality)
+- **OpenAI embeddings**: ~2-3 seconds per chunk (API latency)
+
+**Recommendations:**
+- Use `test` mode first to verify everything works
+- Use `mock` provider for quick database population
+- Use `local` provider for realistic semantic links
+- Large imports can take hours with local embeddings
+
+**Examples:**
+
+```bash
+# Quick test dataset (5 plays, mock embeddings)
+FOREST_EMBED_PROVIDER=mock ./bulk-import.sh test
+
+# Medium import (10 plays + 10 books, ~1 hour)
+./bulk-import.sh shakespeare individual 10
+./bulk-import.sh classics 10
+
+# Large import (all Shakespeare + 50 classics, ~3-4 hours)
+./bulk-import.sh shakespeare individual
+./bulk-import.sh classics 50
+
+# Verify import
+forest stats
+forest node recent
+forest search "to be or not to be"
+```
+
+**Adding New Data Sources:**
+
+Create `data-sources/your-source.sh`:
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../import-helpers.sh"
+
+import_your_data() {
+  local limit="${1:-10}"
+  log_info "Importing your data..."
+
+  local tmpdir=$(create_temp_dir "your-source")
+  download_file "https://example.com/data.txt" "$tmpdir/data.txt"
+  import_document "$tmpdir/data.txt" "Document Title" "tag1,tag2"
+
+  rm -rf "$tmpdir"
+  log_success "Import complete"
+}
+
+if [ "${BASH_SOURCE[0]}" -ef "$0" ]; then
+  import_your_data "$@"
+fi
+```
+
+Then add a case to `bulk-import.sh` main function.
+
+---
+
 ## License
 
 These scripts are part of the Forest project.

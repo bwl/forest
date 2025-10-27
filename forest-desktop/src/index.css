@@ -1,0 +1,349 @@
+/* Tufte CSS base - minimal, elegant typography */
+/* @import url('https://edwardtufte.github.io/tufte-css/tufte.css');
+
+/* Tailwind for utility classes */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom overrides for Forest */
+body {
+  background-color: #fffff8;
+}
+
+article {
+  padding: 5% 12.5%;
+  max-width: none;
+}
+
+/* Search and interactive elements with Tailwind-like utilities */
+.forest-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.forest-input:focus {
+  outline: none;
+  border-color: #111;
+  box-shadow: 0 0 0 3px rgba(17, 17, 17, 0.1);
+}
+
+.forest-button {
+  padding: 0.75rem 1.5rem;
+  background: #111;
+  color: #fffff8;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.forest-button:hover {
+  background: #333;
+}
+
+.forest-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.forest-card {
+  background: white;
+  padding: 1.5rem;
+  margin: 1rem 0;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.forest-card:hover {
+  border-color: #ccc;
+}
+
+.forest-tag {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+  background: #f4f4f4;
+  border-radius: 3px;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.forest-tag::before {
+  content: '#';
+  opacity: 0.7;
+}
+
+.forest-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.forest-stat-card {
+  text-align: center;
+  padding: 1.5rem;
+  background: white;
+  border: 1px solid #eee;
+  border-radius: 4px;
+}
+
+.forest-stat-value {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #111;
+  margin: 0;
+}
+
+.forest-stat-label {
+  font-size: 0.875rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+}
+
+/* App Container */
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #020617;
+}
+
+/* HUD Layer System */
+.hud-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.hud-layer > * {
+  pointer-events: auto;
+}
+
+/* HUD Windows */
+.hud-window {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  color: #e2e8f0;
+  min-width: 280px;
+  max-width: 500px;
+}
+
+.hud-window--active {
+  border-color: rgba(148, 163, 184, 0.5);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+.hud-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  cursor: move;
+  user-select: none;
+}
+
+.hud-window-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.hud-window-close {
+  background: none;
+  border: none;
+  color: rgba(226, 232, 240, 0.6);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background 0.2s, color 0.2s;
+}
+
+.hud-window-close:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: #f87171;
+}
+
+.hud-window-body {
+  padding: 1rem;
+}
+
+/* HUD Overlay (Settings, Modals) */
+.hud-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+}
+
+.hud-overlay__content {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  padding: 2rem;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+  color: #e2e8f0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Performance Monitoring Overlay */
+.render-budget-overlay {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  color: #e2e8f0;
+  z-index: 1500;
+  min-width: 200px;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 0.75rem;
+}
+
+.render-budget-header {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(226, 232, 240, 0.6);
+  margin-bottom: 0.5rem;
+}
+
+.render-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.render-budget-value {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #f8fafc;
+  font-variant-numeric: tabular-nums;
+}
+
+.render-budget-label {
+  display: block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(226, 232, 240, 0.5);
+  margin-top: 0.125rem;
+}
+
+.render-budget-progress {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(71, 85, 105, 0.4);
+  overflow: hidden;
+}
+
+.render-budget-progress-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #10b981, #3b82f6);
+  transition: width 0.15s ease;
+}
+
+.render-budget-approaching .render-budget-progress-bar {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+.render-budget-over .render-budget-progress-bar {
+  background: linear-gradient(90deg, #ef4444, #dc2626);
+}
+
+/* Command Palette Styles */
+.command-palette {
+  min-width: 320px;
+}
+
+.command-palette-collapsed {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: rgba(226, 232, 240, 0.7);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.command-palette-collapsed:hover {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.command-palette-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.command-palette-input {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-size: 0.875rem;
+}
+
+.command-palette-input:focus {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.5);
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.command-palette-actions {
+  display: flex;
+  gap: 0.5rem;
+}

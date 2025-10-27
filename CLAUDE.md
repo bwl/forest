@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Forest is a graph-native knowledge base CLI that captures unstructured ideas and automatically links them using a hybrid scoring algorithm combining semantic embeddings and lexical similarity. All data is stored in a single SQLite database (`forest.db`).
 
+**Database Location (as of v0.4.2):**
+- **macOS**: `~/Library/Application Support/com.ettio.forest.desktop/forest.db`
+- **Linux**: `~/.local/share/com.ettio.forest.desktop/forest.db`
+- **Windows**: `%APPDATA%\com.ettio.forest.desktop\forest.db`
+- **Override**: Set `FOREST_DB_PATH` environment variable to use a custom location
+
 ## Agent-First TLDR Standard
 
 Forest implements the **TLDR Standard (v0.1)** for agent ingestion - a minimal, parseable command metadata format designed for AI agents.
@@ -82,6 +88,54 @@ cd tldr-agent-spec
 ```
 
 **For full TLDR documentation**: See `tldr-agent-spec/README.md`
+
+## Development Workflow & Agent Specialization
+
+Forest Desktop development is split into two primary domains, each with specialized agents:
+
+### Frontend Development (Primary for App Features)
+
+**Agent**: `react-tauri-frontend` - Use this agent for:
+- Building/modifying React components, hooks, and UI layouts
+- Debugging React-specific issues (render cycles, state management, prop drilling)
+- Implementing UI/UX features, animations, and responsive designs
+- Fixing console errors using browser DevTools
+- Writing TypeScript wrappers for Tauri commands
+- Optimizing component performance
+- Implementing error boundaries and accessibility
+- Integrating with Tauri's window management and events from the frontend
+- Polishing existing interfaces with better UX patterns
+
+**When to use**: Any work in `forest-desktop/src/` (React components, TypeScript, CSS)
+
+### Backend/Core Development (When Needed)
+
+**Agent**: `rust-tauri-implementor` - Use this agent for:
+- Implementing new Tauri commands and Rust backend logic
+- Database schema changes and migrations
+- Core algorithms (scoring, linking, search, embeddings)
+- Performance-critical operations requiring native code
+- SQLite query optimization
+- CLI command implementation in Rust
+
+**When to use**: Any work in `forest-desktop/src-tauri/` (Rust code, migrations, core logic)
+
+### Current Phase: App Features & Polish
+
+We now have a **solid backend foundation** with all core Tauri commands implemented. Most development should use the `react-tauri-frontend` agent to:
+- Fix React console errors
+- Implement search highlighting
+- Add node editing UI
+- Build settings panel
+- Enhance command palette UX
+- Improve graph visualization controls
+- Add keyboard shortcuts and accessibility features
+
+**Reserve `rust-tauri-implementor` for**:
+- New backend features requiring Tauri commands
+- Database schema changes
+- Core algorithm improvements
+- Performance optimization in Rust
 
 ## Development Commands
 
@@ -334,7 +388,7 @@ Uses **sql.js** (SQLite compiled to WASM) with in-memory database persisted to d
 
 **Key pattern**: Database is lazily initialized on first access. All mutations set `dirty = true` and persist to disk.
 
-Database path controlled by `FOREST_DB_PATH` env var (default: `forest.db` in cwd).
+Database path controlled by `FOREST_DB_PATH` env var (default: app data directory, see above).
 
 **Database Schema:**
 ```sql
@@ -461,13 +515,23 @@ Then applies a 0.9× penalty if both `tagOverlap` and `titleSimilarity` are zero
 
 **Token downweighting**: Generic technical terms (flow, stream, pipe, branch, terminal) are weighted at 0.4× in token similarity to reduce over-connection of unrelated domains.
 
-### Embeddings (src/lib/embeddings.ts)
+### Embeddings
 
-Three providers via `FOREST_EMBED_PROVIDER`:
-1. **local** (default): Uses `@xenova/transformers` with model `Xenova/all-MiniLM-L6-v2` (384-dim)
+**Desktop App (Rust):** Uses `fastembed` crate with `all-MiniLM-L6-v2` (384-dim) - native, fast, bundled
+
+**CLI (TypeScript):** Three providers via `FOREST_EMBED_PROVIDER`:
+1. **local** (default): Uses `forest-embed` Rust helper (same fastembed engine as desktop app!)
+   - Ensures CLI and desktop app produce identical embeddings
+   - Binary located next to CLI executable
+   - Falls back to mock if binary not found
 2. **openai**: Calls OpenAI embeddings API (requires `OPENAI_API_KEY`)
 3. **mock**: Deterministic hash-based vectors for offline testing
 4. **none**: Disables embeddings (pure lexical scoring)
+
+**Architecture (v0.4.3):**
+- Desktop app: Direct fastembed integration
+- CLI: Shells out to `forest-embed` helper binary
+- Both use identical model → identical search results
 
 Embeddings are computed during capture/edit and stored as JSON arrays in the `embedding` column.
 
@@ -520,7 +584,7 @@ FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=... forest capture --stdin < test.tx
   - `::` - Dual-stack mode, listens on both IPv4 and IPv6
   - `0.0.0.0` - IPv4 only
   - `localhost` - Localhost only (may prefer IPv4 or IPv6 depending on OS)
-- `FOREST_DB_PATH` - Database file path (default: `forest.db` in cwd)
+- `FOREST_DB_PATH` - Database file path (default: see Database Location above)
 - `FOREST_EMBED_PROVIDER` - Embedding provider (default: `local`)
 
 **Network connectivity:**

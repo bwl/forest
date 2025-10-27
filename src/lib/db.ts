@@ -1,6 +1,7 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { createHash } from 'crypto';
 
 export type NodeRecord = {
@@ -84,18 +85,79 @@ export type DocumentWithChunk = {
   chunk: DocumentChunkRecord;
 };
 
-const DEFAULT_DB_PATH = path.join(process.cwd(), 'forest.db');
-
 let sqljs: SqlJsStatic | null = null;
 let database: Database | null = null;
 let dirty = false;
+let tempWasmPath: string | null = null;
 
 function getDbPath(): string {
-  return process.env.FOREST_DB_PATH ?? DEFAULT_DB_PATH;
+  // Priority 1: Explicit FOREST_DB_PATH environment variable
+  if (process.env.FOREST_DB_PATH) {
+    return process.env.FOREST_DB_PATH;
+  }
+
+  // Priority 2: Platform-appropriate app data directory
+  const homeDir = os.homedir();
+  let appDataDir: string;
+
+  if (process.platform === 'darwin') {
+    // macOS: ~/Library/Application Support/com.ettio.forest.desktop
+    appDataDir = path.join(homeDir, 'Library', 'Application Support', 'com.ettio.forest.desktop');
+  } else if (process.platform === 'win32') {
+    // Windows: %APPDATA%\com.ettio.forest.desktop
+    appDataDir = path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'com.ettio.forest.desktop');
+  } else {
+    // Linux/Unix: ~/.local/share/com.ettio.forest.desktop
+    const xdgDataHome = process.env.XDG_DATA_HOME || path.join(homeDir, '.local', 'share');
+    appDataDir = path.join(xdgDataHome, 'com.ettio.forest.desktop');
+  }
+
+  return path.join(appDataDir, 'forest.db');
 }
 
 function locateWasmFile(file: string): string {
-  return path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', file);
+  // For standalone binaries, extract embedded WASM to temp file
+  if (tempWasmPath && fs.existsSync(tempWasmPath)) {
+    return tempWasmPath;
+  }
+
+  // Try development path first (when running from source)
+  const devPath = path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', file);
+  if (fs.existsSync(devPath)) {
+    return devPath;
+  }
+
+  // Extract embedded WASM to temp file (for compiled binary)
+  try {
+    // Dynamic import to avoid bundling issues if file doesn't exist
+    const { EMBEDDED_WASM_BASE64 } = require('./embedded-wasm');
+    const buffer = Buffer.from(EMBEDDED_WASM_BASE64, 'base64');
+
+    // Create temp file
+    tempWasmPath = path.join(os.tmpdir(), `forest-sql-wasm-${process.pid}.wasm`);
+    fs.writeFileSync(tempWasmPath, buffer);
+
+    // Clean up on exit
+    process.on('exit', () => {
+      if (tempWasmPath && fs.existsSync(tempWasmPath)) {
+        try {
+          fs.unlinkSync(tempWasmPath);
+        } catch (_) {
+          // Ignore cleanup errors
+        }
+      }
+    });
+
+    return tempWasmPath;
+  } catch (err) {
+    // Embedded WASM not available - this should only happen during development
+    // before running the embed script
+    throw new Error(
+      `Failed to locate ${file}. ` +
+        `Tried:\n  1. ${devPath} (not found)\n  2. Embedded WASM (not available)\n` +
+        `If building, run: bun run scripts/embed-wasm.ts`
+    );
+  }
 }
 
 async function ensureDatabase(): Promise<Database> {

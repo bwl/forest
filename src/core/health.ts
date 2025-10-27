@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getEmbeddingProvider, embeddingsEnabled } from '../lib/embeddings';
+import { getEmbeddingProvider, embeddingsEnabled, findForestEmbedBinary } from '../lib/embeddings';
 
 const DEFAULT_DB_PATH = 'forest.db';
 
@@ -14,7 +14,7 @@ export type HealthReport = {
   database: HealthCheck & { path?: string; sizeBytes?: number };
   embeddingProvider: HealthCheck & { provider?: string };
   openaiKey?: HealthCheck;
-  localTransformer?: HealthCheck;
+  forestEmbed?: HealthCheck & { binaryPath?: string };
 };
 
 export async function getHealthReport(): Promise<HealthReport> {
@@ -29,7 +29,7 @@ export async function getHealthReport(): Promise<HealthReport> {
   }
 
   if (provider === 'local') {
-    report.localTransformer = await checkLocalTransformer();
+    report.forestEmbed = await checkForestEmbed();
   }
 
   return report;
@@ -40,7 +40,7 @@ export function isHealthy(report: HealthReport): boolean {
     report.database.status === 'ok',
     report.embeddingProvider.status === 'ok',
     !report.openaiKey || report.openaiKey.status === 'ok',
-    !report.localTransformer || report.localTransformer.status === 'ok',
+    !report.forestEmbed || report.forestEmbed.status === 'ok',
   ].every(Boolean);
 }
 
@@ -171,27 +171,40 @@ function checkOpenAIKey(): HealthCheck {
   };
 }
 
-async function checkLocalTransformer(): Promise<HealthCheck> {
+async function checkForestEmbed(): Promise<HealthCheck & { binaryPath?: string }> {
   try {
-    // Try to import the transformers module
-    const mod = await import('@xenova/transformers');
-    if (!mod || typeof mod.pipeline !== 'function') {
+    // Try to find the forest-embed binary
+    const binaryPath = await findForestEmbedBinary();
+
+    // Verify it's executable
+    if (!fs.existsSync(binaryPath)) {
       return {
         status: 'error',
-        message: '@xenova/transformers is installed but pipeline function not found',
+        message: 'forest-embed binary not found at expected location',
+        binaryPath,
       };
     }
 
-    // We don't actually load the model here to avoid startup delay,
-    // but we verify the package is available
+    // Check if file is executable
+    try {
+      fs.accessSync(binaryPath, fs.constants.X_OK);
+    } catch {
+      return {
+        status: 'error',
+        message: 'forest-embed binary found but not executable',
+        binaryPath,
+      };
+    }
+
     return {
       status: 'ok',
-      message: '@xenova/transformers is installed and available',
+      message: 'forest-embed binary is available and executable',
+      binaryPath,
     };
   } catch (error) {
     return {
       status: 'error',
-      message: `@xenova/transformers is not available: ${error instanceof Error ? error.message : String(error)}`,
+      message: `forest-embed binary not found: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
