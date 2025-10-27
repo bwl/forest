@@ -1,6 +1,6 @@
 [package]
 name = "forest-desktop"
-version = "0.4.3"
+version = "0.4.4"
 description = "Forest knowledge base - unified GUI and CLI"
 authors = ["Forest Contributors"]
 license = "MIT"

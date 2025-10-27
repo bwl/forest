@@ -1,7 +1,6 @@
 import { GameViewport } from './components/3d/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
-import { RenderBudgetOverlay } from './components/RenderBudgetOverlay'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { HUDLayer } from './components/hud/HUDLayer'
 import { HUDWindow } from './components/hud/HUDWindow'
@@ -40,8 +39,6 @@ function AppContent() {
             <GameViewport onNodeClick={setSelectedNodeId} />
           </ErrorBoundary>
         </div>
-
-        <RenderBudgetOverlay />
 
         <ErrorBoundary level="component">
           <HUDWindow id="command-palette" title="Command" initialX={20} initialY={20}>

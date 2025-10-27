@@ -129,7 +129,7 @@ async function embedLocal(text: string): Promise<number[]> {
 }
 
 // Find the forest-embed binary
-async function findForestEmbedBinary(): Promise<string> {
+export async function findForestEmbedBinary(): Promise<string> {
   const candidates = [
     // 1. Same directory as CLI (for bundled distribution)
     path.join(path.dirname(process.execPath), 'forest-embed'),

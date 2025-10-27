@@ -2,7 +2,6 @@ import { Suspense, useMemo, useState } from 'react'
 import { Canvas, extend } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
-import { FrameMetricsTracker } from '../RenderBudgetOverlay'
 import { useUI } from '../../store/ui'
 import { useGraph } from '../../queries/forest'
 import { NodeGlowMaterial, EdgeTrailMaterial } from './materials'
@@ -51,8 +50,7 @@ export function GameViewport({ onNodeClick }: Props) {
           }}
         >
           <Suspense fallback={null}>
-            <FrameMetricsTracker />
-            <color attach="background" args={['#02030f']} />
+            <color attach="background" args={['#f3f3f3']} />
             <fog attach="fog" args={[new THREE.Color('#02030f'), 60, 180]} />
             <ambientLight intensity={0.6} color={new THREE.Color('#3f4a88')} />
             <pointLight position={[30, 40, 20]} intensity={1.4} color="#6287ff" />
