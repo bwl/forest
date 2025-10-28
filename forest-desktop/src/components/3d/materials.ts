@@ -102,7 +102,7 @@ const edgeFragmentShader = `
     float glow = 0.35 + 0.35 * (vPulse * 0.5 + 0.5);
     vec3 color = mix(baseColorA, baseColorB, clamp(vHighlight, 0.0, 1.0));
     if (vHighlight > 1.5) {
-      color = mix(color, vec3(1.0, 0.6, 0.2), 0.7);
+      color = mix(color, vec3(0.796, 0.294, 0.086), 0.7);
       glow += 0.2;
     }
     float alpha = 0.45 + 0.35 * clamp(vHighlight, 0.0, 1.0);
@@ -116,9 +116,9 @@ const edgeFragmentShader = `
 export const NodeGlowMaterial = shaderMaterial(
   {
     time: 0,
-    baseColor: new THREE.Color('#2f3c9b'),
-    highlightColor: new THREE.Color('#f7c948'),
-    hoverColor: new THREE.Color('#ff8855')
+    baseColor: new THREE.Color('#586e75'),
+    highlightColor: new THREE.Color('#859900'),
+    hoverColor: new THREE.Color('#cb4b16')
   },
   nodeVertexShader,
   nodeFragmentShader
@@ -127,8 +127,8 @@ export const NodeGlowMaterial = shaderMaterial(
 export const EdgeTrailMaterial = shaderMaterial(
   {
     time: 0,
-    baseColorA: new THREE.Color('#0f1729'),
-    baseColorB: new THREE.Color('#3b82f6')
+    baseColorA: new THREE.Color('#93a1a1'),
+    baseColorB: new THREE.Color('#268bd2')
   },
   edgeVertexShader,
   edgeFragmentShader

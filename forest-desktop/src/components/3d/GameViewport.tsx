@@ -81,11 +81,11 @@ export function GameViewport({ onNodeClick }: Props) {
           }}
         >
           <Suspense fallback={null}>
-            <color attach="background" args={['#f3f3f3']} />
-            <fog attach="fog" args={[new THREE.Color('#02030f'), 60, 180]} />
-            <ambientLight intensity={0.6} color={new THREE.Color('#3f4a88')} />
-            <pointLight position={[30, 40, 20]} intensity={1.4} color="#6287ff" />
-            <pointLight position={[-25, -30, -10]} intensity={0.5} color="#ff7b54" />
+            <color attach="background" args={['#fdf6e3']} />
+            <fog attach="fog" args={[new THREE.Color('#eee8d5'), 60, 180]} />
+            <ambientLight intensity={0.6} color={new THREE.Color('#fdf6e3')} />
+            <pointLight position={[30, 40, 20]} intensity={1.4} color="#268bd2" />
+            <pointLight position={[-25, -30, -10]} intensity={0.5} color="#cb4b16" />
 
             <EdgeSystem
               nodes={graph.nodes}
