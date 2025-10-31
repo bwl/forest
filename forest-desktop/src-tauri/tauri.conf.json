@@ -4,7 +4,7 @@
   "version": "0.4.5",
   "identifier": "com.ettio.forest.desktop",
   "build": {
-    "beforeBuildCommand": "../scripts/build-cli.sh && bun run build",
+    "beforeBuildCommand": "scripts/build-cli.sh && bun run build",
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
