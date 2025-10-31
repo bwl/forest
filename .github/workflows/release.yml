@@ -25,6 +25,9 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
 
+      - name: Install root dependencies
+        run: bun install
+
       - name: Install frontend dependencies
         working-directory: forest-desktop
         run: bun install
