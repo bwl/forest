@@ -1,6 +1,6 @@
 {
   "name": "forest-cli",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Ingest unstructured ideas into a graph-first knowledge base.",
   "bin": {
     "forest": "dist/index.js"
@@ -8,8 +8,8 @@
   "scripts": {
     "build": "bunx tsc",
     "lint": "bunx tsc --noEmit",
-    "dev": "bunx tsx src/index.ts",
-    "dev:server": "bunx tsx src/server/index.ts",
+    "dev": "bun run src/index.ts",
+    "dev:server": "bun run src/server/index.ts",
     "start": "bun run dist/index.js",
     "test": "bun test"
   },

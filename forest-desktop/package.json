@@ -1,6 +1,6 @@
 {
   "name": "forest-desktop",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Forest Desktop App",
   "type": "module",
   "private": true,
@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "release": "bun run tauri build"
+    "release": "bash scripts/release.sh",
+    "release:nodmg": "SKIP_DMG=1 bash scripts/release.sh"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
