@@ -15,6 +15,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout tauri-plugin-mcp
+        uses: actions/checkout@v4
+        with:
+          repository: bwl/tauri-plugin-mcp
+          path: tauri-plugin-mcp
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
