@@ -18,7 +18,7 @@ jobs:
       - name: Checkout tauri-plugin-mcp
         uses: actions/checkout@v4
         with:
-          repository: bwl/tauri-plugin-mcp
+          repository: P3GLEG/tauri-plugin-mcp
           path: tauri-plugin-mcp
 
       - name: Setup Bun
