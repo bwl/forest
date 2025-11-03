@@ -5,8 +5,10 @@ const nodeVertexShader = `
   uniform float time;
   attribute float highlight;
   attribute float phase;
+  attribute vec3 nodeColor;
   varying float vHighlight;
   varying float vPulse;
+  varying vec3 vNodeColor;
   #include <common>
   #include <uv_pars_vertex>
   #include <color_pars_vertex>
@@ -16,6 +18,7 @@ const nodeVertexShader = `
 
   void main() {
     vHighlight = highlight;
+    vNodeColor = nodeColor;
     float pulse = sin(time * 0.9 + phase);
     vPulse = pulse;
     #include <uv_vertex>
@@ -32,6 +35,7 @@ const nodeVertexShader = `
 const nodeFragmentShader = `
   varying float vHighlight;
   varying float vPulse;
+  varying vec3 vNodeColor;
   uniform vec3 baseColor;
   uniform vec3 highlightColor;
   uniform vec3 hoverColor;
@@ -44,7 +48,8 @@ const nodeFragmentShader = `
     #include <logdepthbuf_fragment>
     #include <clipping_planes_fragment>
     float glow = 0.45 + 0.35 * (vPulse * 0.5 + 0.5);
-    vec3 color = baseColor;
+    // Use per-node color instead of uniform baseColor
+    vec3 color = vNodeColor;
     if (vHighlight > 0.5) {
       color = mix(color, highlightColor, 0.7);
       glow += 0.1;
@@ -64,8 +69,10 @@ const edgeVertexShader = `
   uniform float time;
   attribute float highlight;
   attribute float phase;
+  attribute float opacity;
   varying float vHighlight;
   varying float vPulse;
+  varying float vOpacity;
   #include <common>
   #include <color_pars_vertex>
   #include <fog_pars_vertex>
@@ -74,6 +81,7 @@ const edgeVertexShader = `
 
   void main() {
     vHighlight = highlight;
+    vOpacity = opacity;
     float wave = sin(time * 0.6 + phase);
     vPulse = wave;
     #include <color_vertex>
@@ -89,6 +97,7 @@ const edgeVertexShader = `
 const edgeFragmentShader = `
   varying float vHighlight;
   varying float vPulse;
+  varying float vOpacity;
   uniform vec3 baseColorA;
   uniform vec3 baseColorB;
   #include <common>
@@ -105,7 +114,8 @@ const edgeFragmentShader = `
       color = mix(color, vec3(0.796, 0.294, 0.086), 0.7);
       glow += 0.2;
     }
-    float alpha = 0.45 + 0.35 * clamp(vHighlight, 0.0, 1.0);
+    // Use per-edge opacity based on score, boosted by highlight state
+    float alpha = vOpacity * (0.45 + 0.35 * clamp(vHighlight, 0.0, 1.0));
     gl_FragColor = vec4(color * glow, alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -113,12 +123,26 @@ const edgeFragmentShader = `
   }
 `
 
+// Solarized Light colors (default)
+const lightNodeBase = new THREE.Color('#586e75')
+const lightNodeHighlight = new THREE.Color('#859900')
+const lightNodeHover = new THREE.Color('#cb4b16')
+const lightEdgeBase = new THREE.Color('#93a1a1')
+const lightEdgeHighlight = new THREE.Color('#268bd2')
+
+// Solarized Dark colors
+const darkNodeBase = new THREE.Color('#839496')
+const darkNodeHighlight = new THREE.Color('#859900')
+const darkNodeHover = new THREE.Color('#cb4b16')
+const darkEdgeBase = new THREE.Color('#586e75')
+const darkEdgeHighlight = new THREE.Color('#268bd2')
+
 export const NodeGlowMaterial = shaderMaterial(
   {
     time: 0,
-    baseColor: new THREE.Color('#586e75'),
-    highlightColor: new THREE.Color('#859900'),
-    hoverColor: new THREE.Color('#cb4b16')
+    baseColor: lightNodeBase.clone(),
+    highlightColor: lightNodeHighlight.clone(),
+    hoverColor: lightNodeHover.clone()
   },
   nodeVertexShader,
   nodeFragmentShader
@@ -127,12 +151,40 @@ export const NodeGlowMaterial = shaderMaterial(
 export const EdgeTrailMaterial = shaderMaterial(
   {
     time: 0,
-    baseColorA: new THREE.Color('#93a1a1'),
-    baseColorB: new THREE.Color('#268bd2')
+    baseColorA: lightEdgeBase.clone(),
+    baseColorB: lightEdgeHighlight.clone()
   },
   edgeVertexShader,
   edgeFragmentShader
 )
+
+/**
+ * Update node material colors based on theme
+ */
+export function updateNodeMaterialColors(material: NodeGlowMaterialImpl, theme: 'light' | 'dark') {
+  if (theme === 'dark') {
+    material.uniforms.baseColor.value.copy(darkNodeBase)
+    material.uniforms.highlightColor.value.copy(darkNodeHighlight)
+    material.uniforms.hoverColor.value.copy(darkNodeHover)
+  } else {
+    material.uniforms.baseColor.value.copy(lightNodeBase)
+    material.uniforms.highlightColor.value.copy(lightNodeHighlight)
+    material.uniforms.hoverColor.value.copy(lightNodeHover)
+  }
+}
+
+/**
+ * Update edge material colors based on theme
+ */
+export function updateEdgeMaterialColors(material: EdgeTrailMaterialImpl, theme: 'light' | 'dark') {
+  if (theme === 'dark') {
+    material.uniforms.baseColorA.value.copy(darkEdgeBase)
+    material.uniforms.baseColorB.value.copy(darkEdgeHighlight)
+  } else {
+    material.uniforms.baseColorA.value.copy(lightEdgeBase)
+    material.uniforms.baseColorB.value.copy(lightEdgeHighlight)
+  }
+}
 
 export type NodeGlowMaterialImpl = THREE.ShaderMaterial & {
   uniforms: {

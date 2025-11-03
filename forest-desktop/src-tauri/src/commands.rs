@@ -379,19 +379,22 @@ pub struct GraphEdge {
 pub async fn get_graph_data(state: State<'_, AppState>) -> ForestResult<GraphData> {
     let db = state.get_db().await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
-    // Get all nodes
-    let nodes = db.list_nodes(Pagination { limit: 10000, offset: 0 })
+    // Get all nodes (increased limit to handle large graphs)
+    let nodes = db.list_nodes(Pagination { limit: 100000, offset: 0 })
         .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
 
-    // Get all accepted edges
+    // Get all accepted edges (increased limit to handle large graphs)
     let edges = db.list_edges(
         EdgeFilters {
             status: Some(EdgeStatus::Accepted),
             ..Default::default()
         },
-        Pagination { limit: 10000, offset: 0 }
+        Pagination { limit: 100000, offset: 0 }
     )
     .await.map_err(|e| ForestError::DatabaseError(e.to_string()))?;
+
+    // Debug logging for graph data loading
+    eprintln!("[GraphData] Loaded {} nodes and {} edges", nodes.len(), edges.len());
 
     // Count connections per node
     let mut connection_counts: HashMap<String, usize> = HashMap::new();
@@ -563,4 +566,34 @@ pub fn log_to_terminal(level: String, message: String) {
         "warn" => eprintln!("[FRONTEND WARN] {}", message),
         _ => println!("[FRONTEND] {}", message),
     }
+}
+
+/// Get the current theme preference
+#[tauri::command]
+pub async fn get_theme_preference(state: State<'_, AppState>) -> ForestResult<String> {
+    let config = state.get_config().await;
+    Ok(config.theme_preference)
+}
+
+/// Set the theme preference
+#[tauri::command]
+pub async fn set_theme_preference(
+    state: State<'_, AppState>,
+    preference: String,
+) -> ForestResult<()> {
+    // Validate the preference value
+    if !["system", "light", "dark"].contains(&preference.as_str()) {
+        return Err(ForestError::InvalidInput(
+            format!("Invalid theme preference: {}. Must be 'system', 'light', or 'dark'", preference)
+        ));
+    }
+
+    state
+        .update_config(|config| {
+            config.theme_preference = preference;
+        })
+        .await
+        .map_err(|e| ForestError::DatabaseError(e.to_string()))?;
+
+    Ok(())
 }

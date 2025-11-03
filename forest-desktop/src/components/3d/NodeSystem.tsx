@@ -20,6 +20,15 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
 
   const highlightSet = useMemo(() => new Set(highlightedNodeIds), [highlightedNodeIds])
 
+  // Debug logging for node rendering
+  useEffect(() => {
+    console.log('[NodeSystem] Rendering nodes:', {
+      count: nodes.length,
+      highlighted: highlightedNodeIds.length,
+      hovered: hoveredIndex
+    })
+  }, [nodes.length, highlightedNodeIds.length, hoveredIndex])
+
   // Single unified render loop - prevents attribute update races and flickering
   useFrame(({ clock }) => {
     if (!meshRef.current) return
@@ -68,6 +77,19 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
         highlightAttr!.setX(index, value)
       })
       highlightAttr.needsUpdate = true
+
+      // Update/create color attribute (RGB)
+      let colorAttr = meshRef.current.geometry.getAttribute('nodeColor') as THREE.InstancedBufferAttribute | undefined
+      if (!colorAttr || colorAttr.count !== nodes.length) {
+        colorAttr = new THREE.InstancedBufferAttribute(new Float32Array(nodes.length * 3), 3)
+        meshRef.current.geometry.setAttribute('nodeColor', colorAttr)
+      }
+      nodes.forEach((node, index) => {
+        // Parse HSL color string to THREE.Color
+        const color = new THREE.Color(node.color)
+        colorAttr!.setXYZ(index, color.r, color.g, color.b)
+      })
+      colorAttr.needsUpdate = true
 
       needsUpdate.current = false
     }

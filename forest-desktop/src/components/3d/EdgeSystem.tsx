@@ -20,6 +20,16 @@ export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: 
 
   const highlightSet = useMemo(() => new Set(highlightedNodeIds), [highlightedNodeIds])
 
+  // Debug logging for edge rendering
+  useEffect(() => {
+    console.log('[EdgeSystem] Rendering edges:', {
+      count: edges.length,
+      nodes: nodes.length,
+      highlighted: highlightedNodeIds.length,
+      hovered: hoveredNodeId
+    })
+  }, [edges.length, nodes.length, highlightedNodeIds.length, hoveredNodeId])
+
   // Single unified render loop - prevents attribute update races and flickering
   useFrame(({ clock }) => {
     if (!meshRef.current) return
@@ -83,6 +93,20 @@ export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: 
         highlightAttr!.setX(index, value)
       })
       highlightAttr.needsUpdate = true
+
+      // Update/create opacity attribute based on edge score
+      let opacityAttr = meshRef.current.geometry.getAttribute('opacity') as THREE.InstancedBufferAttribute | undefined
+      if (!opacityAttr || opacityAttr.count !== edges.length) {
+        opacityAttr = new THREE.InstancedBufferAttribute(new Float32Array(edges.length), 1)
+        meshRef.current.geometry.setAttribute('opacity', opacityAttr)
+      }
+      edges.forEach((edge, index) => {
+        // Map score (0.25-1.0) to opacity (0.15-1.0)
+        // Higher score = more opaque (stronger connection)
+        const opacity = Math.max(0.15, Math.min(1.0, 0.15 + (edge.score - 0.25) * 1.13))
+        opacityAttr!.setX(index, opacity)
+      })
+      opacityAttr.needsUpdate = true
 
       needsUpdate.current = false
     }
