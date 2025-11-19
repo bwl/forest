@@ -7,6 +7,25 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+// Browser-only dev falls back to a friendly error instead of crashing when Tauri isn't present.
+const hasTauriBackend =
+  typeof window !== 'undefined' &&
+  typeof (window as any).__TAURI_IPC__ === 'function';
+
+function safeInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (!hasTauriBackend) {
+    return Promise.reject(
+      new Error(
+        [
+          'Forest Desktop backend is not available.',
+          'Launch via `bun run tauri dev` or the packaged app so Tauri APIs are injected.',
+        ].join(' '),
+      ),
+    );
+  }
+  return invoke<T>(command, args);
+}
+
 // ===== Type Definitions =====
 
 export interface ForestStats {
@@ -82,7 +101,7 @@ export interface GraphEdge {
  * Get graph statistics (node count, edge count, suggestion count)
  */
 export async function getStats(): Promise<ForestStats> {
-  return invoke<ForestStats>('get_stats');
+  return safeInvoke<ForestStats>('get_stats');
 }
 
 /**
@@ -92,7 +111,7 @@ export async function getStats(): Promise<ForestStats> {
  * @param limit - Maximum number of results to return
  */
 export async function searchNodes(query: string, limit: number = 10): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>('search_nodes', { query, limit });
+  return safeInvoke<SearchResult[]>('search_nodes', { query, limit });
 }
 
 /**
@@ -101,7 +120,7 @@ export async function searchNodes(query: string, limit: number = 10): Promise<Se
  * @param id - Node ID (supports short ID prefixes)
  */
 export async function getNode(id: string): Promise<NodeDetail> {
-  return invoke<NodeDetail>('get_node', { id });
+  return safeInvoke<NodeDetail>('get_node', { id });
 }
 
 /**
@@ -111,7 +130,7 @@ export async function getNode(id: string): Promise<NodeDetail> {
  * @returns Array of connected nodes with scores
  */
 export async function getNodeConnections(id: string): Promise<NodeConnection[]> {
-  return invoke<NodeConnection[]>('get_node_connections', { id });
+  return safeInvoke<NodeConnection[]>('get_node_connections', { id });
 }
 
 /**
@@ -128,7 +147,7 @@ export async function createNode(
   tags?: string[],
   autoLink: boolean = true
 ): Promise<NodeCreationResult> {
-  return invoke<NodeCreationResult>('create_node', {
+  return safeInvoke<NodeCreationResult>('create_node', {
     title,
     body,
     tags: tags ?? null,
@@ -142,7 +161,7 @@ export async function createNode(
  * @param limit - Maximum number of proposals to return
  */
 export async function getEdgeProposals(limit: number = 20): Promise<EdgeProposal[]> {
-  return invoke<EdgeProposal[]>('get_edge_proposals', { limit });
+  return safeInvoke<EdgeProposal[]>('get_edge_proposals', { limit });
 }
 
 /**
@@ -152,7 +171,7 @@ export async function getEdgeProposals(limit: number = 20): Promise<EdgeProposal
  * @param targetId - Target node ID
  */
 export async function acceptEdge(sourceId: string, targetId: string): Promise<void> {
-  return invoke<void>('accept_edge', { sourceId, targetId });
+  return safeInvoke<void>('accept_edge', { sourceId, targetId });
 }
 
 /**
@@ -162,14 +181,14 @@ export async function acceptEdge(sourceId: string, targetId: string): Promise<vo
  * @param targetId - Target node ID
  */
 export async function rejectEdge(sourceId: string, targetId: string): Promise<void> {
-  return invoke<void>('reject_edge', { sourceId, targetId });
+  return safeInvoke<void>('reject_edge', { sourceId, targetId });
 }
 
 /**
  * Get all nodes and edges for graph visualization
  */
 export async function getGraphData(): Promise<GraphData> {
-  return invoke<GraphData>('get_graph_data');
+  return safeInvoke<GraphData>('get_graph_data');
 }
 
 /**
@@ -180,7 +199,7 @@ export async function getGraphData(): Promise<GraphData> {
  * @param y - Y coordinate
  */
 export async function updateNodePosition(id: string, x: number, y: number): Promise<void> {
-  return invoke<void>('update_node_position', { id, x, y });
+  return safeInvoke<void>('update_node_position', { id, x, y });
 }
 
 /**
@@ -189,7 +208,7 @@ export async function updateNodePosition(id: string, x: number, y: number): Prom
  * @param text - Text content (smart title/body split)
  */
 export async function createNodeQuick(text: string): Promise<NodeCreationResult> {
-  return invoke<NodeCreationResult>('create_node_quick', { text });
+  return safeInvoke<NodeCreationResult>('create_node_quick', { text });
 }
 
 /**
@@ -206,7 +225,7 @@ export async function updateNode(
   body?: string,
   tags?: string[]
 ): Promise<void> {
-  return invoke<void>('update_node', {
+  return safeInvoke<void>('update_node', {
     id,
     title: title ?? null,
     body: body ?? null,

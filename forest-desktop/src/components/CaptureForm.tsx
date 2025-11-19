@@ -34,7 +34,11 @@ export function CaptureForm({ onNodeCreated }: Props) {
       onNodeCreated(result)
     } catch (err) {
       console.error('Failed to create node:', err)
-      setError(String(err))
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to reach Forest backend. Ensure the app is running via Tauri (not plain browser).'
+      )
     } finally {
       setLoading(false)
     }
@@ -45,8 +49,12 @@ export function CaptureForm({ onNodeCreated }: Props) {
       <h2 className="text-2xl font-bold text-[#073642] mb-6">Create Note</h2>
 
       {error && (
-        <div className="bg-[#dc322f] text-[#fdf6e3] p-4 mb-4">
-          {error}
+        <div className="bg-[#dc322f] text-[#fdf6e3] p-4 mb-4 border border-[#b22222] rounded">
+          <div className="font-semibold mb-1">Couldn’t create note</div>
+          <div className="text-sm opacity-90">{error}</div>
+          <div className="text-xs mt-2 opacity-80">
+            Tip: launch via <code>bun run tauri dev</code> so the backend is available.
+          </div>
         </div>
       )}
 
