@@ -5,9 +5,11 @@ const nodeVertexShader = `
   uniform float time;
   attribute float highlight;
   attribute float phase;
+  attribute float filter;
   attribute vec3 nodeColor;
   varying float vHighlight;
   varying float vPulse;
+  varying float vFilter;
   varying vec3 vNodeColor;
   #include <common>
   #include <uv_pars_vertex>
@@ -18,6 +20,7 @@ const nodeVertexShader = `
 
   void main() {
     vHighlight = highlight;
+    vFilter = filter;
     vNodeColor = nodeColor;
     float pulse = sin(time * 0.9 + phase);
     vPulse = pulse;
@@ -36,6 +39,7 @@ const nodeFragmentShader = `
   varying float vHighlight;
   varying float vPulse;
   varying vec3 vNodeColor;
+  varying float vFilter;
   uniform vec3 baseColor;
   uniform vec3 highlightColor;
   uniform vec3 hoverColor;
@@ -58,7 +62,8 @@ const nodeFragmentShader = `
       color = mix(color, hoverColor, 0.85);
       glow += 0.25;
     }
-    gl_FragColor = vec4(color * glow, 1.0);
+    float visibility = mix(0.18, 1.0, clamp(vFilter, 0.0, 1.0));
+    gl_FragColor = vec4(color * glow * visibility, visibility);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     #include <fog_fragment>
@@ -70,9 +75,11 @@ const edgeVertexShader = `
   attribute float highlight;
   attribute float phase;
   attribute float opacity;
+  attribute float filter;
   varying float vHighlight;
   varying float vPulse;
   varying float vOpacity;
+  varying float vFilter;
   #include <common>
   #include <color_pars_vertex>
   #include <fog_pars_vertex>
@@ -82,6 +89,7 @@ const edgeVertexShader = `
   void main() {
     vHighlight = highlight;
     vOpacity = opacity;
+    vFilter = filter;
     float wave = sin(time * 0.6 + phase);
     vPulse = wave;
     #include <color_vertex>
@@ -98,6 +106,7 @@ const edgeFragmentShader = `
   varying float vHighlight;
   varying float vPulse;
   varying float vOpacity;
+  varying float vFilter;
   uniform vec3 baseColorA;
   uniform vec3 baseColorB;
   #include <common>
@@ -115,7 +124,9 @@ const edgeFragmentShader = `
       glow += 0.2;
     }
     // Use per-edge opacity based on score, boosted by highlight state
-    float alpha = vOpacity * (0.45 + 0.35 * clamp(vHighlight, 0.0, 1.0));
+    float baseAlpha = vOpacity * (0.45 + 0.35 * clamp(vHighlight, 0.0, 1.0));
+    float visibility = mix(0.12, 1.0, clamp(vFilter, 0.0, 1.0));
+    float alpha = baseAlpha * visibility;
     gl_FragColor = vec4(color * glow, alpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

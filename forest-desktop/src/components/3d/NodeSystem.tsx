@@ -7,12 +7,13 @@ import { type NodeGlowMaterialImpl } from './materials'
 interface Props {
   nodes: PositionedNode[]
   highlightedNodeIds: string[]
+  filteredNodeIds: Set<string> | null
   hoveredIndex: number | null
   onHover: (index: number | null) => void
   onSelect: (nodeId: string) => void
 }
 
-export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, onSelect }: Props) {
+export function NodeSystem({ nodes, highlightedNodeIds, filteredNodeIds, hoveredIndex, onHover, onSelect }: Props) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const materialRef = useRef<NodeGlowMaterialImpl | null>(null)
   const tempObject = useRef(new THREE.Object3D())
@@ -45,7 +46,9 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
       // Update instance matrices and phase attribute
       nodes.forEach((node, index) => {
         temp.position.set(...node.position)
-        temp.scale.setScalar(node.size)
+        const dimmed = filteredNodeIds && !filteredNodeIds.has(node.id)
+        const scale = dimmed ? node.size * 0.65 : node.size
+        temp.scale.setScalar(scale)
         temp.rotation.set(0, 0, 0)
         temp.updateMatrix()
         meshRef.current!.setMatrixAt(index, temp.matrix)
@@ -78,6 +81,18 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
       })
       highlightAttr.needsUpdate = true
 
+      // Update/create filter attribute (1 = visible, 0 = dimmed)
+      let filterAttr = meshRef.current.geometry.getAttribute('filter') as THREE.InstancedBufferAttribute | undefined
+      if (!filterAttr || filterAttr.count !== nodes.length) {
+        filterAttr = new THREE.InstancedBufferAttribute(new Float32Array(nodes.length), 1)
+        meshRef.current.geometry.setAttribute('filter', filterAttr)
+      }
+      nodes.forEach((node, index) => {
+        const visible = !filteredNodeIds || filteredNodeIds.has(node.id)
+        filterAttr!.setX(index, visible ? 1 : 0)
+      })
+      filterAttr.needsUpdate = true
+
       // Update/create color attribute (RGB)
       let colorAttr = meshRef.current.geometry.getAttribute('nodeColor') as THREE.InstancedBufferAttribute | undefined
       if (!colorAttr || colorAttr.count !== nodes.length) {
@@ -99,7 +114,7 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
   // Fixed: useMemo is for caching values, not side effects! Use useEffect instead.
   useEffect(() => {
     needsUpdate.current = true
-  }, [nodes, highlightSet, hoveredIndex])
+  }, [nodes, highlightSet, hoveredIndex, filteredNodeIds])
 
   return (
     <instancedMesh
@@ -129,6 +144,7 @@ export function NodeSystem({ nodes, highlightedNodeIds, hoveredIndex, onHover, o
       <sphereGeometry args={[1, 24, 24]}>
         <instancedBufferAttribute attach="attributes-highlight" args={[new Float32Array(nodes.length), 1]} />
         <instancedBufferAttribute attach="attributes-phase" args={[new Float32Array(nodes.length), 1]} />
+        <instancedBufferAttribute attach="attributes-filter" args={[new Float32Array(nodes.length), 1]} />
       </sphereGeometry>
       {/* @ts-expect-error - nodeGlowMaterial is registered via extend */}
       <nodeGlowMaterial ref={materialRef} transparent={false} depthWrite />

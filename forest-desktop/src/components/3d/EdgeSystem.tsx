@@ -9,9 +9,10 @@ interface Props {
   edges: PositionedEdge[]
   highlightedNodeIds: string[]
   hoveredNodeId: string | null
+  filteredNodeIds: Set<string> | null
 }
 
-export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: Props) {
+export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId, filteredNodeIds }: Props) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const materialRef = useRef<EdgeTrailMaterialImpl | null>(null)
   const tempObject = useRef(new THREE.Object3D())
@@ -108,6 +109,21 @@ export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: 
       })
       opacityAttr.needsUpdate = true
 
+      // Update/create filter attribute
+      let filterAttr = meshRef.current.geometry.getAttribute('filter') as THREE.InstancedBufferAttribute | undefined
+      if (!filterAttr || filterAttr.count !== edges.length) {
+        filterAttr = new THREE.InstancedBufferAttribute(new Float32Array(edges.length), 1)
+        meshRef.current.geometry.setAttribute('filter', filterAttr)
+      }
+      edges.forEach((edge, index) => {
+        const visible =
+          !filteredNodeIds ||
+          filteredNodeIds.has(edge.source) ||
+          filteredNodeIds.has(edge.target)
+        filterAttr!.setX(index, visible ? 1 : 0)
+      })
+      filterAttr.needsUpdate = true
+
       needsUpdate.current = false
     }
   })
@@ -116,7 +132,7 @@ export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: 
   // Fixed: useMemo is for caching values, not side effects! Use useEffect instead.
   useEffect(() => {
     needsUpdate.current = true
-  }, [nodes, edges, highlightSet, hoveredNodeId])
+  }, [nodes, edges, highlightSet, hoveredNodeId, filteredNodeIds])
 
   if (edges.length === 0) {
     return null
@@ -132,6 +148,7 @@ export function EdgeSystem({ nodes, edges, highlightedNodeIds, hoveredNodeId }: 
       <cylinderGeometry args={[0.5, 0.5, 1, 8, 1, true]}>
         <instancedBufferAttribute attach="attributes-highlight" args={[new Float32Array(edges.length), 1]} />
         <instancedBufferAttribute attach="attributes-phase" args={[new Float32Array(edges.length), 1]} />
+        <instancedBufferAttribute attach="attributes-filter" args={[new Float32Array(edges.length), 1]} />
       </cylinderGeometry>
       {/* @ts-expect-error - edgeTrailMaterial is registered via extend */}
       <edgeTrailMaterial ref={materialRef} transparent depthWrite={false} />

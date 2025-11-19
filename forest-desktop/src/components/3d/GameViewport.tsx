@@ -15,15 +15,40 @@ extend({ NodeGlowMaterial, EdgeTrailMaterial })
 
 interface Props {
   onNodeClick: (nodeId: string) => void
+  selectedNodeId: string | null
 }
 
 /**
  * Keyboard controls for WASD camera movement
  */
-function KeyboardControls({ bounds }: { bounds: BoundingBox }) {
+function KeyboardControls({
+  bounds,
+  orbitRef,
+  focusTarget,
+  speedMultiplier,
+}: {
+  bounds: BoundingBox
+  orbitRef: React.RefObject<any>
+  focusTarget: THREE.Vector3 | null
+  speedMultiplier: number
+}) {
   const { camera } = useThree()
   const keysPressed = useRef(new Set<string>())
-  const orbitControlsRef = useRef<any>(null)
+  const velocity = useRef(new THREE.Vector3())
+  const focusState = useRef<{
+    target: THREE.Vector3 | null
+    start: THREE.Vector3
+    dest: THREE.Vector3
+    progress: number
+  }>({
+    target: null,
+    start: new THREE.Vector3(),
+    dest: new THREE.Vector3(),
+    progress: 0,
+  })
+
+  // Smooth easing for camera focus
+  const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -64,13 +89,13 @@ function KeyboardControls({ bounds }: { bounds: BoundingBox }) {
   }, [camera, bounds])
 
   // Apply movement on each frame
-  useFrame(() => {
-    if (keysPressed.current.size === 0) return
+  useFrame(({ clock }, delta) => {
+    const dt = typeof delta === 'number' ? delta : clock.getDelta()
+    const baseSpeed = 12 * speedMultiplier
+    const speed = keysPressed.current.has('shift') ? baseSpeed * 2.5 : baseSpeed
+    const targetVelocity = new THREE.Vector3()
 
-    const baseSpeed = 5
-    const speed = keysPressed.current.has('shift') ? baseSpeed * 3 : baseSpeed
-
-    // Calculate camera's forward and right vectors in world space
+    // Calculate camera's forward and right vectors in world space (Y locked)
     const forward = new THREE.Vector3()
     const right = new THREE.Vector3()
 
@@ -82,22 +107,71 @@ function KeyboardControls({ bounds }: { bounds: BoundingBox }) {
 
     // WASD movement (translate in world space, not camera local space)
     if (keysPressed.current.has('w')) {
-      camera.position.addScaledVector(forward, speed)
+      targetVelocity.addScaledVector(forward, speed)
     }
     if (keysPressed.current.has('s')) {
-      camera.position.addScaledVector(forward, -speed)
+      targetVelocity.addScaledVector(forward, -speed)
     }
     if (keysPressed.current.has('a')) {
-      camera.position.addScaledVector(right, -speed)
+      targetVelocity.addScaledVector(right, -speed)
     }
     if (keysPressed.current.has('d')) {
-      camera.position.addScaledVector(right, speed)
+      targetVelocity.addScaledVector(right, speed)
     }
     if (keysPressed.current.has('q')) {
-      camera.position.y -= speed
+      targetVelocity.y -= speed
     }
     if (keysPressed.current.has('e')) {
-      camera.position.y += speed
+      targetVelocity.y += speed
+    }
+
+    // Smooth velocity (drift feel)
+    velocity.current.lerp(targetVelocity, 1 - Math.exp(-8 * dt))
+
+    // Apply movement and move Orbit target with the camera to preserve heading
+    if (!velocity.current.lengthSq()) return
+    const step = velocity.current.clone().multiplyScalar(dt)
+    camera.position.add(step)
+    if (orbitRef.current) {
+      orbitRef.current.target.add(step)
+    }
+  })
+
+  // Handle focus autopilot when selected node changes
+  useEffect(() => {
+    if (!focusTarget) return
+    // Place camera backward from target along current view direction
+    const current = camera.position.clone()
+    const direction = new THREE.Vector3().subVectors(current, focusTarget).normalize()
+    if (direction.lengthSq() === 0) direction.set(0, 0, 1)
+    const desiredDistance = Math.max(18, bounds.radius * 0.15)
+    const dest = focusTarget.clone().addScaledVector(direction, desiredDistance)
+
+    focusState.current = {
+      target: focusTarget.clone(),
+      start: current,
+      dest,
+      progress: 0,
+    }
+    if (orbitRef.current) {
+      orbitRef.current.target.copy(focusTarget)
+    }
+  }, [focusTarget, camera, orbitRef, bounds.radius])
+
+  useFrame((_, delta) => {
+    const state = focusState.current
+    if (!state.target) return
+
+    state.progress += delta * 1.8
+    const t = Math.min(1, state.progress)
+    const eased = easeOutCubic(t)
+    camera.position.lerpVectors(state.start, state.dest, eased)
+    if (orbitRef.current) {
+      orbitRef.current.target.lerp(state.target, 1 - Math.exp(-6 * delta))
+    }
+
+    if (t >= 1) {
+      state.target = null
     }
   })
 
@@ -124,17 +198,20 @@ function SceneTheme({ theme }: { theme: 'light' | 'dark' }) {
   return null
 }
 
-export function GameViewport({ onNodeClick }: Props) {
+export function GameViewport({ onNodeClick, selectedNodeId }: Props) {
   const { data: graphData, isLoading } = useGraph()
   const highlightedNodeIds = useUI((s) => s.highlightedNodeIds)
   const effectiveTheme = useTheme((s) => s.effectiveTheme)
+  const [filterQuery, setFilterQuery] = useState('')
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
   const [showControls, setShowControls] = useState(true)
+  const [speedMultiplier, setSpeedMultiplier] = useState(1.1)
 
   const cursorPosRef = useRef({ x: 0, y: 0 })
   const tooltipRef = useRef<HTMLDivElement>(null)
   const cameraStateRef = useRef<{ position: [number, number, number]; target: [number, number, number] } | null>(null)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const orbitRef = useRef<any>(null)
 
   // Hide controls overlay after 8 seconds
   useEffect(() => {
@@ -254,6 +331,48 @@ export function GameViewport({ onNodeClick }: Props) {
     return graph.nodes[hoveredIndex] ?? null
   }, [graph, hoveredIndex])
 
+  // Compute neighbors of the currently selected node to spotlight its local cluster
+  const selectionNeighbors = useMemo(() => {
+    if (!graph || !selectedNodeId) return new Set<string>()
+    const set = new Set<string>([selectedNodeId])
+    graph.edges.forEach((edge) => {
+      if (edge.source === selectedNodeId) set.add(edge.target)
+      if (edge.target === selectedNodeId) set.add(edge.source)
+    })
+    return set
+  }, [graph, selectedNodeId])
+
+  // Combine app-level highlights with selection cluster
+  const combinedHighlights = useMemo(() => {
+    const all = new Set<string>()
+    highlightedNodeIds.forEach((id) => all.add(id))
+    selectionNeighbors.forEach((id) => all.add(id))
+    return Array.from(all)
+  }, [highlightedNodeIds, selectionNeighbors])
+
+  // Filter nodes by title/tags (space-friendly substring match)
+  const filteredNodeIds = useMemo(() => {
+    if (!graph || !filterQuery.trim()) return null
+    const needle = filterQuery.toLowerCase()
+    const set = new Set<string>()
+    graph.nodes.forEach((node) => {
+      const inTitle = node.title.toLowerCase().includes(needle)
+      const inTags = (node.tags || []).some((tag) => tag.toLowerCase().includes(needle))
+      if (inTitle || inTags) {
+        set.add(node.id)
+      }
+    })
+    return set
+  }, [graph, filterQuery])
+
+  // Focus target for camera autopilot (selected node)
+  const focusTarget = useMemo(() => {
+    if (!graph || !selectedNodeId) return null
+    const node = graph.nodes.find((n) => n.id === selectedNodeId)
+    if (!node) return null
+    return new THREE.Vector3(...node.position)
+  }, [graph, selectedNodeId])
+
   // Define colors based on theme
   const bgColor = effectiveTheme === 'dark' ? '#002b36' : '#fdf6e3'
   const textColor = effectiveTheme === 'dark' ? '#839496' : '#586e75'
@@ -325,6 +444,62 @@ export function GameViewport({ onNodeClick }: Props) {
         </div>
       )}
 
+      {/* Flight HUD */}
+      <div
+        className="absolute bottom-6 left-6 z-[10] flex flex-col gap-2 px-4 py-3 border rounded-lg shadow-lg backdrop-blur-sm"
+        style={{
+          backgroundColor: effectiveTheme === 'dark' ? 'rgba(0, 43, 54, 0.82)' : 'rgba(253, 246, 227, 0.82)',
+          color: textColor,
+          borderColor: tooltipBorder
+        }}
+      >
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <div className="font-semibold">Flight HUD</div>
+          <div className="flex items-center gap-2 text-xs">
+            <span>Speed</span>
+            <input
+              type="range"
+              min={0.6}
+              max={2}
+              step={0.1}
+              value={speedMultiplier}
+              onChange={(e) => setSpeedMultiplier(parseFloat(e.target.value))}
+              className="w-24 accent-[var(--accent-primary)]"
+            />
+            <span className="tabular-nums">{speedMultiplier.toFixed(1)}x</span>
+          </div>
+        </div>
+        <div className="flex gap-2 items-center text-xs">
+          <span className="font-medium">Filter</span>
+          <input
+            className="px-2 py-1 text-xs border rounded bg-[var(--bg-base)]"
+            value={filterQuery}
+            placeholder="Title/tag…"
+            onChange={(e) => setFilterQuery(e.target.value)}
+          />
+          {filterQuery && (
+            <button
+              onClick={() => setFilterQuery('')}
+              className="text-xs px-2 py-1 border rounded hover:bg-[var(--bg-surface)]"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        <div className="text-[11px] text-[var(--text-secondary)] flex gap-3 flex-wrap">
+          <span><kbd className="px-1 py-0.5 border rounded">WASD</kbd> move</span>
+          <span><kbd className="px-1 py-0.5 border rounded">Q/E</kbd> ascend/descend</span>
+          <span><kbd className="px-1 py-0.5 border rounded">Shift</kbd> boost</span>
+          <span><kbd className="px-1 py-0.5 border rounded">F</kbd> frame graph</span>
+          <span><kbd className="px-1 py-0.5 border rounded">Drag</kbd> rotate</span>
+        </div>
+      </div>
+
+      {/* Center reticle for spatial context */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-[5]">
+        <div className="w-3 h-3 border border-[var(--border)] rounded-full opacity-60"></div>
+      </div>
+
       {graph && (
         <Canvas
           frameloop="always"
@@ -343,7 +518,12 @@ export function GameViewport({ onNodeClick }: Props) {
           }}
         >
           <Suspense fallback={null}>
-            <KeyboardControls bounds={graph.bounds} />
+            <KeyboardControls
+              bounds={graph.bounds}
+              orbitRef={orbitRef}
+              focusTarget={focusTarget}
+              speedMultiplier={speedMultiplier}
+            />
             <SceneTheme theme={effectiveTheme} />
             <fog attach="fog" args={[new THREE.Color(fogColor), graph.bounds.radius * 0.8, graph.bounds.radius * 2.5]} />
             <ambientLight intensity={0.6} color={new THREE.Color(ambientColor)} />
@@ -353,18 +533,21 @@ export function GameViewport({ onNodeClick }: Props) {
             <EdgeSystem
               nodes={graph.nodes}
               edges={graph.edges}
-              highlightedNodeIds={highlightedNodeIds}
+              highlightedNodeIds={combinedHighlights}
               hoveredNodeId={hoveredNodeId}
+              filteredNodeIds={filteredNodeIds}
             />
             <NodeSystem
               nodes={graph.nodes}
-              highlightedNodeIds={highlightedNodeIds}
+              highlightedNodeIds={combinedHighlights}
+              filteredNodeIds={filteredNodeIds}
               hoveredIndex={hoveredIndex}
               onHover={setHoveredIndex}
               onSelect={onNodeClick}
             />
 
             <OrbitControls
+              ref={orbitRef}
               target={cameraConfig.target}
               enablePan={false}
               enableDamping

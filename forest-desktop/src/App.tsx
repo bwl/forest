@@ -54,12 +54,12 @@ function AppContent() {
   return (
     <>
       <ForestEventsBridge />
-      <HUDLayer>
-        <div className="app-container">
-          <ErrorBoundary level="component">
-            <GameViewport onNodeClick={setSelectedNodeId} />
-          </ErrorBoundary>
-        </div>
+          <HUDLayer>
+            <div className="app-container">
+              <ErrorBoundary level="component">
+                <GameViewport onNodeClick={setSelectedNodeId} selectedNodeId={selectedNodeId} />
+              </ErrorBoundary>
+            </div>
 
         <div className="fixed top-0 left-0 right-0 z-50">
           <ErrorBoundary level="component">
