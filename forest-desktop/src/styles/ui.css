@@ -12,18 +12,42 @@
   }
 
   .btn-primary {
-    @apply btn border-[#268bd2] text-[#fdf6e3] bg-[#268bd2] hover:bg-[#2aa198];
+    @apply btn;
+    border-color: var(--accent-primary);
+    color: var(--bg-base);
+    background-color: var(--accent-primary);
+  }
+
+  .btn-primary:hover {
+    background-color: var(--accent-info);
   }
 
   .btn-ghost {
-    @apply btn border-[#93a1a1] text-[#586e75] bg-transparent hover:bg-[#eee8d5];
+    @apply btn bg-transparent;
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .btn-ghost:hover {
+    background-color: var(--bg-surface);
+    border-color: var(--text-primary);
   }
 
   .input {
-    @apply w-full border border-[#93a1a1] bg-[#fdf6e3] px-3 py-2 text-[#586e75] outline-none;
+    @apply w-full border px-3 py-2 outline-none;
+    border-color: var(--border);
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+  }
+
+  .input:focus {
+    border-color: var(--border-focus);
   }
 
   .tag {
-    @apply mr-2 border border-[#93a1a1] bg-[#eee8d5] px-2 py-0.5 text-xs text-[#586e75];
+    @apply mr-2 border px-2 py-0.5 text-xs;
+    border-color: var(--border);
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
   }
 }

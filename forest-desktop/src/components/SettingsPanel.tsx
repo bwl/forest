@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useStats } from '../queries/forest'
 import { invoke } from '@tauri-apps/api/core'
 import { useKeyboard } from '../hooks/useKeyboard'
+import { useTheme, type ThemePreference } from '../store/theme'
+import { saveThemePreference } from '../hooks/useThemeSync'
 
 interface CliInstallInfo {
   cli_path: string
@@ -13,11 +15,17 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'general' | 'cli' | 'graph' | 'database'
+type Tab = 'appearance' | 'general' | 'cli' | 'graph' | 'database'
 
 export function SettingsPanel({ onClose }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>('general')
+  const [activeTab, setActiveTab] = useState<Tab>('appearance')
   const { data: stats } = useStats()
+
+  // Theme state
+  const themePreference = useTheme((s) => s.themePreference)
+  const effectiveTheme = useTheme((s) => s.effectiveTheme)
+  const setThemePreferenceLocal = useTheme((s) => s.setThemePreference)
+  const [savingTheme, setSavingTheme] = useState(false)
 
   // CLI Tools state
   const [cliInfo, setCliInfo] = useState<CliInstallInfo | null>(null)
@@ -71,6 +79,20 @@ export function SettingsPanel({ onClose }: Props) {
     }
   }
 
+  const handleThemeChange = async (preference: ThemePreference) => {
+    try {
+      setSavingTheme(true)
+      // Update local state immediately for responsive UI
+      setThemePreferenceLocal(preference)
+      // Persist to Tauri backend
+      await saveThemePreference(preference)
+    } catch (error) {
+      console.error('Failed to save theme preference:', error)
+    } finally {
+      setSavingTheme(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 bg-[#002b36]/85 flex items-center justify-center z-[2000]">
       <div className="bg-[#eee8d5] border border-[#93a1a1] max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col">
@@ -88,6 +110,16 @@ export function SettingsPanel({ onClose }: Props) {
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
           <nav className="w-48 border-r border-[#93a1a1] p-4 space-y-1">
+            <button
+              onClick={() => handleTabChange('appearance')}
+              className={`w-full text-left px-3 py-2 ${
+                activeTab === 'appearance'
+                  ? 'bg-[#268bd2] text-[#fdf6e3] border border-[#268bd2]'
+                  : 'text-[#586e75] hover:bg-[#fdf6e3]'
+              }`}
+            >
+              Appearance
+            </button>
             <button
               onClick={() => handleTabChange('general')}
               className={`w-full text-left px-3 py-2 ${
@@ -132,6 +164,90 @@ export function SettingsPanel({ onClose }: Props) {
 
           {/* Content */}
           <div className="flex-1 p-6 overflow-y-auto">
+            {activeTab === 'appearance' && (
+              <div className="space-y-6">
+                <h3 className="text-xl font-semibold text-[var(--text-emphasis)] mb-4">Appearance</h3>
+
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-lg font-medium text-[var(--text-emphasis)] mb-3">Theme</h4>
+                    <p className="text-sm text-[var(--text-secondary)] mb-4">
+                      Choose how Forest looks. System matches your operating system settings.
+                    </p>
+                  </div>
+
+                  {/* Theme Options */}
+                  <div className="space-y-3">
+                    {/* System */}
+                    <label className="flex items-center gap-3 p-4 border border-[var(--border)] cursor-pointer hover:border-[var(--text-primary)] bg-[var(--bg-surface)]">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="system"
+                        checked={themePreference === 'system'}
+                        onChange={() => handleThemeChange('system')}
+                        disabled={savingTheme}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-[var(--text-primary)]">System</div>
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          Match operating system theme
+                        </div>
+                      </div>
+                    </label>
+
+                    {/* Light */}
+                    <label className="flex items-center gap-3 p-4 border border-[var(--border)] cursor-pointer hover:border-[var(--text-primary)] bg-[var(--bg-surface)]">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="light"
+                        checked={themePreference === 'light'}
+                        onChange={() => handleThemeChange('light')}
+                        disabled={savingTheme}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-[var(--text-primary)]">Light</div>
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          Solarized Light theme
+                        </div>
+                      </div>
+                    </label>
+
+                    {/* Dark */}
+                    <label className="flex items-center gap-3 p-4 border border-[var(--border)] cursor-pointer hover:border-[var(--text-primary)] bg-[var(--bg-surface)]">
+                      <input
+                        type="radio"
+                        name="theme"
+                        value="dark"
+                        checked={themePreference === 'dark'}
+                        onChange={() => handleThemeChange('dark')}
+                        disabled={savingTheme}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <div className="font-medium text-[var(--text-primary)]">Dark</div>
+                        <div className="text-sm text-[var(--text-secondary)]">
+                          Solarized Dark theme
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Current Theme Display */}
+                  <div className="mt-6 p-4 bg-[var(--bg-surface)] border border-[var(--border)]">
+                    <div className="text-sm text-[var(--text-secondary)]">Currently using:</div>
+                    <div className="text-lg font-semibold text-[var(--text-emphasis)] capitalize">
+                      {effectiveTheme}
+                      {themePreference === 'system' && ' (from system)'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'general' && (
               <div className="space-y-6">
                 <div>
@@ -139,7 +255,7 @@ export function SettingsPanel({ onClose }: Props) {
                   <div className="space-y-3 text-slate-300">
                     <div className="flex justify-between">
                       <span className="text-slate-400">Version:</span>
-                      <span className="font-mono">0.4.4</span>
+                      <span className="font-mono">0.4.6</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Database:</span>

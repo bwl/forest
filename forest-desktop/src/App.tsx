@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { GameViewport } from './components/3d/GameViewport'
 import { CommandPalette } from './components/CommandPalette'
 import { NodeDetailPanel } from './components/NodeDetailPanel'
@@ -10,7 +11,9 @@ import { HUDLayer } from './components/hud/HUDLayer'
 import { HUDWindow } from './components/hud/HUDWindow'
 import { SettingsPanel } from './components/SettingsPanel'
 import { ForestEventsBridge } from './hooks/useForestEvents'
+import { useThemeSync } from './hooks/useThemeSync'
 import { useUI } from './store/ui'
+import { useTheme } from './store/theme'
 import { useSearchNodes } from './queries/forest'
 
 function AppContent() {
@@ -28,6 +31,15 @@ function AppContent() {
   const setStatsOpen = useUI((s) => s.setStatsOpen)
 
   const searchMutation = useSearchNodes()
+
+  // Initialize theme system
+  useThemeSync()
+  const effectiveTheme = useTheme((s) => s.effectiveTheme)
+
+  // Apply theme to document root
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', effectiveTheme)
+  }, [effectiveTheme])
 
   async function handleSearch(query: string) {
     try {

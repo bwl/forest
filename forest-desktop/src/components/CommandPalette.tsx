@@ -58,7 +58,8 @@ export function CommandPalette({ onSearch, onOpenSettings, onOpenProposals }: Pr
           onChange={(e) => setValue(e.target.value)}
           placeholder="Type text or /search, /settings, /proposals..."
           disabled={creating}
-          className="input w-full px-4 py-3 text-base rounded-none"
+          className="input w-full px-4 py-3 text-lg rounded-none border-none"
+
         />
       </form>
 

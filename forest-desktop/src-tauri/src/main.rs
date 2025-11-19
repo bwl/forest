@@ -58,13 +58,17 @@ async fn main() -> anyhow::Result<()> {
             commands::update_node,
             commands::create_node_quick,
             commands::log_to_terminal,
+            commands::get_theme_preference,
+            commands::set_theme_preference,
             forest_desktop::shell_integration::get_cli_install_info,
             forest_desktop::shell_integration::check_cli_in_path,
             forest_desktop::shell_integration::auto_install_cli_path,
         ])
         .setup(|app| {
             // Initialize Tauri-managed application state
-            app.manage(forest_desktop::AppState::new());
+            let state = forest_desktop::AppState::new()
+                .expect("Failed to initialize app state");
+            app.manage(state);
 
             // Window customization removed - using native decorations from tauri.conf.json
             // This gives us native title bar with rounded corners on macOS
