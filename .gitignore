@@ -43,6 +43,9 @@ forest-desktop/src-tauri/binaries/*-aarch64-apple-darwin
 forest-desktop/src-tauri/binaries/*-x86_64-apple-darwin
 forest-desktop/src-tauri/binaries/*-x86_64-pc-windows-msvc.exe
 forest-desktop/src-tauri/binaries/*-x86_64-unknown-linux-gnu
+forest-desktop/src-tauri/binaries/forest
+forest-desktop/src-tauri/binaries/forest-embed
+forest-desktop/src-tauri/resources/completions/
 
 # Bun build cache
 .*.bun-build

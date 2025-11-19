@@ -1,6 +1,6 @@
 {
   "name": "forest-desktop",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Forest Desktop App",
   "type": "module",
   "private": true,

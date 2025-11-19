@@ -35,9 +35,33 @@ pub fn get_cli_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(cli_path)
 }
 
+/// Resolve the app resources directory
+pub fn get_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("Failed to get resource directory: {}", e))
+}
+
 /// Generate shell integration instructions
-pub fn get_shell_integration_instructions(bin_dir: &PathBuf) -> String {
+pub fn get_shell_integration_instructions(bin_dir: &PathBuf, resource_dir: &PathBuf) -> String {
     let bin_dir_str = bin_dir.to_string_lossy();
+    // Locate completions directory inside Resources. Try common layouts in order:
+    // 1) Resources/completions (ideal)
+    // 2) Resources/resources/completions (when `resources/completions` is declared in tauri.conf)
+    // 3) Fallback to Resources/
+    let candidates = [
+        resource_dir.join("completions"),
+        resource_dir.join("resources").join("completions"),
+    ];
+    let mut completions_dir = resource_dir.clone();
+    for cand in candidates.iter() {
+        if cand.exists() {
+            completions_dir = cand.clone();
+            break;
+        }
+    }
+    let completions_dir_str = completions_dir.to_string_lossy();
 
     format!(
         r#"# Forest CLI Installation
@@ -82,9 +106,9 @@ cp {}/*.fish ~/.config/fish/completions/
         bin_dir_str,
         bin_dir_str,
         bin_dir_str,
-        bin_dir_str,
-        bin_dir_str,
-        bin_dir_str
+        completions_dir_str,
+        completions_dir_str,
+        completions_dir_str
     )
 }
 
@@ -93,7 +117,8 @@ cp {}/*.fish ~/.config/fish/completions/
 pub fn get_cli_install_info(app: AppHandle) -> Result<CliInstallInfo, String> {
     let bin_dir = get_bin_dir(&app)?;
     let cli_path = get_cli_path(&app)?;
-    let instructions = get_shell_integration_instructions(&bin_dir);
+    let resource_dir = get_resource_dir(&app)?;
+    let instructions = get_shell_integration_instructions(&bin_dir, &resource_dir);
 
     Ok(CliInstallInfo {
         cli_path: cli_path.to_string_lossy().to_string(),

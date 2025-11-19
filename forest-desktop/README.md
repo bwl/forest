@@ -57,13 +57,19 @@ forest-desktop/
 ### Building for Production
 
 ```bash
-bun run tauri build
+# Full build (app + DMG)
+bun run release
+
+# Skip DMG on restricted/headless environments
+bun run release:nodmg
 ```
 
 Built app will be in `src-tauri/target/release/bundle/`:
-- macOS: `.dmg` file
+- macOS: `.app` bundle, and `.dmg` when not skipped
 - Windows: `.msi` file
 - Linux: `.AppImage` file
+
+If DMG bundling fails (e.g., `hdiutil` errors or AppleScript restrictions), use `bun run release:nodmg` to produce the `.app` bundle only. DMG creation requires a macOS host with Disk Utility (hdiutil) and Xcode Command Line Tools (for `SetFile`).
 
 ### Next Steps
 
