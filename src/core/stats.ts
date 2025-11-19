@@ -1,4 +1,14 @@
-import { listEdges, listNodes, NodeRecord } from '../lib/db';
+import {
+  countNodes,
+  countEdges,
+  getNodeTagsOnly,
+  getRecentNodes,
+  getHighDegreeNodes,
+  getDegreeStats,
+  listEdges,
+  NodeRecord,
+  getNodeById,
+} from '../lib/db';
 import { describeSuggestion } from '../cli/shared/edges';
 
 export type StatsResult = {
@@ -44,32 +54,23 @@ export type StatsOptions = {
 };
 
 export async function getStats(options: StatsOptions = {}): Promise<StatsResult> {
-  const nodes = await listNodes();
-  const edges = await listEdges('accepted');
-  const allEdges = await listEdges('all');
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const top = typeof options.top === 'number' && Number.isFinite(options.top) && options.top > 0
+    ? Math.floor(options.top)
+    : 10;
 
-  // Compute degree stats from edge counts (faster than graph.degree())
-  const nodeDegrees = new Map<string, number>();
-  for (const edge of edges) {
-    nodeDegrees.set(edge.sourceId, (nodeDegrees.get(edge.sourceId) ?? 0) + 1);
-    nodeDegrees.set(edge.targetId, (nodeDegrees.get(edge.targetId) ?? 0) + 1);
-  }
+  // Optimized: Use COUNT queries instead of loading all nodes
+  const nodeCount = await countNodes();
+  const edgeCount = await countEdges('accepted');
+  const suggestedCount = await countEdges('suggested');
 
-  const degrees = nodes.map((node) => nodeDegrees.get(node.id) ?? 0);
-  const sortedDegrees = [...degrees].sort((a, b) => a - b);
-  const sumDegrees = degrees.reduce((acc, value) => acc + value, 0);
-  const avg = degrees.length ? sumDegrees / degrees.length : 0;
-  const median = sortedDegrees.length
-    ? sortedDegrees[Math.floor(sortedDegrees.length / 2)]
-    : 0;
-  const p90 = sortedDegrees.length
-    ? sortedDegrees[Math.floor(sortedDegrees.length * 0.9)]
-    : 0;
+  // Optimized: Compute degree stats directly in SQL
+  const degreeStats = await getDegreeStats();
 
+  // Optimized: Load only tags for tag stats
+  const nodeTagsOnly = await getNodeTagsOnly();
   const tagCounts = new Map<string, number>();
   const pairCounts = new Map<string, number>();
-  for (const node of nodes) {
+  for (const node of nodeTagsOnly) {
     const uniqueTags = Array.from(new Set(node.tags));
     for (const tag of uniqueTags) {
       tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
@@ -84,10 +85,6 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
     }
   }
 
-  const top = typeof options.top === 'number' && Number.isFinite(options.top) && options.top > 0
-    ? Math.floor(options.top)
-    : 10;
-
   const topTags = [...tagCounts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, top)
@@ -97,30 +94,44 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
     .slice(0, top)
     .map(([pair, count]) => ({ pair, count }));
 
-  // Graph health metrics (from doctor)
-  const recent = [...nodes]
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, 5);
+  // Optimized: Use SQL to get recent nodes
+  const recent = await getRecentNodes(5);
 
-  const highDegree = nodes
-    .map((node) => ({
-      node,
-      degree: nodeDegrees.get(node.id) ?? 0,
-    }))
-    .sort((a, b) => b.degree - a.degree)
-    .slice(0, 5);
+  // Optimized: Use SQL to get high degree nodes
+  const highDegree = await getHighDegreeNodes(5);
 
+  // Get top suggestions
   const suggestions = (await listEdges('suggested'))
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
+  // Build nodeMap only for suggestions (much smaller set)
+  const nodeMap = new Map<string, NodeRecord>();
+  for (const edge of suggestions) {
+    if (!nodeMap.has(edge.sourceId)) {
+      const node = await getNodeById(edge.sourceId);
+      if (node) nodeMap.set(edge.sourceId, node);
+    }
+    if (!nodeMap.has(edge.targetId)) {
+      const node = await getNodeById(edge.targetId);
+      if (node) nodeMap.set(edge.targetId, node);
+    }
+  }
+  // For stats, we only need suggestions for edge prefix calculation
+  const allEdges = suggestions;
+
   return {
     counts: {
-      nodes: nodes.length,
-      edges: edges.length,
-      suggested: allEdges.filter((e) => e.status === 'suggested').length,
+      nodes: nodeCount,
+      edges: edgeCount,
+      suggested: suggestedCount,
     },
-    degree: { avg, median, p90, max: Math.max(0, ...degrees) },
+    degree: {
+      avg: degreeStats.avg,
+      median: degreeStats.median,
+      p90: degreeStats.p90,
+      max: degreeStats.max,
+    },
     tags: topTags,
     tagPairs: topPairs,
     recent: recent.map((node) => ({
@@ -130,8 +141,8 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
       updatedAt: node.updatedAt,
     })),
     highDegree: highDegree.map((entry) => ({
-      id: entry.node.id,
-      title: entry.node.title,
+      id: entry.id,
+      title: entry.title,
       degree: entry.degree,
     })),
     topSuggestions: suggestions.map((edge, index) => {

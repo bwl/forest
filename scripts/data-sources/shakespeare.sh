@@ -87,7 +87,8 @@ import_complete_works() {
     --title "$COMPLETE_WORKS_TITLE" \
     --tags "shakespeare,literature,drama,complete-works" \
     --chunk-strategy headers \
-    --max-tokens 2000; then
+    --max-tokens 2000 \
+    --no-auto-link; then
     log_success "Complete Works imported successfully"
   else
     log_error "Failed to import Complete Works"
@@ -146,6 +147,7 @@ import_individual_plays() {
       --tags "shakespeare,play,literature,drama" \
       --chunk-strategy headers \
       --max-tokens 2000 \
+      --no-auto-link \
       >/dev/null 2>&1; then
       imported=$((imported + 1))
     else

@@ -4,6 +4,7 @@ import {
   EdgeRecord,
   deleteSuggestion,
   getLastEdgeEventForPair,
+  getNodesByIds,
   insertOrUpdateEdge,
   listEdges,
   listNodes,
@@ -345,18 +346,20 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
 async function runEdgesList(flags: EdgesListFlags) {
   const limit =
     typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
-  const edges = (await listEdges('accepted'))
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, limit);
+  const edges = await listEdges({ status: 'accepted', orderBy: 'updated_at', orderDirection: 'DESC', limit });
 
   if (edges.length === 0) {
     console.log('No accepted edges found.');
     return;
   }
 
-  const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
+  // Extract unique node IDs from the limited edge set
+  const nodeIds = [...new Set(edges.flatMap(e => [e.sourceId, e.targetId]))];
+  const nodes = await getNodesByIds(nodeIds);
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const longIds = Boolean(flags.longIds);
-  const allEdges = await listEdges('all');
+  // Use limited edge set for prefix calculation (no need to load all 102K edges)
+  const allEdges = edges;
 
   if (flags.json) {
     console.log(
@@ -396,18 +399,38 @@ async function runEdgesPropose(flags: EdgesProposeFlags) {
     console.log('Fetching edge suggestions…');
   }
 
-  const edges = (await listEdges('suggested')).sort((a, b) => b.score - a.score).slice(0, limit);
+  const showTimings = process.env.FOREST_EDGES_TIMINGS === '1';
+  const startTimer = (label: string) => {
+    if (showTimings) console.time(label);
+  };
+  const endTimer = (label: string) => {
+    if (showTimings) console.timeEnd(label);
+  };
+
+  // TIMING INSTRUMENTATION - Start (guarded by FOREST_EDGES_TIMINGS)
+  startTimer('⏱️ TOTAL');
+  startTimer('  1. listEdges query');
+  const edges = await listEdges({ status: 'suggested', orderBy: 'score', orderDirection: 'DESC', limit });
+  endTimer('  1. listEdges query');
 
   if (edges.length === 0) {
     console.log('No suggestions ready.');
     return;
   }
 
-  const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
+  // Extract unique node IDs from the limited edge set
+  startTimer('  2. getNodesByIds');
+  const nodeIds = [...new Set(edges.flatMap(e => [e.sourceId, e.targetId]))];
+  const nodes = await getNodesByIds(nodeIds);
+  endTimer('  2. getNodesByIds');
+
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const longIds = Boolean(flags.longIds);
-  const allEdges = await listEdges('all');
+  // Use limited edge set for prefix calculation (no need to load all 102K edges)
+  const allEdges = edges;
 
   // Build EdgeSuggestion data structure
+  startTimer('  3. build suggestions + computeScore');
   const suggestions: EdgeSuggestion[] = edges.map(edge => {
     const sourceNode = nodeMap.get(edge.sourceId);
     const targetNode = nodeMap.get(edge.targetId);
@@ -426,18 +449,24 @@ async function runEdgesPropose(flags: EdgesProposeFlags) {
       components,
     };
   });
+  endTimer('  3. build suggestions + computeScore');
 
   if (flags.json) {
     console.log(formatEdgeSuggestionsJSON(suggestions));
+    endTimer('⏱️ TOTAL');
     return;
   }
 
   // Use modular formatter for beautiful table output
-  console.log(formatEdgeSuggestionsTable(suggestions, {
+  startTimer('  4. format table');
+  const output = formatEdgeSuggestionsTable(suggestions, {
     longIds,
     allEdges,
     showHeader: true,
-  }));
+  });
+  endTimer('  4. format table');
+  endTimer('⏱️ TOTAL');
+  console.log(output);
 }
 
 async function runEdgesPromote(flags: EdgesPromoteFlags) {

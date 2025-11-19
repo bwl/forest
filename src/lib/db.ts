@@ -291,6 +291,25 @@ function runMigrations(db: Database) {
       db.exec(`ALTER TABLE nodes ADD COLUMN chunk_order INTEGER;`);
       dirty = true;
     }
+
+    // Add precomputed degree counters for performance-critical stats
+    let addedDegreeColumns = false;
+    if (!columns.includes('accepted_degree')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN accepted_degree INTEGER NOT NULL DEFAULT 0;`);
+      dirty = true;
+      addedDegreeColumns = true;
+    }
+    if (!columns.includes('suggested_degree')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN suggested_degree INTEGER NOT NULL DEFAULT 0;`);
+      dirty = true;
+      addedDegreeColumns = true;
+    }
+
+    // If we added degree columns, backfill them from existing edges
+    if (addedDegreeColumns) {
+      backfillAllDegrees(db);
+      dirty = true;
+    }
   } catch (_) {
     // Best-effort; ignore if pragma not supported in this context
   }
@@ -307,6 +326,64 @@ function runMigrations(db: Database) {
   } catch (_) {
     // Best-effort; ignore if pragma not supported in this context
   }
+}
+
+// Backfill degree counters from existing edge rows
+function backfillAllDegrees(db: Database) {
+  // Seed all nodes with zero degree
+  const nodeIds: string[] = [];
+  {
+    const stmt = db.prepare('SELECT id FROM nodes');
+    while (stmt.step()) {
+      nodeIds.push(String(stmt.getAsObject().id));
+    }
+    stmt.free();
+  }
+
+  // Use in-memory maps to count quickly in JS
+  const accepted = new Map<string, number>();
+  const suggested = new Map<string, number>();
+  for (const id of nodeIds) {
+    accepted.set(id, 0);
+    suggested.set(id, 0);
+  }
+
+  // Count accepted edges
+  {
+    const stmt = db.prepare("SELECT source_id, target_id FROM edges WHERE status = 'accepted'");
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      const s = String(row.source_id);
+      const t = String(row.target_id);
+      accepted.set(s, (accepted.get(s) ?? 0) + 1);
+      accepted.set(t, (accepted.get(t) ?? 0) + 1);
+    }
+    stmt.free();
+  }
+
+  // Count suggested edges
+  {
+    const stmt = db.prepare("SELECT source_id, target_id FROM edges WHERE status = 'suggested'");
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      const s = String(row.source_id);
+      const t = String(row.target_id);
+      suggested.set(s, (suggested.get(s) ?? 0) + 1);
+      suggested.set(t, (suggested.get(t) ?? 0) + 1);
+    }
+    stmt.free();
+  }
+
+  // Write counters back to nodes
+  const update = db.prepare(
+    `UPDATE nodes SET accepted_degree = :a, suggested_degree = :s WHERE id = :id`
+  );
+  for (const id of nodeIds) {
+    update.bind({ ':a': accepted.get(id) ?? 0, ':s': suggested.get(id) ?? 0, ':id': id });
+    update.step();
+    update.reset();
+  }
+  update.free();
 }
 
 function hashContent(content: string): string {
@@ -611,6 +688,40 @@ export async function updateNode(
   await markDirtyAndPersist();
 }
 
+// Internal helper: adjust degree counters for a node
+function adjustNodeDegrees(db: Database, nodeId: string, acceptedDelta: number, suggestedDelta: number) {
+  if (acceptedDelta === 0 && suggestedDelta === 0) return;
+  const stmt = db.prepare(
+    `UPDATE nodes
+     SET accepted_degree = accepted_degree + :a,
+         suggested_degree = suggested_degree + :s
+     WHERE id = :id`
+  );
+  stmt.bind({ ':a': acceptedDelta, ':s': suggestedDelta, ':id': nodeId });
+  stmt.step();
+  stmt.free();
+}
+
+// Internal helper: apply degree delta for an edge status transition
+function applyDegreeTransition(
+  db: Database,
+  sourceId: string,
+  targetId: string,
+  fromStatus: EdgeStatus | null,
+  toStatus: EdgeStatus | null,
+) {
+  let aDelta = 0;
+  let sDelta = 0;
+  if (fromStatus === 'accepted') aDelta -= 1;
+  if (fromStatus === 'suggested') sDelta -= 1;
+  if (toStatus === 'accepted') aDelta += 1;
+  if (toStatus === 'suggested') sDelta += 1;
+  if (aDelta !== 0 || sDelta !== 0) {
+    adjustNodeDegrees(db, sourceId, aDelta, sDelta);
+    adjustNodeDegrees(db, targetId, aDelta, sDelta);
+  }
+}
+
 export async function updateNodeIndexData(
   id: string,
   tags: string[],
@@ -661,6 +772,135 @@ export async function listNodes(): Promise<NodeRecord[]> {
   return nodes;
 }
 
+// Optimized queries for stats command (avoid loading full bodies and embeddings)
+export async function countNodes(): Promise<number> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT COUNT(*) as count FROM nodes');
+  stmt.step();
+  const count = Number(stmt.getAsObject().count);
+  stmt.free();
+  return count;
+}
+
+export async function countEdges(status: EdgeStatus | 'all' = 'all'): Promise<number> {
+  const db = await ensureDatabase();
+  const sql = status === 'all'
+    ? 'SELECT COUNT(*) as count FROM edges'
+    : 'SELECT COUNT(*) as count FROM edges WHERE status = :status';
+  const stmt = db.prepare(sql);
+  if (status !== 'all') {
+    stmt.bind({ ':status': status });
+  }
+  stmt.step();
+  const count = Number(stmt.getAsObject().count);
+  stmt.free();
+  return count;
+}
+
+export async function getNodeIds(): Promise<string[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT id FROM nodes');
+  const ids: string[] = [];
+  while (stmt.step()) {
+    ids.push(String(stmt.getAsObject().id));
+  }
+  stmt.free();
+  return ids;
+}
+
+export async function getNodeTagsOnly(): Promise<Array<{ id: string; tags: string[] }>> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT id, tags FROM nodes');
+  const results: Array<{ id: string; tags: string[] }> = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      id: String(row.id),
+      tags: JSON.parse(String(row.tags)),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export async function getRecentNodes(limit: number = 5): Promise<Array<{
+  id: string;
+  title: string;
+  tags: string[];
+  updatedAt: string;
+}>> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT id, title, tags, updated_at FROM nodes ORDER BY updated_at DESC LIMIT :limit');
+  stmt.bind({ ':limit': limit });
+  const results: Array<{ id: string; title: string; tags: string[]; updatedAt: string }> = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      id: String(row.id),
+      title: String(row.title),
+      tags: JSON.parse(String(row.tags)),
+      updatedAt: String(row.updated_at),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export async function getHighDegreeNodes(limit: number = 5): Promise<Array<{
+  id: string;
+  title: string;
+  degree: number;
+}>> {
+  const db = await ensureDatabase();
+  // Use precomputed degree counters on nodes for performance
+  const stmt = db.prepare(
+    `SELECT id, title, accepted_degree AS degree FROM nodes ORDER BY degree DESC LIMIT :limit`
+  );
+  stmt.bind({ ':limit': limit });
+  const results: Array<{ id: string; title: string; degree: number }> = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      id: String(row.id),
+      title: String(row.title),
+      degree: Number(row.degree),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export async function getDegreeStats(): Promise<{
+  degrees: number[];
+  avg: number;
+  median: number;
+  p90: number;
+  max: number;
+}> {
+  const db = await ensureDatabase();
+  // Read precomputed degrees directly from nodes
+  const stmt = db.prepare(
+    `SELECT accepted_degree AS degree FROM nodes ORDER BY degree ASC`
+  );
+  const degrees: number[] = [];
+  while (stmt.step()) {
+    degrees.push(Number(stmt.getAsObject().degree));
+  }
+  stmt.free();
+
+  const sumDegrees = degrees.reduce((acc, value) => acc + value, 0);
+  const avg = degrees.length ? sumDegrees / degrees.length : 0;
+  const median = degrees.length
+    ? degrees[Math.floor(degrees.length / 2)]
+    : 0;
+  const p90 = degrees.length
+    ? degrees[Math.floor(degrees.length * 0.9)]
+    : 0;
+  const max = degrees.length ? degrees[degrees.length - 1] : 0;
+
+  return { degrees, avg, median, p90, max };
+}
+
 export async function getNodeById(id: string): Promise<NodeRecord | null> {
   const db = await ensureDatabase();
 
@@ -692,6 +932,32 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
 
   // Ambiguous short ID
   throw new Error(`Ambiguous short ID '${id}': matches ${matches.length} nodes. Use a longer prefix.`);
+}
+
+export async function getNodesByIds(ids: string[]): Promise<NodeRecord[]> {
+  if (ids.length === 0) return [];
+
+  const db = await ensureDatabase();
+
+  // Build WHERE id IN (?, ?, ...) clause
+  const placeholders = ids.map((_, i) => `:id${i}`).join(', ');
+  const query = `SELECT * FROM nodes WHERE id IN (${placeholders})`;
+  const stmt = db.prepare(query);
+
+  // Bind each ID
+  const bindings: Record<string, string> = {};
+  ids.forEach((id, i) => {
+    bindings[`:id${i}`] = id;
+  });
+  stmt.bind(bindings);
+
+  const nodes: NodeRecord[] = [];
+  while (stmt.step()) {
+    nodes.push(parseNodeRow(stmt.getAsObject()));
+  }
+  stmt.free();
+
+  return nodes;
 }
 
 export async function findNodeByTitle(title: string): Promise<NodeRecord | null> {
@@ -896,6 +1162,19 @@ export async function deleteDocumentChunksForNodes(nodeIds: string[]): Promise<v
 
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   const db = await ensureDatabase();
+  // Determine previous status to update degree counters accurately
+  let prevStatus: EdgeStatus | null = null;
+  {
+    const prev = db.prepare(
+      `SELECT status FROM edges WHERE source_id = :sourceId AND target_id = :targetId LIMIT 1`
+    );
+    prev.bind({ ':sourceId': record.sourceId, ':targetId': record.targetId });
+    if (prev.step()) {
+      const row = prev.getAsObject();
+      prevStatus = (String(row.status) as EdgeStatus);
+    }
+    prev.free();
+  }
   const stmt = db.prepare(
     `INSERT INTO edges (id, source_id, target_id, score, status, edge_type, metadata, created_at, updated_at)
      VALUES (:id, :sourceId, :targetId, :score, :status, :edgeType, :metadata, :createdAt, :updatedAt)
@@ -920,16 +1199,61 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   });
   stmt.step();
   stmt.free();
+
+  // Apply degree counter transition if status changed or inserted
+  applyDegreeTransition(db, record.sourceId, record.targetId, prevStatus, record.status);
+
   await markDirtyAndPersist();
 }
 
-export async function listEdges(status: EdgeStatus | 'all' = 'all'): Promise<EdgeRecord[]> {
+export type ListEdgesOptions = {
+  status?: EdgeStatus | 'all';
+  orderBy?: 'score' | 'updated_at' | 'created_at';
+  orderDirection?: 'ASC' | 'DESC';
+  limit?: number;
+};
+
+export async function listEdges(
+  statusOrOptions?: EdgeStatus | 'all' | ListEdgesOptions
+): Promise<EdgeRecord[]> {
   const db = await ensureDatabase();
-  const query = status === 'all' ? 'SELECT * FROM edges' : 'SELECT * FROM edges WHERE status = :status';
-  const stmt = db.prepare(query);
-  if (status !== 'all') {
-    stmt.bind({ ':status': status });
+
+  // Handle backward compatibility: if string passed, treat as status
+  let options: ListEdgesOptions;
+  if (typeof statusOrOptions === 'string' || statusOrOptions === undefined) {
+    options = { status: statusOrOptions ?? 'all' };
+  } else {
+    options = statusOrOptions;
   }
+
+  const status = options.status ?? 'all';
+
+  // Build query with optional ORDER BY and LIMIT
+  let query = status === 'all' ? 'SELECT * FROM edges' : 'SELECT * FROM edges WHERE status = :status';
+
+  if (options.orderBy) {
+    const direction = options.orderDirection ?? 'DESC';
+    query += ` ORDER BY ${options.orderBy} ${direction}`;
+  }
+
+  if (options.limit) {
+    query += ' LIMIT :limit';
+  }
+
+  const stmt = db.prepare(query);
+
+  const bindings: Record<string, any> = {};
+  if (status !== 'all') {
+    bindings[':status'] = status;
+  }
+  if (options.limit) {
+    bindings[':limit'] = options.limit;
+  }
+
+  if (Object.keys(bindings).length > 0) {
+    stmt.bind(bindings);
+  }
+
   const edges: EdgeRecord[] = [];
   while (stmt.step()) {
     edges.push(parseEdgeRow(stmt.getAsObject()));
@@ -1045,11 +1369,29 @@ export async function listEdgeEvents(limit = 500): Promise<EdgeEvent[]> {
 
 export async function deleteEdgeBetween(sourceId: string, targetId: string): Promise<boolean> {
   const db = await ensureDatabase();
+  // Look up status first so we can decrement counters
+  let prevStatus: EdgeStatus | null = null;
+  {
+    const lookup = db.prepare(
+      `SELECT status FROM edges WHERE source_id = :source AND target_id = :target LIMIT 1`
+    );
+    lookup.bind({ ':source': sourceId, ':target': targetId });
+    if (lookup.step()) {
+      prevStatus = String(lookup.getAsObject().status) as EdgeStatus;
+    }
+    lookup.free();
+  }
+
   const stmt = db.prepare(`DELETE FROM edges WHERE source_id = :source AND target_id = :target`);
   stmt.bind({ ':source': sourceId, ':target': targetId });
   stmt.step();
   const changes = db.getRowsModified();
   stmt.free();
+
+  if (changes > 0) {
+    // Apply degree decrement for the removed edge
+    applyDegreeTransition(db, sourceId, targetId, prevStatus, null);
+  }
   if (changes > 0) {
     await markDirtyAndPersist();
     return true;
@@ -1061,14 +1403,21 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
   const db = await ensureDatabase();
   // Count edges first
   let edgesRemoved = 0;
+  // Also gather affected neighbors and statuses to adjust degree counters
+  const affected: Array<{ otherId: string; status: EdgeStatus }> = [];
   {
-    const countStmt = db.prepare('SELECT COUNT(1) as c FROM edges WHERE source_id = :id OR target_id = :id');
-    countStmt.bind({ ':id': id });
-    if (countStmt.step()) {
-      const row = countStmt.getAsObject();
-      edgesRemoved = Number(row.c) || 0;
+    const q = db.prepare('SELECT source_id, target_id, status FROM edges WHERE source_id = :id OR target_id = :id');
+    q.bind({ ':id': id });
+    while (q.step()) {
+      const row = q.getAsObject();
+      const s = String(row.source_id);
+      const t = String(row.target_id);
+      const status = String(row.status) as EdgeStatus;
+      const otherId = s === id ? t : s;
+      affected.push({ otherId, status });
+      edgesRemoved += 1;
     }
-    countStmt.free();
+    q.free();
   }
 
   let chunkMappingRemoved = false;
@@ -1086,6 +1435,13 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
   delEdges.step();
   delEdges.free();
 
+  // Adjust neighbors' degree counters (the node itself is being deleted)
+  for (const { otherId, status } of affected) {
+    const aDelta = status === 'accepted' ? -1 : 0;
+    const sDelta = status === 'suggested' ? -1 : 0;
+    adjustNodeDegrees(db, otherId, aDelta, sDelta);
+  }
+
   // Delete node
   const delNode = db.prepare('DELETE FROM nodes WHERE id = :id');
   delNode.bind({ ':id': id });
@@ -1101,6 +1457,20 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
 
 export async function promoteSuggestions(minScore: number): Promise<number> {
   const db = await ensureDatabase();
+  // Determine which edges will change status to update degree counters
+  const changing: Array<{ s: string; t: string }> = [];
+  {
+    const sel = db.prepare(
+      `SELECT source_id as s, target_id as t FROM edges WHERE status = 'suggested' AND score >= :minScore`
+    );
+    sel.bind({ ':minScore': minScore });
+    while (sel.step()) {
+      const row = sel.getAsObject();
+      changing.push({ s: String(row.s), t: String(row.t) });
+    }
+    sel.free();
+  }
+
   const stmt = db.prepare(
     `UPDATE edges SET status = 'accepted', updated_at = :updatedAt WHERE status = 'suggested' AND score >= :minScore`
   );
@@ -1108,6 +1478,11 @@ export async function promoteSuggestions(minScore: number): Promise<number> {
   stmt.step();
   const changes = db.getRowsModified();
   stmt.free();
+
+  // Apply degree counter transitions for affected edges
+  for (const { s, t } of changing) {
+    applyDegreeTransition(db, s, t, 'suggested', 'accepted');
+  }
   if (changes > 0) {
     await markDirtyAndPersist();
   }
@@ -1116,11 +1491,28 @@ export async function promoteSuggestions(minScore: number): Promise<number> {
 
 export async function deleteSuggestion(edgeId: string): Promise<number> {
   const db = await ensureDatabase();
+  // Find the edge endpoints to adjust counters
+  let sId: string | null = null;
+  let tId: string | null = null;
+  {
+    const sel = db.prepare(`SELECT source_id, target_id FROM edges WHERE id = :id AND status = 'suggested' LIMIT 1`);
+    sel.bind({ ':id': edgeId });
+    if (sel.step()) {
+      const row = sel.getAsObject();
+      sId = String(row.source_id);
+      tId = String(row.target_id);
+    }
+    sel.free();
+  }
+
   const stmt = db.prepare(`DELETE FROM edges WHERE id = :id AND status = 'suggested'`);
   stmt.bind({ ':id': edgeId });
   stmt.step();
   const changes = db.getRowsModified();
   stmt.free();
+  if (changes > 0 && sId && tId) {
+    applyDegreeTransition(db, sId, tId, 'suggested', null);
+  }
   if (changes > 0) {
     await markDirtyAndPersist();
   }
