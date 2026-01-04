@@ -17,6 +17,7 @@ export interface MarkdownOutputConfig {
 }
 
 export interface ForestConfig {
+  dbPath?: string;
   embedProvider?: 'openrouter' | 'openai' | 'mock' | 'none';
   openaiApiKey?: string;
   openrouterApiKey?: string;
@@ -63,6 +64,7 @@ export function loadConfig(): ForestConfig {
     : undefined;
 
   const config: ForestConfig = {
+    dbPath: fileConfig.dbPath, // Pass through as-is, expansion happens in getConfiguredDbPath()
     embedProvider: normalizeEmbedProvider(fileConfig.embedProvider) || getEmbedProviderFromEnv(),
     openaiApiKey: fileConfig.openaiApiKey || process.env.OPENAI_API_KEY,
     openrouterApiKey: fileConfig.openrouterApiKey || process.env.FOREST_OR_KEY,
@@ -132,6 +134,22 @@ function normalizeEmbedProvider(value: string | undefined): ForestConfig['embedP
  */
 export function getConfigPath(): string {
   return CONFIG_FILE;
+}
+
+/**
+ * Get configured database path (from config file only, not env var)
+ * Returns undefined if not set in config
+ */
+export function getConfiguredDbPath(): string | undefined {
+  const config = loadConfig();
+  if (config.dbPath && typeof config.dbPath === 'string' && config.dbPath.trim().length > 0) {
+    // Expand ~ to home directory
+    if (config.dbPath.startsWith('~/')) {
+      return path.join(os.homedir(), config.dbPath.slice(2));
+    }
+    return config.dbPath;
+  }
+  return undefined;
 }
 
 function isWriteModelName(value: unknown): value is WriteModelName {

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createHash } from 'crypto';
+import { getConfiguredDbPath } from './config';
 
 export type NodeRecord = {
   id: string;
@@ -90,13 +91,19 @@ let database: Database | null = null;
 let dirty = false;
 let tempWasmPath: string | null = null;
 
-function getDbPath(): string {
+export function getDbPath(): string {
   // Priority 1: Explicit FOREST_DB_PATH environment variable
   if (process.env.FOREST_DB_PATH) {
     return process.env.FOREST_DB_PATH;
   }
 
-  // Priority 2: Platform-appropriate app data directory
+  // Priority 2: Config file dbPath setting
+  const configDbPath = getConfiguredDbPath();
+  if (configDbPath) {
+    return configDbPath;
+  }
+
+  // Priority 3: Platform-appropriate app data directory
   const homeDir = os.homedir();
   let appDataDir: string;
 

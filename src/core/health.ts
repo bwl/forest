@@ -1,9 +1,7 @@
 import fs from 'fs';
-import path from 'path';
 
 import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled } from '../lib/embeddings';
-
-const DEFAULT_DB_PATH = 'forest.db';
+import { getDbPath } from '../lib/db';
 
 export type HealthCheck = {
   status: 'ok' | 'warning' | 'error';
@@ -45,8 +43,7 @@ export function isHealthy(report: HealthReport): boolean {
 }
 
 async function checkDatabase(): Promise<HealthCheck & { path?: string; sizeBytes?: number }> {
-  const dbPath = process.env.FOREST_DB_PATH ?? DEFAULT_DB_PATH;
-  const resolvedPath = path.resolve(dbPath);
+  const resolvedPath = getDbPath();
 
   if (!fs.existsSync(resolvedPath)) {
     return {

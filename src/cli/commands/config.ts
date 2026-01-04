@@ -71,6 +71,11 @@ async function runConfigWizard() {
       message: 'Select a setting to configure',
       options: [
         {
+          value: 'dbPath',
+          label: `Database Path (${config.dbPath || 'platform default'})`,
+          hint: 'Global database location accessible from anywhere',
+        },
+        {
           value: 'embedProvider',
           label: `Embedding Provider (${config.embedProvider || 'openrouter'})`,
         },
@@ -113,6 +118,7 @@ async function runConfigWizard() {
         { value: 'cancel', label: 'Cancel without saving' },
       ],
     })) as
+      | 'dbPath'
       | 'embedProvider'
       | 'openrouterApiKey'
       | 'openaiApiKey'
@@ -135,6 +141,47 @@ async function runConfigWizard() {
     }
 
     switch (choice) {
+      case 'dbPath': {
+        let shouldPrompt = true;
+        if (config.dbPath) {
+          const nextAction = (await clack.select({
+            message: `Current database path: ${config.dbPath}`,
+            options: [
+              { value: 'update', label: 'Change path' },
+              { value: 'clear', label: 'Clear (use platform default)' },
+              { value: 'back', label: 'Back' },
+            ],
+          })) as 'update' | 'clear' | 'back';
+
+          if (clack.isCancel(nextAction) || nextAction === 'back') {
+            shouldPrompt = false;
+          } else if (nextAction === 'clear') {
+            delete config.dbPath;
+            shouldPrompt = false;
+          }
+        }
+
+        if (shouldPrompt) {
+          const dbPathInput = (await clack.text({
+            message: 'Database file path',
+            placeholder: '~/forest.db',
+            initialValue: config.dbPath || '',
+            validate: (value) => {
+              if (!value || value.trim().length === 0) return 'Path is required';
+              // Allow ~ prefix or absolute paths
+              if (!value.startsWith('~') && !value.startsWith('/')) {
+                return 'Path must be absolute (start with / or ~)';
+              }
+            },
+          })) as string;
+
+          if (!clack.isCancel(dbPathInput)) {
+            config.dbPath = dbPathInput.trim();
+          }
+        }
+        break;
+      }
+
       case 'embedProvider': {
         const provider = (await clack.select({
           message: 'Embedding Provider',
