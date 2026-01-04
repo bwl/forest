@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled, findForestEmbedBinary } from '../lib/embeddings';
+import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled } from '../lib/embeddings';
 
 const DEFAULT_DB_PATH = 'forest.db';
 
@@ -15,7 +15,6 @@ export type HealthReport = {
   embeddingProvider: HealthCheck & { provider?: string; model?: string };
   openaiKey?: HealthCheck;
   openrouterKey?: HealthCheck;
-  forestEmbed?: HealthCheck & { binaryPath?: string };
 };
 
 export async function getHealthReport(): Promise<HealthReport> {
@@ -33,10 +32,6 @@ export async function getHealthReport(): Promise<HealthReport> {
     report.openrouterKey = checkOpenRouterKey();
   }
 
-  if (provider === 'local') {
-    report.forestEmbed = await checkForestEmbed();
-  }
-
   return report;
 }
 
@@ -46,7 +41,6 @@ export function isHealthy(report: HealthReport): boolean {
     report.embeddingProvider.status === 'ok',
     !report.openaiKey || report.openaiKey.status === 'ok',
     !report.openrouterKey || report.openrouterKey.status === 'ok',
-    !report.forestEmbed || report.forestEmbed.status === 'ok',
   ].every(Boolean);
 }
 
@@ -143,15 +137,6 @@ async function checkEmbeddingProvider(): Promise<HealthCheck & { provider?: stri
     };
   }
 
-  if (provider === 'local') {
-    return {
-      status: 'ok',
-      message: 'Using local transformer embeddings (all-MiniLM-L6-v2)',
-      provider,
-      model: 'all-MiniLM-L6-v2',
-    };
-  }
-
   return {
     status: 'ok',
     message: `Provider: ${provider}`,
@@ -217,42 +202,4 @@ function checkOpenRouterKey(): HealthCheck {
     status: 'ok',
     message: 'FOREST_OR_KEY is set and format looks valid',
   };
-}
-
-async function checkForestEmbed(): Promise<HealthCheck & { binaryPath?: string }> {
-  try {
-    // Try to find the forest-embed binary
-    const binaryPath = await findForestEmbedBinary();
-
-    // Verify it's executable
-    if (!fs.existsSync(binaryPath)) {
-      return {
-        status: 'error',
-        message: 'forest-embed binary not found at expected location',
-        binaryPath,
-      };
-    }
-
-    // Check if file is executable
-    try {
-      fs.accessSync(binaryPath, fs.constants.X_OK);
-    } catch {
-      return {
-        status: 'error',
-        message: 'forest-embed binary found but not executable',
-        binaryPath,
-      };
-    }
-
-    return {
-      status: 'ok',
-      message: 'forest-embed binary is available and executable',
-      binaryPath,
-    };
-  } catch (error) {
-    return {
-      status: 'error',
-      message: `forest-embed binary not found: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
 }

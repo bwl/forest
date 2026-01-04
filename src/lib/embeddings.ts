@@ -1,20 +1,17 @@
 import { NodeRecord } from './db';
-import path from 'path';
-import fs from 'fs';
 
 // Provider selection via env:
-//  - FOREST_EMBED_PROVIDER=openrouter | openai | local | mock | none
-//  - OPENROUTER_API_KEY required if provider=openrouter
+//  - FOREST_EMBED_PROVIDER=openrouter | openai | mock | none
+//  - FOREST_OR_KEY required if provider=openrouter
 //  - OPENAI_API_KEY required if provider=openai
 //  - FOREST_EMBED_MODEL to override default model per provider
 
-export type EmbeddingProvider = 'openrouter' | 'openai' | 'local' | 'mock' | 'none';
+export type EmbeddingProvider = 'openrouter' | 'openai' | 'mock' | 'none';
 
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const raw = (process.env.FOREST_EMBED_PROVIDER || 'local').toLowerCase();
+  const raw = (process.env.FOREST_EMBED_PROVIDER || 'openrouter').toLowerCase();
   if (raw === 'openrouter') return 'openrouter';
   if (raw === 'openai') return 'openai';
-  if (raw === 'local' || raw === 'transformers' || raw === 'xenova') return 'local';
   if (raw === 'none' || raw === 'off' || raw === 'disabled') return 'none';
   return 'mock';
 }
@@ -41,14 +38,13 @@ export async function embedNoteText(text: string): Promise<number[] | undefined>
   if (provider === 'none') return undefined;
   if (provider === 'openrouter') return embedOpenRouter(text);
   if (provider === 'openai') return embedOpenAI(text);
-  if (provider === 'local') return embedLocal(text);
   return embedMock(text);
 }
 
 // --- Providers ---
 
 // Mock hashing embedding: deterministic 384-dim vector via token hashing
-// Not semantic, but useful offline to exercise the pipeline.
+// Useful for offline testing and CI pipelines
 async function embedMock(text: string): Promise<number[]> {
   const dim = 384;
   const vec = new Float32Array(dim);
@@ -126,78 +122,4 @@ async function embedOpenAI(text: string): Promise<number[]> {
 export async function computeEmbeddingForNode(n: Pick<NodeRecord, 'title' | 'body'>): Promise<number[] | undefined> {
   const text = `${n.title}\n${n.body}`;
   return embedNoteText(text);
-}
-
-// Local provider via forest-embed Rust helper
-// This ensures CLI and desktop app use the same fastembed engine
-async function embedLocal(text: string): Promise<number[]> {
-  try {
-    // Try to find forest-embed binary
-    const binaryPath = await findForestEmbedBinary();
-
-    // Spawn the process and pass text via stdin
-    const proc = Bun.spawn([binaryPath], {
-      stdin: 'pipe',
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-
-    // Write text to stdin and close it
-    proc.stdin.write(text);
-    proc.stdin.end();
-
-    // Read output
-    const output = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-
-    await proc.exited;
-
-    if (proc.exitCode !== 0) {
-      throw new Error(`forest-embed failed with code ${proc.exitCode}: ${stderr}`);
-    }
-
-    // Parse JSON array
-    const embedding: number[] = JSON.parse(output.trim());
-    if (!Array.isArray(embedding)) {
-      throw new Error('Invalid embedding format from forest-embed');
-    }
-
-    return embedding;
-  } catch (error) {
-    console.warn('Failed to use forest-embed, falling back to mock embeddings:', error);
-    console.warn('Install forest-embed or set FOREST_EMBED_PROVIDER=mock to suppress this warning');
-    // Fallback to mock embeddings
-    return embedMock(text);
-  }
-}
-
-// Find the forest-embed binary
-export async function findForestEmbedBinary(): Promise<string> {
-  const candidates = [
-    // 1. Same directory as CLI (for bundled distribution)
-    path.join(path.dirname(process.execPath), 'forest-embed'),
-    path.join(path.dirname(process.execPath), 'forest-embed-aarch64-apple-darwin'),
-    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-apple-darwin'),
-    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-unknown-linux-gnu'),
-    path.join(path.dirname(process.execPath), 'forest-embed-x86_64-pc-windows-msvc.exe'),
-
-    // 2. Development build location (standalone crate)
-    path.join(__dirname, '..', '..', 'forest-embed', 'target', 'release', 'forest-embed'),
-
-    // 3. In PATH
-    'forest-embed',
-  ];
-
-  for (const candidate of candidates) {
-    try {
-      // Check if file exists and is executable
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    } catch {
-      // Continue to next candidate
-    }
-  }
-
-  throw new Error('forest-embed binary not found. Please build it with: cd forest-embed && cargo build --release');
 }

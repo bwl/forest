@@ -445,14 +445,6 @@ async function runAdminHealth(flags: AdminHealthFlags) {
     console.log('');
   }
 
-  if (report.forestEmbed) {
-    printCheck('Forest Embed Binary', report.forestEmbed);
-    if (report.forestEmbed.binaryPath) {
-      console.log(`  path: ${report.forestEmbed.binaryPath}`);
-    }
-    console.log('');
-  }
-
   if (isHealthy(report)) {
     console.log('All systems operational');
   } else {
@@ -489,7 +481,7 @@ async function runAdminDoctor() {
   if (report.embeddingProvider.status !== 'ok') {
     issues.push(`Embedding provider: ${report.embeddingProvider.message}`);
     console.log('Tip: Set FOREST_EMBED_PROVIDER to configure embeddings.');
-    console.log('  Options: local, openai, none');
+    console.log('  Options: openrouter (default), openai, none');
     console.log('');
   }
 
@@ -500,10 +492,10 @@ async function runAdminDoctor() {
     console.log('');
   }
 
-  // Check forest-embed binary if using local
-  if (report.forestEmbed && report.forestEmbed.status !== 'ok') {
-    issues.push(`Forest Embed: ${report.forestEmbed.message}`);
-    console.log('Tip: Build forest-embed with `cargo build --release` in the forest-embed directory.');
+  // Check OpenRouter key if using OpenRouter
+  if (report.openrouterKey && report.openrouterKey.status !== 'ok') {
+    issues.push(`OpenRouter API Key: ${report.openrouterKey.message}`);
+    console.log('Tip: Set FOREST_OR_KEY environment variable for OpenRouter embeddings.');
     console.log('');
   }
 
