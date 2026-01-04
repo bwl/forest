@@ -890,8 +890,8 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
 
   if (node) return node;
 
-  // If not found and looks like a short ID (hex chars, 6-8 chars), try prefix match
-  const isShortId = /^[0-9a-f]{6,8}$/i.test(id);
+  // If not found and looks like a short ID (hex chars, 4-36 chars), try prefix match
+  const isShortId = /^[0-9a-f]{4,36}$/i.test(id);
   if (!isShortId) return null;
 
   // Git-style prefix search

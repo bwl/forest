@@ -90,7 +90,7 @@ export function isProgressiveEdgeId(term: string): boolean {
 }
 
 export function isShortId(term: string): boolean {
-  return /^[0-9a-f]{6,}$/i.test(term) && term.length <= SHORT_ID_LENGTH;
+  return /^[0-9a-f]{4,}$/i.test(term) && term.length <= SHORT_ID_LENGTH;
 }
 
 export async function resolveByIdPrefix(prefix: string): Promise<NodeRecord | null> {
