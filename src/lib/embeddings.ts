@@ -6,9 +6,9 @@ import { loadConfig } from './config';
 //  2. ~/.forestrc embedProvider setting
 //  3. Default: 'openrouter'
 //
-// API keys:
-//  - FOREST_OR_KEY required if provider=openrouter
-//  - OPENAI_API_KEY required if provider=openai
+// API keys (config file takes priority over env var):
+//  - openrouterApiKey in ~/.forestrc OR FOREST_OR_KEY env var
+//  - openaiApiKey in ~/.forestrc OR OPENAI_API_KEY env var
 //  - FOREST_EMBED_MODEL to override default model per provider
 
 export type EmbeddingProvider = 'openrouter' | 'openai' | 'mock' | 'none';
@@ -91,8 +91,9 @@ async function embedMock(text: string): Promise<number[]> {
 // OpenRouter provider - unified API for multiple embedding models
 // Default: qwen/qwen3-embedding-8b (33K context, $0.01/M tokens)
 async function embedOpenRouter(text: string): Promise<number[]> {
-  const apiKey = process.env.FOREST_OR_KEY;
-  if (!apiKey) throw new Error('FOREST_OR_KEY is required for openrouter embedding provider');
+  const config = loadConfig();
+  const apiKey = config.openrouterApiKey || process.env.FOREST_OR_KEY;
+  if (!apiKey) throw new Error('OpenRouter API key required: set openrouterApiKey in ~/.forestrc or FOREST_OR_KEY env var');
   const model = getEmbeddingModel();
   const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
@@ -116,8 +117,9 @@ async function embedOpenRouter(text: string): Promise<number[]> {
 
 // OpenAI provider using text-embedding-3-small (1536-d)
 async function embedOpenAI(text: string): Promise<number[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error('OPENAI_API_KEY is required for openai embedding provider');
+  const config = loadConfig();
+  const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OpenAI API key required: set openaiApiKey in ~/.forestrc or OPENAI_API_KEY env var');
   const model = getEmbeddingModel();
   const res = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',

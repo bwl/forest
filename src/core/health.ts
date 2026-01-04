@@ -2,6 +2,7 @@ import fs from 'fs';
 
 import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled } from '../lib/embeddings';
 import { getDbPath } from '../lib/db';
+import { loadConfig } from '../lib/config';
 
 export type HealthCheck = {
   status: 'ok' | 'warning' | 'error';
@@ -142,61 +143,65 @@ async function checkEmbeddingProvider(): Promise<HealthCheck & { provider?: stri
 }
 
 function checkOpenAIKey(): HealthCheck {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const config = loadConfig();
+  const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
+  const source = config.openaiApiKey ? '~/.forestrc' : 'OPENAI_API_KEY env';
 
   if (!apiKey) {
     return {
       status: 'error',
-      message: 'OPENAI_API_KEY is not set (required for OpenAI provider)',
+      message: 'OpenAI API key not set (add openaiApiKey to ~/.forestrc or set OPENAI_API_KEY)',
     };
   }
 
   if (apiKey.trim().length === 0) {
     return {
       status: 'error',
-      message: 'OPENAI_API_KEY is empty',
+      message: 'OpenAI API key is empty',
     };
   }
 
   if (!apiKey.startsWith('sk-')) {
     return {
       status: 'warning',
-      message: 'OPENAI_API_KEY format looks unusual (expected to start with "sk-")',
+      message: `OpenAI API key format looks unusual (expected to start with "sk-")`,
     };
   }
 
   return {
     status: 'ok',
-    message: 'OPENAI_API_KEY is set and format looks valid',
+    message: `OpenAI API key is set (${source}) and format looks valid`,
   };
 }
 
 function checkOpenRouterKey(): HealthCheck {
-  const apiKey = process.env.FOREST_OR_KEY;
+  const config = loadConfig();
+  const apiKey = config.openrouterApiKey || process.env.FOREST_OR_KEY;
+  const source = config.openrouterApiKey ? '~/.forestrc' : 'FOREST_OR_KEY env';
 
   if (!apiKey) {
     return {
       status: 'error',
-      message: 'FOREST_OR_KEY is not set (required for OpenRouter provider)',
+      message: 'OpenRouter API key not set (add openrouterApiKey to ~/.forestrc or set FOREST_OR_KEY)',
     };
   }
 
   if (apiKey.trim().length === 0) {
     return {
       status: 'error',
-      message: 'FOREST_OR_KEY is empty',
+      message: 'OpenRouter API key is empty',
     };
   }
 
   if (!apiKey.startsWith('sk-or-')) {
     return {
       status: 'warning',
-      message: 'FOREST_OR_KEY format looks unusual (expected to start with "sk-or-")',
+      message: 'OpenRouter API key format looks unusual (expected to start with "sk-or-")',
     };
   }
 
   return {
     status: 'ok',
-    message: 'FOREST_OR_KEY is set and format looks valid',
+    message: `OpenRouter API key is set (${source}) and format looks valid`,
   };
 }
