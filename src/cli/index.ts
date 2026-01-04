@@ -1,7 +1,6 @@
 import { createCaptureCommand } from './commands/capture';
 import { createWriteCommand } from './commands/write';
-import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings';
-import { createAdminRetagAllCommand } from './commands/admin-retag-all';
+import { registerAdminCommands } from './commands/admin';
 import { createExploreCommand } from './commands/explore';
 import { createSearchCommand } from './commands/search';
 import { registerExportCommands } from './commands/export';
@@ -10,10 +9,10 @@ import { registerNodeCommands } from './commands/node';
 import { registerTagsCommands } from './commands/tags';
 import { registerDocumentsCommands } from './commands/documents';
 import { createStatsCommand } from './commands/stats';
-import { createHealthCommand } from './commands/health';
 import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
+import { createGroupedHelpRenderer } from './help';
 import * as clerc from 'clerc';
 
 type ClercModule = typeof clerc;
@@ -33,7 +32,7 @@ export async function createForestCli() {
     .scriptName('forest')
     .description('Graph-native knowledge base CLI')
     .version(getVersion())
-    .use(helpPlugin())
+    .use(helpPlugin({ renderers: createGroupedHelpRenderer() }))
     .use(friendlyErrorPlugin())
     .use(strictFlagsPlugin())
     .use(notFoundPlugin())
@@ -44,17 +43,15 @@ export async function createForestCli() {
   cli.command(createExploreCommand(clerc));
   cli.command(createSearchCommand(clerc));
   cli.command(createStatsCommand(clerc));
-  cli.command(createHealthCommand(clerc));
   cli.command(createServeCommand(clerc));
   cli.command(createConfigCommand(clerc));
-  cli.command(createAdminRecomputeEmbeddingsCommand(clerc));
-  cli.command(createAdminRetagAllCommand(clerc));
   cli.command(createVersionCommand(clerc));
   registerNodeCommands(cli, clerc);
   registerEdgesCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
   registerDocumentsCommands(cli, clerc);
   registerExportCommands(cli, clerc);
+  registerAdminCommands(cli, clerc);
 
   return cli;
 }

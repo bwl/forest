@@ -248,20 +248,9 @@ export async function buildNeighborhoodPayload(centerId: string, depth: number, 
   return { payload, directEdges };
 }
 
-export async function fetchSuggestionsForNode(nodeId: string) {
-  const nodeMap = new Map((await listNodes()).map((node) => [node.id, node]));
-  return (await listEdges('suggested'))
-    .filter((edge) => edge.sourceId === nodeId || edge.targetId === nodeId)
-    .map((edge) => {
-      const otherId = edge.sourceId === nodeId ? edge.targetId : edge.sourceId;
-      return {
-        id: edge.id,
-        score: edge.score,
-        otherId,
-        otherTitle: nodeMap.get(otherId)?.title ?? otherId,
-      };
-    })
-    .sort((a, b) => b.score - a.score);
+// Suggestions are no longer supported - edges are created automatically above threshold
+export async function fetchSuggestionsForNode(_nodeId: string) {
+  return [];
 }
 
 export function serializeMatch(match: SearchMatch) {
@@ -297,12 +286,7 @@ export async function printExplore(options: ExploreRenderOptions) {
           search: matches.map((entry) => serializeMatch(entry)),
           selected: serializeMatch(match),
           neighborhood: neighborhoodData.payload,
-          suggestions: suggestionData.map((suggestion) => ({
-            id: suggestion.id,
-            score: suggestion.score,
-            otherId: suggestion.otherId,
-            otherTitle: suggestion.otherTitle,
-          })),
+          suggestions: [],
         },
         null,
         2,
@@ -324,26 +308,7 @@ export async function printExplore(options: ExploreRenderOptions) {
 
   if (!options.suppressOverview) {
     await printNodeOverview(match.node, neighborhoodData.directEdges, { longIds: options.longIds });
-    if (options.includeSuggestions && suggestionData.length > 0) {
-      // Fetch all nodes and edges for progressive ID calculation
-      const allNodes = await listNodes();
-      const allEdges = await listEdges('all');
-      const formatNodeId = (id: string) =>
-        options.longIds ? id : formatNodeIdProgressive(id, allNodes);
-
-      console.log('');
-      console.log(`${colorize.label('suggested edges:')}`);
-      for (const suggestion of suggestionData) {
-        const [sa, sb] = suggestion.id.split('::');
-        const code = sa && sb ? getEdgePrefix(sa, sb, allEdges) : '????';
-        const coloredScore = colorize.aggregateScore(suggestion.score);
-        const coloredCode = colorize.edgeCode(code);
-        const coloredId = colorize.nodeId(formatNodeId(suggestion.otherId));
-        console.log(
-          `  ${coloredScore}  [${coloredCode}] ${coloredId}  ${suggestion.otherTitle}`,
-        );
-      }
-    }
+    // Suggestions no longer exist - edges are auto-created above threshold
   }
 }
 

@@ -47,7 +47,6 @@ export type ImportResult = {
     parentChildEdges: number;
     sequentialEdges: number;
     semanticAccepted: number;
-    semanticSuggested: number;
   };
 };
 
@@ -233,7 +232,6 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
   let parentChildEdges = 0;
   let sequentialEdges = 0;
   let semanticAccepted = 0;
-  let semanticSuggested = 0;
 
   // 1. Parent-child edges (root → chunks)
   if (rootNode) {
@@ -290,14 +288,12 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     if (rootNode) {
       const rootLinking = await linkAgainstExisting(rootNode, existingNodes);
       semanticAccepted += rootLinking.accepted;
-      semanticSuggested += rootLinking.suggested;
     }
 
     // Link each chunk against existing graph
     for (const { node } of chunkNodes) {
       const chunkLinking = await linkAgainstExisting(node, existingNodes);
       semanticAccepted += chunkLinking.accepted;
-      semanticSuggested += chunkLinking.suggested;
     }
   }
 
@@ -310,7 +306,6 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
       parentChildEdges,
       sequentialEdges,
       semanticAccepted,
-      semanticSuggested,
     },
   };
 }

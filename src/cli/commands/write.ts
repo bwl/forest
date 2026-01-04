@@ -156,7 +156,7 @@ async function runWrite(topic: string | undefined, flags: WriteFlags) {
   console.log(`   id: ${formatId(nodeResult.node.id)}`);
   console.log(`   tags: ${nodeResult.node.tags.join(', ')}`);
   if (autoLink) {
-    console.log(`   edges: ${nodeResult.linking.edgesCreated} accepted, ${nodeResult.linking.suggestionsCreated} suggested`);
+    console.log(`   edges: ${nodeResult.linking.edgesCreated} accepted`);
   }
   console.log('');
 }

@@ -1,4 +1,4 @@
-import { NodeRecord, EdgeStatus } from './db';
+import { NodeRecord } from './db';
 import { tokensFromTitle } from './text';
 
 export type ScoreComponents = {
@@ -9,17 +9,10 @@ export type ScoreComponents = {
   penalty: number;
 };
 
-const DEFAULT_AUTO_ACCEPT = 0.5;
-const DEFAULT_SUGGESTION_THRESHOLD = 0.25;
+const DEFAULT_EDGE_THRESHOLD = 0.5;
 
-export function getAutoAcceptThreshold(): number {
-  return process.env.FOREST_AUTO_ACCEPT ? Number(process.env.FOREST_AUTO_ACCEPT) : DEFAULT_AUTO_ACCEPT;
-}
-
-export function getSuggestionThreshold(): number {
-  return process.env.FOREST_SUGGESTION_THRESHOLD
-    ? Number(process.env.FOREST_SUGGESTION_THRESHOLD)
-    : DEFAULT_SUGGESTION_THRESHOLD;
+export function getEdgeThreshold(): number {
+  return process.env.FOREST_EDGE_THRESHOLD ? Number(process.env.FOREST_EDGE_THRESHOLD) : DEFAULT_EDGE_THRESHOLD;
 }
 
 export function computeScore(a: NodeRecord, b: NodeRecord): { score: number; components: ScoreComponents } {
@@ -42,9 +35,8 @@ export function computeScore(a: NodeRecord, b: NodeRecord): { score: number; com
   return { score, components: { tagOverlap, tokenSimilarity, titleSimilarity, embeddingSimilarity, penalty } };
 }
 
-export function classifyScore(score: number): EdgeStatus | 'discard' {
-  if (score >= getAutoAcceptThreshold()) return 'accepted';
-  if (score >= getSuggestionThreshold()) return 'suggested';
+export function classifyScore(score: number): 'accepted' | 'discard' {
+  if (score >= getEdgeThreshold()) return 'accepted';
   return 'discard';
 }
 

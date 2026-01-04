@@ -117,15 +117,6 @@ type NodeImportFlags = {
   tldr?: string;
 };
 
-type NodeRecentFlags = {
-  limit?: number;
-  json?: boolean;
-  created?: boolean;
-  updated?: boolean;
-  since?: string;
-  tldr?: string;
-};
-
 export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
   const readCommand = clerc.defineCommand(
     {
@@ -172,7 +163,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
 
   const refreshCommand = clerc.defineCommand(
     {
-      name: 'node refresh',
+      name: 'node update',
       description: 'Update note fields from flags or files and optionally rescore links',
       parameters: ['[id]'],
       flags: {
@@ -286,17 +277,13 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
 
   const linkCommand = clerc.defineCommand(
     {
-      name: 'node link',
+      name: 'node connect',
       description: 'Manually create an edge between two notes',
       parameters: ['[a]', '[b]'],
       flags: {
         score: {
           type: Number,
           description: 'Override score value',
-        },
-        suggest: {
-          type: Boolean,
-          description: 'Create as a suggestion instead of accepted',
         },
         explain: {
           type: Boolean,
@@ -447,53 +434,6 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(importCommand);
 
-  const recentCommand = clerc.defineCommand(
-    {
-      name: 'node recent',
-      description: 'Show recent node activity (created/updated)',
-      flags: {
-        limit: {
-          type: Number,
-          description: 'Maximum number of activities to show',
-          default: 20,
-        },
-        json: {
-          type: Boolean,
-          description: 'Emit JSON output',
-        },
-        created: {
-          type: Boolean,
-          description: 'Show only created activities',
-        },
-        updated: {
-          type: Boolean,
-          description: 'Show only updated activities',
-        },
-        since: {
-          type: String,
-          description: 'Show activities since duration (e.g., 24h, 7d, 4w, 1m, 1y)',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ flags }: { flags: NodeRecentFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.recent'], getVersion());
-        }
-        await runNodeRecent(flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(recentCommand);
-
   const baseCommand = clerc.defineCommand(
     {
       name: 'node',
@@ -503,9 +443,9 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
           'Subcommands:',
           '  read        Show the full content of a note',
           '  edit        Edit an existing note and optionally rescore links',
+          '  update      Update note fields from flags or files',
           '  delete      Delete a note and its edges',
-          '  link        Manually create an edge between two notes',
-          '  recent      Show recent node activity (created/updated)',
+          '  connect     Manually create an edge between two notes',
           '  import      Import a large markdown document by chunking it',
           '  synthesize  Use GPT-5 to synthesize a new article from 2+ notes',
           '',
@@ -514,7 +454,7 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         examples: [
           ['$ forest node read abc123', 'Read a note by its short ID'],
           ['$ forest node edit abc123 --title "New title"', 'Edit a note title'],
-          ['$ forest node link abc123 def456', 'Create a link between two notes'],
+          ['$ forest node connect abc123 def456', 'Create a link between two notes'],
           ['$ forest node synthesize abc123 def456 --preview', 'Preview synthesis without saving'],
         ],
       },
@@ -740,16 +680,15 @@ async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags
   });
 
   let accepted = 0;
-  let suggested = 0;
   if (autoLink) {
-    ({ accepted, suggested } = await rescoreNode(updatedNode));
+    ({ accepted } = await rescoreNode(updatedNode));
   }
 
   console.log(`✔ Refreshed note: ${nextTitle}`);
   console.log(`   id: ${node.id}`);
   if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
   if (autoLink) {
-    console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+    console.log(`   links after rescore: ${accepted} edges`);
   } else {
     console.log('   links: rescoring skipped (--no-auto-link)');
   }
@@ -906,11 +845,10 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
     console.error('Example:');
     console.error('  forest node link abc123 def456');
     console.error('  forest node link abc123 def456 --score=0.8');
-    console.error('  forest node link abc123 def456 --suggest --explain');
+    console.error('  forest node link abc123 def456 --explain');
     console.error('');
     console.error('Options:');
     console.error('  --score=N        Override computed score (0.0-1.0)');
-    console.error('  --suggest        Create as suggestion instead of accepted');
     console.error('  --explain        Show scoring components breakdown');
     console.error('');
     process.exitCode = 1;
@@ -930,7 +868,6 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
     typeof flags.score === 'number' && !Number.isNaN(flags.score) ? flags.score : undefined;
   const usedScore = scoreOverride ?? computedScore;
 
-  const status: EdgeStatus = flags.suggest ? 'suggested' : 'accepted';
   const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
 
   const edge: EdgeRecord = {
@@ -938,7 +875,7 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
     sourceId,
     targetId,
     score: usedScore,
-    status,
+    status: 'accepted',
     edgeType: 'manual',
     metadata: { components },
     createdAt: new Date().toISOString(),
@@ -947,7 +884,7 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
 
   await insertOrUpdateEdge(edge);
   console.log(
-    `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  status=${status}  score=${usedScore.toFixed(3)}`,
+    `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  score=${usedScore.toFixed(3)}`,
   );
 
   if (flags.explain) {
@@ -1238,7 +1175,6 @@ async function applySingleNodeEdit(context: SingleNodeEditContext): Promise<Edit
 
   const autoLink = computeAutoLinkIntent(flags);
   let accepted = 0;
-  let suggested = 0;
   if (autoLink) {
     const updatedNode: NodeRecord = {
       ...node,
@@ -1248,14 +1184,14 @@ async function applySingleNodeEdit(context: SingleNodeEditContext): Promise<Edit
       tokenCounts,
       embedding,
     };
-    ({ accepted, suggested } = await rescoreNode(updatedNode));
+    ({ accepted } = await rescoreNode(updatedNode));
   }
 
   console.log(`✔ Saved note: ${title}`);
   console.log(`   id: ${node.id}`);
   if (tags.length > 0) console.log(`   tags: ${tags.join(', ')}`);
   if (autoLink) {
-    console.log(`   links after rescore: ${accepted} accepted, ${suggested} pending`);
+    console.log(`   links after rescore: ${accepted} accepted`);
   } else {
     console.log('   links: rescoring skipped (--no-auto-link)');
   }
@@ -1339,7 +1275,6 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
 
     const autoLink = computeAutoLinkIntent(flags);
     let totalAccepted = 0;
-    let totalSuggested = 0;
 
     for (const { segment, content, newOrder } of contentChanges) {
       const combinedText = `${segment.node.title}\n${content}`;
@@ -1367,7 +1302,6 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
         };
         const rescore = await rescoreNode(updatedNode);
         totalAccepted += rescore.accepted;
-        totalSuggested += rescore.suggested;
       }
     }
 
@@ -1426,7 +1360,7 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
       console.log('   segment order updated');
     }
     if (autoLink) {
-      console.log(`   links rescored: ${totalAccepted} accepted, ${totalSuggested} pending`);
+      console.log(`   links rescored: ${totalAccepted} accepted`);
     } else {
       console.log('   links: rescoring skipped (--no-auto-link)');
     }
@@ -1549,7 +1483,7 @@ async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesiz
   console.log(`   id: ${formatId(nodeResult.node.id)}`);
   console.log(`   tags: ${nodeResult.node.tags.join(', ')}`);
   if (autoLink) {
-    console.log(`   edges: ${nodeResult.linking.edgesCreated} accepted, ${nodeResult.linking.suggestionsCreated} suggested`);
+    console.log(`   edges: ${nodeResult.linking.edgesCreated} accepted`);
   }
   console.log('');
 }
@@ -1637,128 +1571,8 @@ async function runNodeImport(flags: NodeImportFlags) {
   console.log('Linking:');
   console.log(`  Parent-child edges: ${result.linking.parentChildEdges}`);
   console.log(`  Sequential edges: ${result.linking.sequentialEdges}`);
-  console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted, ${result.linking.semanticSuggested} suggested`);
+  console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted`);
   console.log('');
-}
-
-async function runNodeRecent(flags: NodeRecentFlags) {
-  const limit =
-    typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 20;
-
-  // Get all nodes and filter out chunks
-  const allNodes = await listNodes();
-  const nodes = filterOutChunks(allNodes);
-
-  // Get all accepted edges for counting
-  const acceptedEdges = await listEdges('accepted');
-
-  // Build edge count map
-  const edgeCountMap = new Map<string, number>();
-  for (const edge of acceptedEdges) {
-    edgeCountMap.set(edge.sourceId, (edgeCountMap.get(edge.sourceId) || 0) + 1);
-    edgeCountMap.set(edge.targetId, (edgeCountMap.get(edge.targetId) || 0) + 1);
-  }
-
-  // Build timeline: each node generates activity records
-  type Activity = {
-    type: 'created' | 'updated';
-    timestamp: string;
-    node: NodeRecord;
-  };
-
-  const activities: Activity[] = [];
-  for (const node of nodes) {
-    // Add created activity unless user specified --updated only
-    if (!flags.updated) {
-      activities.push({ type: 'created', timestamp: node.createdAt, node });
-    }
-
-    // Add updated activity if it's different from created, unless user specified --created only
-    if (!flags.created && node.createdAt !== node.updatedAt) {
-      activities.push({ type: 'updated', timestamp: node.updatedAt, node });
-    }
-  }
-
-  // Apply --since filter if provided
-  let filteredActivities = activities;
-  if (flags.since) {
-    const sinceMs = parseDuration(flags.since);
-    filteredActivities = activities.filter((activity) => {
-      const activityMs = new Date(activity.timestamp).getTime();
-      return activityMs >= sinceMs;
-    });
-  }
-
-  // Sort by timestamp descending (most recent first)
-  filteredActivities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  // Take limit
-  const recentActivities = filteredActivities.slice(0, limit);
-
-  if (recentActivities.length === 0) {
-    console.log('No recent node activity found.');
-    return;
-  }
-
-  // Emit JSON or table output
-  if (flags.json) {
-    console.log(
-      JSON.stringify(
-        recentActivities.map((activity) => ({
-          type: activity.type,
-          timestamp: activity.timestamp,
-          node: {
-            id: activity.node.id,
-            title: activity.node.title,
-            tags: activity.node.tags,
-            bodyPreview: activity.node.body.slice(0, 100),
-            edges: edgeCountMap.get(activity.node.id) || 0,
-          },
-        })),
-        null,
-        2
-      )
-    );
-    return;
-  }
-
-  // Table output
-  console.log(`\nRecent node activity (${recentActivities.length}):\n`);
-
-  for (const activity of recentActivities) {
-    const date = new Date(activity.timestamp).toISOString().replace('T', ' ').slice(0, 19);
-    const typeLabel = activity.type.padEnd(7);
-    const shortId = formatId(activity.node.id);
-    const title = activity.node.title.length > 40 ? activity.node.title.slice(0, 37) + '...' : activity.node.title;
-    const tagsStr = activity.node.tags.length > 0 ? `[${activity.node.tags.slice(0, 3).join(', ')}]` : '';
-    const bodyPreview = activity.node.body.replace(/\n/g, ' ').slice(0, 100);
-    const edgeCount = edgeCountMap.get(activity.node.id) || 0;
-    const edgesLabel = `${edgeCount} edge${edgeCount === 1 ? '' : 's'}`;
-
-    console.log(`${date}  ${typeLabel}  ${shortId}  ${title.padEnd(42)}  ${tagsStr}`);
-    console.log(`${' '.repeat(42)}${bodyPreview}  ${edgesLabel}`);
-    console.log('');
-  }
-}
-
-function parseDuration(duration: string): number {
-  const match = duration.match(/^(\d+)([hdwmy])$/);
-  if (!match) {
-    throw new Error(`Invalid duration format: "${duration}". Use format like: 24h, 7d, 4w, 1m, 1y`);
-  }
-
-  const value = Number(match[1]);
-  const unit = match[2];
-
-  const msPerUnit: Record<string, number> = {
-    h: 3600000,        // 1 hour
-    d: 86400000,       // 1 day
-    w: 604800000,      // 1 week
-    m: 2592000000,     // 30 days
-    y: 31536000000,    // 365 days
-  };
-
-  return Date.now() - (value * msPerUnit[unit]);
 }
 
 function validateChunkStrategy(strategyFlag: string | undefined): 'headers' | 'size' | 'hybrid' {

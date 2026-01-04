@@ -1,4 +1,3 @@
-#!/usr/bin/env rust
 //! forest-embed - Lightweight embedding helper for Forest CLI
 //!
 //! This binary provides semantic embeddings using fastembed, enabling

@@ -130,33 +130,29 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'explore',
       'search',
       'stats',
-      'health',
       'serve',
       'config',
-      'admin.recompute-embeddings',
-      'admin.retag-all',
       'version',
       'node.read',
       'node.edit',
-      'node.refresh',
+      'node.update',
       'node.delete',
-      'node.link',
-      'node.recent',
+      'node.connect',
       'node.import',
       'node.synthesize',
       'node',
-      'edges.propose',
-      'edges.promote',
-      'edges.accept',
-      'edges.reject',
-      'edges.sweep',
       'edges.explain',
-      'edges.undo',
+      'edges.threshold',
       'edges',
       'tags.list',
       'tags.rename',
       'tags.stats',
       'tags',
+      'admin.embeddings',
+      'admin.tags',
+      'admin.health',
+      'admin.doctor',
+      'admin',
       'export.graphviz',
       'export.json',
       'export',
@@ -257,21 +253,9 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
     ex: ['forest stats', 'forest stats --json'],
-    rel: ['health', 'edges.propose'],
+    rel: ['admin.health', 'edges'],
   },
 
-  health: {
-    cmd: 'health',
-    p: 'System health check (DB, embeddings, graph integrity)',
-    in: [],
-    out: ['health_status', 'diagnostics', 'warnings'],
-    fx: 'none',
-    fl: [
-      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
-    ],
-    ex: ['forest health', 'forest health --json'],
-    rel: ['stats', 'admin.recompute-embeddings'],
-  },
 
   serve: {
     cmd: 'serve',
@@ -308,11 +292,22 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest config --reset',
       'forest config embedProvider openai',
     ],
-    rel: ['admin.recompute-embeddings', 'capture'],
+    rel: ['admin.embeddings', 'capture'],
   },
 
-  'admin.recompute-embeddings': {
-    cmd: 'admin.recompute-embeddings',
+  admin: {
+    cmd: 'admin',
+    p: 'System maintenance and diagnostics (base command)',
+    in: [],
+    out: ['help_text'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest admin'],
+    rel: ['admin.health', 'admin.embeddings', 'admin.tags', 'admin.doctor'],
+  },
+
+  'admin.embeddings': {
+    cmd: 'admin.embeddings',
     p: 'Recompute embeddings for all nodes and optionally rescore edges',
     in: [],
     out: ['progress_log', 'updated_records'],
@@ -321,14 +316,14 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'rescore', t: 'bool', d: false, desc: 'rescore all edges after recomputing embeddings' },
     ],
     ex: [
-      'forest admin:recompute-embeddings',
-      'forest admin:recompute-embeddings --rescore',
+      'forest admin embeddings',
+      'forest admin embeddings --rescore',
     ],
-    rel: ['health', 'edges.propose'],
+    rel: ['admin.health', 'edges'],
   },
 
-  'admin.retag-all': {
-    cmd: 'admin.retag-all',
+  'admin.tags': {
+    cmd: 'admin.tags',
     p: 'Regenerate tags for all nodes using current tagging method (LLM or lexical)',
     in: [],
     out: ['progress_log', 'updated_records', 'cost_estimate'],
@@ -336,15 +331,39 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fl: [
       { n: 'dry-run', t: 'bool', d: false, desc: 'preview changes without saving' },
       { n: 'limit', t: 'int', desc: 'only retag first N nodes (for testing)' },
+      { n: 'skip', t: 'int', d: 0, desc: 'skip first N nodes before starting' },
       { n: 'skip-unchanged', t: 'bool', d: false, desc: 'skip nodes where tags would not change' },
-      { n: 'force', t: 'bool', d: false, desc: 'retag even if node has explicit #hashtags' },
     ],
     ex: [
-      'forest admin:retag-all --dry-run',
-      'forest admin:retag-all --limit 10',
-      'forest admin:retag-all --skip-unchanged',
+      'forest admin tags --dry-run',
+      'forest admin tags --limit 10',
+      'forest admin tags --skip-unchanged',
     ],
     rel: ['config', 'capture', 'tags.list'],
+  },
+
+  'admin.health': {
+    cmd: 'admin.health',
+    p: 'System health check (DB, embeddings, graph integrity)',
+    in: [],
+    out: ['health_status', 'diagnostics', 'warnings'],
+    fx: 'none',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: ['forest admin health', 'forest admin health --json'],
+    rel: ['stats', 'admin.embeddings', 'admin.doctor'],
+  },
+
+  'admin.doctor': {
+    cmd: 'admin.doctor',
+    p: 'Guided setup and troubleshooting wizard',
+    in: [],
+    out: ['diagnostics', 'recommendations'],
+    fx: 'none',
+    fl: [],
+    ex: ['forest admin doctor'],
+    rel: ['admin.health', 'config'],
   },
 
   version: {
@@ -376,7 +395,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest node read abc123 --json',
       'forest node read abc123 --raw | glow',
     ],
-    rel: ['explore', 'node.edit', 'node.refresh', 'capture'],
+    rel: ['explore', 'node.edit', 'node.update', 'capture'],
   },
 
   'node.edit': {
@@ -394,11 +413,11 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest node edit abc123 --editor "code --wait"',
       'forest node edit abc123 --no-auto-link',
     ],
-    rel: ['node.read', 'node.refresh', 'capture', 'edges.propose'],
+    rel: ['node.read', 'node.update', 'capture', 'edges'],
   },
 
-  'node.refresh': {
-    cmd: 'node.refresh',
+  'node.update': {
+    cmd: 'node.update',
     p: 'Update fields from flags or files and rescore links',
     in: ['args', 'stdin', 'file'],
     out: ['updated_record', 'rescore_summary'],
@@ -412,11 +431,11 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
     ],
     ex: [
-      'forest node refresh abc123 --title "New Title"',
-      'forest node refresh abc123 --stdin < updated.md',
-      'forest node refresh abc123 --tags focus,ops --no-auto-link',
+      'forest node update abc123 --title "New Title"',
+      'forest node update abc123 --stdin < updated.md',
+      'forest node update abc123 --tags focus,ops --no-auto-link',
     ],
-    rel: ['node.read', 'capture', 'edges.propose'],
+    rel: ['node.read', 'capture', 'edges'],
   },
 
   'node.delete': {
@@ -435,46 +454,22 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     rel: ['node.read', 'edges'],
   },
 
-  'node.link': {
-    cmd: 'node.link',
+  'node.connect': {
+    cmd: 'node.connect',
     p: 'Manually create an edge between two notes',
     in: ['args'],
     out: ['edge_record'],
     fx: 'db:write',
     fl: [
       { n: 'score', t: 'float', desc: 'override computed score' },
-      { n: 'suggest', t: 'bool', d: false, desc: 'create as suggestion (not accepted)' },
       { n: 'explain', t: 'bool', d: false, desc: 'print scoring components' },
     ],
     ex: [
-      'forest node link abc123 def456',
-      'forest node link abc123 def456 --score 0.8',
-      'forest node link abc123 def456 --suggest --explain',
+      'forest node connect abc123 def456',
+      'forest node connect abc123 def456 --score 0.8',
+      'forest node connect abc123 def456 --explain',
     ],
-    rel: ['edges.accept', 'edges.explain', 'node.read'],
-  },
-
-  'node.recent': {
-    cmd: 'node.recent',
-    p: 'Show recent node activity (created/updated)',
-    in: [],
-    out: ['activity_timeline'],
-    fx: 'none',
-    fl: [
-      { n: 'limit', t: 'int', d: 20, desc: 'max activities to show' },
-      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
-      { n: 'created', t: 'bool', d: false, desc: 'show only created activities' },
-      { n: 'updated', t: 'bool', d: false, desc: 'show only updated activities' },
-      { n: 'since', t: 'str', desc: 'show activities since duration (e.g. 24h, 7d)' },
-    ],
-    ex: [
-      'forest node recent',
-      'forest node recent --limit 10',
-      'forest node recent --since 24h',
-      'forest node recent --created',
-      'forest node recent --json',
-    ],
-    rel: ['node.read', 'explore', 'capture'],
+    rel: ['edges.explain', 'node.read'],
   },
 
   node: {
@@ -485,90 +480,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'none',
     fl: [],
     ex: ['forest node'],
-    rel: ['node.read', 'node.edit', 'node.refresh', 'explore'],
-  },
-
-  'edges.propose': {
-    cmd: 'edges.propose',
-    p: 'List suggested links ordered by score',
-    in: [],
-    out: ['ranked_suggestions'],
-    fx: 'none',
-    fl: [
-      { n: 'limit', t: 'int', d: 10, desc: 'max suggestions to show' },
-      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
-      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
-    ],
-    ex: [
-      'forest edges propose',
-      'forest edges propose --limit 20',
-      'forest edges propose --json',
-    ],
-    rel: ['edges.accept', 'edges.promote', 'edges.explain'],
-  },
-
-  'edges.promote': {
-    cmd: 'edges.promote',
-    p: 'Promote suggestions above a score threshold to accepted edges',
-    in: [],
-    out: ['promotion_count'],
-    fx: 'db:write',
-    fl: [
-      { n: 'min-score', t: 'float', d: 0.5, desc: 'minimum score to accept' },
-    ],
-    ex: [
-      'forest edges promote',
-      'forest edges promote --min-score 0.6',
-    ],
-    rel: ['edges.propose', 'edges.accept'],
-  },
-
-  'edges.accept': {
-    cmd: 'edges.accept',
-    p: 'Promote a single suggestion by reference (index/code/ID)',
-    in: ['args'],
-    out: ['acceptance_confirmation'],
-    fx: 'db:write',
-    fl: [],
-    ex: [
-      'forest edges accept 1',
-      'forest edges accept 0L5a',
-      'forest edges accept abc123::def456',
-    ],
-    rel: ['edges.propose', 'edges.undo', 'edges.reject'],
-  },
-
-  'edges.reject': {
-    cmd: 'edges.reject',
-    p: 'Reject and remove a suggestion by reference',
-    in: ['args'],
-    out: ['rejection_confirmation'],
-    fx: 'db:write',
-    fl: [],
-    ex: [
-      'forest edges reject 1',
-      'forest edges reject 0L5a',
-      'forest edges reject abc123::def456',
-    ],
-    rel: ['edges.propose', 'edges.undo', 'edges.sweep'],
-  },
-
-  'edges.sweep': {
-    cmd: 'edges.sweep',
-    p: 'Bulk-reject suggestions by index range or score threshold',
-    in: [],
-    out: ['rejection_count'],
-    fx: 'db:write',
-    fl: [
-      { n: 'range', t: 'str', desc: 'comma-separated indexes or ranges (e.g., 1-10,15)' },
-      { n: 'max-score', t: 'float', desc: 'reject suggestions at or below this score' },
-    ],
-    ex: [
-      'forest edges sweep --range 1-5',
-      'forest edges sweep --max-score 0.3',
-      'forest edges sweep --range 1-10 --max-score 0.25',
-    ],
-    rel: ['edges.reject', 'edges.propose'],
+    rel: ['node.read', 'node.edit', 'node.update', 'explore'],
   },
 
   'edges.explain': {
@@ -584,21 +496,18 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest edges explain 0L5a',
       'forest edges explain abc123::def456 --json',
     ],
-    rel: ['edges.propose', 'node.link'],
+    rel: ['edges.threshold', 'node.connect'],
   },
 
-  'edges.undo': {
-    cmd: 'edges.undo',
-    p: 'Undo the last accept/reject action for a link',
-    in: ['args'],
-    out: ['undo_confirmation'],
-    fx: 'db:write',
+  'edges.threshold': {
+    cmd: 'edges.threshold',
+    p: 'View the current edge acceptance threshold',
+    in: [],
+    out: ['threshold_value'],
+    fx: 'none',
     fl: [],
-    ex: [
-      'forest edges undo 0L5a',
-      'forest edges undo abc123::def456',
-    ],
-    rel: ['edges.accept', 'edges.reject'],
+    ex: ['forest edges threshold'],
+    rel: ['edges', 'edges.explain'],
   },
 
   edges: {
@@ -617,7 +526,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest edges --limit 20',
       'forest edges --json',
     ],
-    rel: ['edges.propose', 'node.link'],
+    rel: ['edges.threshold', 'node.connect'],
   },
 
   'tags.list': {

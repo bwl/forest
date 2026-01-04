@@ -2,33 +2,20 @@ import chalk from 'chalk';
 
 import {
   EdgeRecord,
-  deleteSuggestion,
-  getLastEdgeEventForPair,
   getNodesByIds,
-  insertOrUpdateEdge,
   listEdges,
   listNodes,
-  logEdgeEvent,
-  markEdgeEventUndone,
-  promoteSuggestions,
 } from '../../lib/db';
-import { computeScore, getAutoAcceptThreshold } from '../../lib/scoring';
+import { computeScore, getEdgeThreshold } from '../../lib/scoring';
 
 import {
   describeSuggestion,
-  resolveEdgePairFromRef,
   resolveEdgeReference,
-  resolveSuggestionReference,
 } from '../shared/edges';
 import { formatId, handleError, getEdgePrefix } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import {
-  formatEdgeSuggestionsTable,
-  formatEdgeSuggestionsJSON,
-  formatAcceptedEdgesTable,
-  type EdgeSuggestion,
-} from '../formatters';
+import { formatAcceptedEdgesTable } from '../formatters';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -42,188 +29,16 @@ type EdgesListFlags = {
   tldr?: string;
 };
 
-type EdgesProposeFlags = {
-  limit?: number;
-  longIds?: boolean;
-  json?: boolean;
-  tldr?: string;
-};
-
-type EdgesPromoteFlags = {
-  minScore?: number;
-  tldr?: string;
-};
-
-type EdgesSweepFlags = {
-  range?: string;
-  maxScore?: number;
-  tldr?: string;
-};
-
 type EdgesExplainFlags = {
   json?: boolean;
   tldr?: string;
 };
 
+type EdgesThresholdFlags = {
+  tldr?: string;
+};
+
 export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
-  const proposeCommand = clerc.defineCommand(
-    {
-      name: 'edges propose',
-      description: 'List suggested links ordered by score',
-      flags: {
-        limit: {
-          type: Number,
-          description: 'Limit number of suggestions returned',
-          default: 10,
-        },
-        longIds: {
-          type: Boolean,
-          description: 'Display full identifiers in output',
-        },
-        json: {
-          type: Boolean,
-          description: 'Emit JSON output',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ flags }: { flags: EdgesProposeFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.propose'], getVersion());
-        }
-        await runEdgesPropose(flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(proposeCommand);
-
-  const promoteCommand = clerc.defineCommand(
-    {
-      name: 'edges promote',
-      description: 'Promote suggestions above a score threshold to accepted edges',
-      flags: {
-        minScore: {
-          type: Number,
-          description: 'Minimum score to accept',
-          default: getAutoAcceptThreshold(),
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ flags }: { flags: EdgesPromoteFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.promote'], getVersion());
-        }
-        await runEdgesPromote(flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(promoteCommand);
-
-  const acceptCommand = clerc.defineCommand(
-    {
-      name: 'edges accept',
-      description: 'Promote a single suggestion by progressive ID, short pair, or edge id',
-      parameters: ['<ref>'],
-      flags: {
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
-      try {
-        // Handle TLDR request first
-        if (flags?.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.accept'], getVersion());
-        }
-        await runEdgesAccept(parameters.ref);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(acceptCommand);
-
-  const rejectCommand = clerc.defineCommand(
-    {
-      name: 'edges reject',
-      description: 'Reject and remove a suggestion by progressive ID, short pair, or edge id',
-      parameters: ['<ref>'],
-      flags: {
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
-      try {
-        // Handle TLDR request first
-        if (flags?.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.reject'], getVersion());
-        }
-        await runEdgesReject(parameters.ref);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(rejectCommand);
-
-  const sweepCommand = clerc.defineCommand(
-    {
-      name: 'edges sweep',
-      description: 'Bulk-reject suggestions by index range or score',
-      flags: {
-        range: {
-          type: String,
-          description: 'Comma-separated indexes or ranges (e.g., 1-10,15)',
-        },
-        maxScore: {
-          type: Number,
-          description: 'Reject suggestions at or below this score',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ flags }: { flags: EdgesSweepFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.sweep'], getVersion());
-        }
-        await runEdgesSweep(flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(sweepCommand);
-
   const explainCommand = clerc.defineCommand(
     {
       name: 'edges explain',
@@ -244,7 +59,6 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
           emitTldrAndExit(COMMAND_TLDR['edges.explain'], getVersion());
         }
         await runEdgesExplain(parameters.ref, flags);
@@ -255,11 +69,10 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(explainCommand);
 
-  const undoCommand = clerc.defineCommand(
+  const thresholdCommand = clerc.defineCommand(
     {
-      name: 'edges undo',
-      description: 'Undo the last accept/reject action for a link',
-      parameters: ['<ref>'],
+      name: 'edges threshold',
+      description: 'View the current edge acceptance threshold',
       flags: {
         tldr: {
           type: String,
@@ -267,25 +80,23 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
         },
       },
     },
-    async ({ parameters, flags }: { parameters: { ref?: string }; flags?: { tldr?: string } }) => {
+    async ({ flags }: { flags: EdgesThresholdFlags }) => {
       try {
-        // Handle TLDR request first
-        if (flags?.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['edges.undo'], getVersion());
+        if (flags.tldr !== undefined) {
+          emitTldrAndExit(COMMAND_TLDR['edges.threshold'], getVersion());
         }
-        await runEdgesUndo(parameters.ref);
+        await runEdgesThreshold();
       } catch (error) {
         handleError(error);
       }
     },
   );
-  cli.command(undoCommand);
+  cli.command(thresholdCommand);
 
   const baseCommand = clerc.defineCommand(
     {
       name: 'edges',
-      description: 'View and manage edges between nodes',
+      description: 'View edges between nodes',
       flags: {
         limit: {
           type: Number,
@@ -307,23 +118,18 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       },
       help: {
         notes: [
-          'When called without a subcommand, shows recent accepted edges.',
+          'Shows edges in the graph, sorted by recency.',
           '',
           'Subcommands:',
-          '  propose   List suggested links ordered by score',
-          '  promote   Promote suggestions above a score threshold',
-          '  accept    Accept a single suggestion by reference',
-          '  reject    Remove a single suggestion by reference',
-          '  sweep     Bulk-reject suggestions by range or score',
-          '  explain   Explain scoring components for a link',
-          '  undo      Undo the last accept/reject action',
+          '  explain    Explain scoring components for a link',
+          '  threshold  View the current edge threshold',
           '',
           'Use `forest edges <subcommand> --help` for flag details.',
         ],
         examples: [
-          ['$ forest edges', 'Show most recent accepted edges'],
-          ['$ forest edges propose', 'Show top pending suggestions'],
-          ['$ forest edges accept 0L5a', 'Accept suggestion by progressive ID'],
+          ['$ forest edges', 'Show most recent edges'],
+          ['$ forest edges --limit 20', 'Show 20 most recent edges'],
+          ['$ forest edges explain 0L5a7Knm', 'Explain scoring for an edge'],
         ],
       },
     },
@@ -331,7 +137,6 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
           emitTldrAndExit(COMMAND_TLDR.edges, getVersion());
         }
         await runEdgesList(flags);
@@ -349,7 +154,7 @@ async function runEdgesList(flags: EdgesListFlags) {
   const edges = await listEdges({ status: 'accepted', orderBy: 'updated_at', orderDirection: 'DESC', limit });
 
   if (edges.length === 0) {
-    console.log('No accepted edges found.');
+    console.log('No edges found.');
     return;
   }
 
@@ -358,7 +163,6 @@ async function runEdgesList(flags: EdgesListFlags) {
   const nodes = await getNodesByIds(nodeIds);
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const longIds = Boolean(flags.longIds);
-  // Use limited edge set for prefix calculation (no need to load all 102K edges)
   const allEdges = edges;
 
   if (flags.json) {
@@ -391,223 +195,6 @@ async function runEdgesList(flags: EdgesListFlags) {
   console.log(formatAcceptedEdgesTable(edges, nodeMap, { longIds, allEdges }));
 }
 
-async function runEdgesPropose(flags: EdgesProposeFlags) {
-  const limit =
-    typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
-
-  if (!flags.json) {
-    console.log('Fetching edge suggestions…');
-  }
-
-  const showTimings = process.env.FOREST_EDGES_TIMINGS === '1';
-  const startTimer = (label: string) => {
-    if (showTimings) console.time(label);
-  };
-  const endTimer = (label: string) => {
-    if (showTimings) console.timeEnd(label);
-  };
-
-  // TIMING INSTRUMENTATION - Start (guarded by FOREST_EDGES_TIMINGS)
-  startTimer('⏱️ TOTAL');
-  startTimer('  1. listEdges query');
-  const edges = await listEdges({ status: 'suggested', orderBy: 'score', orderDirection: 'DESC', limit });
-  endTimer('  1. listEdges query');
-
-  if (edges.length === 0) {
-    console.log('No suggestions ready.');
-    return;
-  }
-
-  // Extract unique node IDs from the limited edge set
-  startTimer('  2. getNodesByIds');
-  const nodeIds = [...new Set(edges.flatMap(e => [e.sourceId, e.targetId]))];
-  const nodes = await getNodesByIds(nodeIds);
-  endTimer('  2. getNodesByIds');
-
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const longIds = Boolean(flags.longIds);
-  // Use limited edge set for prefix calculation (no need to load all 102K edges)
-  const allEdges = edges;
-
-  // Build EdgeSuggestion data structure
-  startTimer('  3. build suggestions + computeScore');
-  const suggestions: EdgeSuggestion[] = edges.map(edge => {
-    const sourceNode = nodeMap.get(edge.sourceId);
-    const targetNode = nodeMap.get(edge.targetId);
-
-    if (!sourceNode || !targetNode) {
-      throw new Error(`Missing nodes for edge ${edge.id}`);
-    }
-
-    // Get or compute scoring components
-    const components = (edge.metadata as any)?.components ?? computeScore(sourceNode, targetNode).components;
-
-    return {
-      edge,
-      sourceNode,
-      targetNode,
-      components,
-    };
-  });
-  endTimer('  3. build suggestions + computeScore');
-
-  if (flags.json) {
-    console.log(formatEdgeSuggestionsJSON(suggestions));
-    endTimer('⏱️ TOTAL');
-    return;
-  }
-
-  // Use modular formatter for beautiful table output
-  startTimer('  4. format table');
-  const output = formatEdgeSuggestionsTable(suggestions, {
-    longIds,
-    allEdges,
-    showHeader: true,
-  });
-  endTimer('  4. format table');
-  endTimer('⏱️ TOTAL');
-  console.log(output);
-}
-
-async function runEdgesPromote(flags: EdgesPromoteFlags) {
-  const minScore =
-    typeof flags.minScore === 'number' && !Number.isNaN(flags.minScore)
-      ? flags.minScore
-      : getAutoAcceptThreshold();
-  const changes = await promoteSuggestions(minScore);
-  console.log(`✔ Promoted ${changes} suggestions with score ≥ ${minScore.toFixed(3)}`);
-}
-
-async function runEdgesAccept(ref: string | undefined) {
-  if (!ref) {
-    console.error('✖ Missing required parameter "ref".');
-    process.exitCode = 1;
-    return;
-  }
-
-  const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
-  if (suggestions.length === 0) {
-    console.error('✖ No suggestions available.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const edge = resolveSuggestionReference(ref, suggestions);
-  if (!edge) {
-    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest edges propose`.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const accepted: EdgeRecord = {
-    ...edge,
-    status: 'accepted',
-    updatedAt: new Date().toISOString(),
-  };
-
-  await logEdgeEvent({
-    edgeId: edge.id,
-    sourceId: edge.sourceId,
-    targetId: edge.targetId,
-    prevStatus: edge.status,
-    nextStatus: 'accepted',
-    payload: { score: edge.score, metadata: edge.metadata },
-  });
-  await insertOrUpdateEdge(accepted);
-  console.log(`✔ Accepted suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`);
-}
-
-async function runEdgesReject(ref: string | undefined) {
-  if (!ref) {
-    console.error('✖ Missing required parameter "ref".');
-    process.exitCode = 1;
-    return;
-  }
-
-  const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
-  if (suggestions.length === 0) {
-    console.error('✖ No suggestions available.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const edge = resolveSuggestionReference(ref, suggestions);
-  if (!edge) {
-    console.error('✖ No suggestion matched that reference. Use progressive ID from `forest edges propose`.');
-    process.exitCode = 1;
-    return;
-  }
-
-  await logEdgeEvent({
-    edgeId: edge.id,
-    sourceId: edge.sourceId,
-    targetId: edge.targetId,
-    prevStatus: edge.status,
-    nextStatus: 'deleted',
-    payload: { score: edge.score, metadata: edge.metadata },
-  });
-  const removed = await deleteSuggestion(edge.id);
-  if (removed === 0) {
-    console.error('✖ Suggestion could not be removed.');
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`✔ Removed suggestion ${formatId(edge.sourceId)}::${formatId(edge.targetId)}`);
-}
-
-async function runEdgesSweep(flags: EdgesSweepFlags) {
-  const suggestions = (await listEdges('suggested')).sort((a, b) => b.score - a.score);
-  if (suggestions.length === 0) {
-    console.log('No suggestions ready.');
-    return;
-  }
-
-  const targets = new Set<number>();
-
-  if (typeof flags.range === 'string' && flags.range.trim().length > 0) {
-    for (const part of flags.range.split(',')) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
-      const range = trimmed.match(/^(\d+)-(\d+)$/);
-      if (range) {
-        const start = Number(range[1]);
-        const end = Number(range[2]);
-        if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
-          for (let i = start; i <= end; i += 1) targets.add(i);
-        }
-      } else if (/^\d+$/.test(trimmed)) {
-        targets.add(Number(trimmed));
-      }
-    }
-  }
-
-  if (typeof flags.maxScore === 'number' && Number.isFinite(flags.maxScore)) {
-    const threshold = flags.maxScore;
-    const eps = 1e-9;
-    suggestions.forEach((edge, idx) => {
-      if (edge.score <= threshold + eps) targets.add(idx + 1);
-    });
-  }
-
-  const toDelete = [...targets]
-    .filter((n) => Number.isInteger(n) && n >= 1 && n <= suggestions.length)
-    .sort((a, b) => a - b);
-
-  if (toDelete.length === 0) {
-    console.log('No matches to remove.');
-    return;
-  }
-
-  let removed = 0;
-  for (const index of toDelete) {
-    const edge = suggestions[index - 1];
-    const changes = await deleteSuggestion(edge.id);
-    if (changes > 0) removed += 1;
-  }
-
-  console.log(`✔ Removed ${removed} suggestions`);
-}
-
 async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
@@ -634,6 +221,7 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
 
   const components = (match.metadata as any)?.components ?? computeScore(a, b).components;
   const code = getEdgePrefix(match.sourceId, match.targetId, edges);
+  const threshold = getEdgeThreshold();
 
   if (flags.json) {
     console.log(
@@ -644,7 +232,7 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
           targetId: match.targetId,
           code,
           score: match.score,
-          status: match.status,
+          threshold,
           components,
         },
         null,
@@ -655,9 +243,7 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
   }
 
   console.log(
-    `${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  status=${match.status}  score=${match.score.toFixed(
-      3,
-    )}`,
+    `${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  score=${match.score.toFixed(3)}  threshold=${threshold}`,
   );
   console.log('components:');
   for (const [key, value] of Object.entries(components)) {
@@ -666,63 +252,10 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
   }
 }
 
-async function runEdgesUndo(ref: string | undefined) {
-  if (!ref) {
-    console.error('✖ Missing required parameter "ref".');
-    process.exitCode = 1;
-    return;
-  }
-
-  const pair = await resolveEdgePairFromRef(ref);
-  if (!pair) {
-    console.error('✖ Could not resolve edge reference.');
-    process.exitCode = 1;
-    return;
-  }
-  const [sourceId, targetId] = pair;
-  const event = await getLastEdgeEventForPair(sourceId, targetId);
-  if (!event) {
-    console.error('✖ No prior action found to undo.');
-    process.exitCode = 1;
-    return;
-  }
-
-  if (event.nextStatus === 'accepted') {
-    const edge: EdgeRecord = {
-      id: `${sourceId}::${targetId}`,
-      sourceId,
-      targetId,
-      score: (event.payload?.score as number) ?? 0,
-      status: 'suggested',
-      edgeType: 'semantic',
-      metadata: event.payload?.metadata ?? null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await insertOrUpdateEdge(edge);
-    await markEdgeEventUndone(event.id);
-    console.log(`✔ Undid accept: restored suggestion ${formatId(sourceId)}::${formatId(targetId)}`);
-    return;
-  }
-
-  if (event.nextStatus === 'deleted') {
-    const edge: EdgeRecord = {
-      id: `${sourceId}::${targetId}`,
-      sourceId,
-      targetId,
-      score: (event.payload?.score as number) ?? 0,
-      status: 'suggested',
-      edgeType: 'semantic',
-      metadata: event.payload?.metadata ?? null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await insertOrUpdateEdge(edge);
-    await markEdgeEventUndone(event.id);
-    console.log(`✔ Undid reject: restored suggestion ${formatId(sourceId)}::${formatId(targetId)}`);
-    return;
-  }
-
-  console.error('✖ Nothing to undo for this edge.');
-  process.exitCode = 1;
+async function runEdgesThreshold() {
+  const threshold = getEdgeThreshold();
+  console.log(`Current edge threshold: ${threshold}`);
+  console.log('');
+  console.log('Edges are created when the similarity score >= threshold.');
+  console.log('Set via FOREST_EDGE_THRESHOLD environment variable.');
 }

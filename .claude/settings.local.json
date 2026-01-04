@@ -15,7 +15,12 @@
       "WebFetch(domain:docs.rs)",
       "Bash(bun install)",
       "Bash(bun run build:*)",
-      "WebFetch(domain:docs.brew.sh)"
+      "WebFetch(domain:docs.brew.sh)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:schema.tauri.app)",
+      "Bash(bun run dev:*)",
+      "Bash(wc:*)",
+      "WebFetch(domain:openrouter.ai)"
     ],
     "deny": [],
     "ask": []

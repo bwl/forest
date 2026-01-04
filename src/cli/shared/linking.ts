@@ -15,7 +15,6 @@ type RescoreOptions = {
 
 export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRecord[]) {
   let accepted = 0;
-  let suggested = 0;
   for (const other of existing) {
     const { score, components } = computeScore(newNode, other);
     const status = classifyScore(score);
@@ -35,15 +34,13 @@ export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRec
       updatedAt: new Date().toISOString(),
     };
     await insertOrUpdateEdge(edge);
-    if (status === 'accepted') accepted += 1;
-    if (status === 'suggested') suggested += 1;
+    accepted += 1;
   }
-  return { accepted, suggested };
+  return { accepted };
 }
 
 export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}) {
   let accepted = 0;
-  let suggested = 0;
 
   const all = options.allNodes ?? (await listNodes());
   for (const other of all) {
@@ -67,9 +64,8 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
       updatedAt: new Date().toISOString(),
     };
     await insertOrUpdateEdge(edge);
-    if (status === 'accepted') accepted += 1;
-    if (status === 'suggested') suggested += 1;
+    accepted += 1;
   }
 
-  return { accepted, suggested };
+  return { accepted };
 }

@@ -3,13 +3,8 @@ import { EdgeRecord, listEdges, getNodeById } from '../../lib/db';
 import {
   listEdgesCore,
   createEdgeCore,
-  acceptEdgeCore,
-  rejectEdgeCore,
   deleteEdgeCore,
   explainEdgeCore,
-  promoteEdgesCore,
-  sweepEdgesCore,
-  undoEdgeActionCore,
 } from '../../core/edges';
 import {
   createSuccessResponse,
@@ -24,8 +19,8 @@ import { formatId } from '../../cli/shared/utils';
 import { resolveEdgeReference } from '../../cli/shared/edges';
 
 // Helper to resolve edge by reference (short pair, full ID, or progressive code)
-async function resolveEdgeByRef(ref: string, status?: 'accepted' | 'suggested' | 'all'): Promise<EdgeRecord> {
-  const edges = await listEdges(status ?? 'all');
+async function resolveEdgeByRef(ref: string): Promise<EdgeRecord> {
+  const edges = await listEdges('accepted');
   const edge = resolveEdgeReference(ref, edges);
 
   if (!edge) {
@@ -41,7 +36,6 @@ export const edgesRoutes = new Elysia({ prefix: '/api/v1' })
     '/edges',
     async ({ query, set }) => {
       try {
-        const status = (query.status as 'accepted' | 'suggested' | 'all') ?? 'accepted';
         const nodeId = query.nodeId as string | undefined;
         const minScore = query.minScore ? parseFloat(query.minScore as string) : undefined;
         const maxScore = query.maxScore ? parseFloat(query.maxScore as string) : undefined;
@@ -51,7 +45,6 @@ export const edgesRoutes = new Elysia({ prefix: '/api/v1' })
         validatePaginationParams(limit, offset);
 
         const result = await listEdgesCore({
-          status,
           nodeId,
           minScore,
           maxScore,
@@ -160,82 +153,6 @@ export const edgesRoutes = new Elysia({ prefix: '/api/v1' })
     },
   )
 
-  // PUT /edges/:ref/accept - Accept suggested edge
-  .put(
-    '/edges/:ref/accept',
-    async ({ params, set }) => {
-      try {
-        const edge = await resolveEdgeByRef(params.ref, 'suggested');
-        const result = await acceptEdgeCore(edge);
-
-        return createSuccessResponse({
-          edge: {
-            id: result.edge.id,
-            ref: `${formatId(result.edge.sourceId).slice(0, 4)}${formatId(result.edge.targetId).slice(0, 4)}`.toUpperCase(),
-            sourceId: result.edge.sourceId,
-            targetId: result.edge.targetId,
-            score: result.edge.score,
-            status: result.edge.status,
-            updatedAt: result.edge.updatedAt,
-          },
-          event: result.event,
-        });
-      } catch (error) {
-        if (error instanceof ForestError) {
-          set.status = error.getStatusCode();
-        } else {
-          set.status = 500;
-        }
-        return createErrorResponse(error);
-      }
-    },
-    {
-      detail: {
-        tags: ['Edges'],
-        summary: 'Accept edge',
-        description: 'Accept a suggested edge',
-      },
-    },
-  )
-
-  // PUT /edges/:ref/reject - Reject suggested edge
-  .put(
-    '/edges/:ref/reject',
-    async ({ params, set }) => {
-      try {
-        const edge = await resolveEdgeByRef(params.ref, 'suggested');
-        const result = await rejectEdgeCore(edge);
-
-        return createSuccessResponse({
-          edge: {
-            id: result.edge.id,
-            ref: `${formatId(result.edge.sourceId).slice(0, 4)}${formatId(result.edge.targetId).slice(0, 4)}`.toUpperCase(),
-            sourceId: result.edge.sourceId,
-            targetId: result.edge.targetId,
-            score: result.edge.score,
-            status: 'rejected',
-            updatedAt: result.edge.updatedAt,
-          },
-          event: result.event,
-        });
-      } catch (error) {
-        if (error instanceof ForestError) {
-          set.status = error.getStatusCode();
-        } else {
-          set.status = 500;
-        }
-        return createErrorResponse(error);
-      }
-    },
-    {
-      detail: {
-        tags: ['Edges'],
-        summary: 'Reject edge',
-        description: 'Reject a suggested edge',
-      },
-    },
-  )
-
   // DELETE /edges/:ref - Delete edge
   .delete(
     '/edges/:ref',
@@ -291,108 +208,6 @@ export const edgesRoutes = new Elysia({ prefix: '/api/v1' })
         tags: ['Edges'],
         summary: 'Explain edge',
         description: 'Get detailed scoring breakdown for an edge',
-      },
-    },
-  )
-
-  // POST /edges/promote - Bulk accept edges
-  .post(
-    '/edges/promote',
-    async ({ body, set }) => {
-      try {
-        const data = body as any;
-
-        if (typeof data.minScore !== 'number') {
-          throw new ValidationError('minScore is required and must be a number');
-        }
-
-        const result = await promoteEdgesCore({
-          minScore: data.minScore,
-          limit: data.limit,
-        });
-
-        return createSuccessResponse({
-          promoted: result.promoted,
-        });
-      } catch (error) {
-        if (error instanceof ForestError) {
-          set.status = error.getStatusCode();
-        } else {
-          set.status = 500;
-        }
-        return createErrorResponse(error);
-      }
-    },
-    {
-      detail: {
-        tags: ['Edges'],
-        summary: 'Promote edges',
-        description: 'Bulk accept edges above a score threshold',
-      },
-    },
-  )
-
-  // POST /edges/sweep - Bulk reject edges
-  .post(
-    '/edges/sweep',
-    async ({ body, set }) => {
-      try {
-        const data = body as any;
-
-        const result = await sweepEdgesCore({
-          minScore: data.minScore,
-          maxScore: data.maxScore,
-          limit: data.limit,
-        });
-
-        return createSuccessResponse({
-          swept: result.swept,
-        });
-      } catch (error) {
-        if (error instanceof ForestError) {
-          set.status = error.getStatusCode();
-        } else {
-          set.status = 500;
-        }
-        return createErrorResponse(error);
-      }
-    },
-    {
-      detail: {
-        tags: ['Edges'],
-        summary: 'Sweep edges',
-        description: 'Bulk reject edges within a score range',
-      },
-    },
-  )
-
-  // POST /edges/:ref/undo - Undo accept/reject
-  .post(
-    '/edges/:ref/undo',
-    async ({ params, set }) => {
-      try {
-        // For undo, we need to find the edge even if it was deleted
-        // So we search in edge_events instead
-        const edge = await resolveEdgeByRef(params.ref);
-        const result = await undoEdgeActionCore(edge);
-
-        return createSuccessResponse({
-          edge: result.edge,
-        });
-      } catch (error) {
-        if (error instanceof ForestError) {
-          set.status = error.getStatusCode();
-        } else {
-          set.status = 500;
-        }
-        return createErrorResponse(error);
-      }
-    },
-    {
-      detail: {
-        tags: ['Edges'],
-        summary: 'Undo edge action',
-        description: 'Undo the last accept/reject action on an edge',
       },
     },
   );

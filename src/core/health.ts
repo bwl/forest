@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getEmbeddingProvider, embeddingsEnabled, findForestEmbedBinary } from '../lib/embeddings';
+import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled, findForestEmbedBinary } from '../lib/embeddings';
 
 const DEFAULT_DB_PATH = 'forest.db';
 
@@ -12,8 +12,9 @@ export type HealthCheck = {
 
 export type HealthReport = {
   database: HealthCheck & { path?: string; sizeBytes?: number };
-  embeddingProvider: HealthCheck & { provider?: string };
+  embeddingProvider: HealthCheck & { provider?: string; model?: string };
   openaiKey?: HealthCheck;
+  openrouterKey?: HealthCheck;
   forestEmbed?: HealthCheck & { binaryPath?: string };
 };
 
@@ -28,6 +29,10 @@ export async function getHealthReport(): Promise<HealthReport> {
     report.openaiKey = checkOpenAIKey();
   }
 
+  if (provider === 'openrouter') {
+    report.openrouterKey = checkOpenRouterKey();
+  }
+
   if (provider === 'local') {
     report.forestEmbed = await checkForestEmbed();
   }
@@ -40,6 +45,7 @@ export function isHealthy(report: HealthReport): boolean {
     report.database.status === 'ok',
     report.embeddingProvider.status === 'ok',
     !report.openaiKey || report.openaiKey.status === 'ok',
+    !report.openrouterKey || report.openrouterKey.status === 'ok',
     !report.forestEmbed || report.forestEmbed.status === 'ok',
   ].every(Boolean);
 }
@@ -98,8 +104,9 @@ async function checkDatabase(): Promise<HealthCheck & { path?: string; sizeBytes
   }
 }
 
-async function checkEmbeddingProvider(): Promise<HealthCheck & { provider?: string }> {
+async function checkEmbeddingProvider(): Promise<HealthCheck & { provider?: string; model?: string }> {
   const provider = getEmbeddingProvider();
+  const model = getEmbeddingModel();
   const enabled = embeddingsEnabled();
 
   if (!enabled) {
@@ -118,19 +125,30 @@ async function checkEmbeddingProvider(): Promise<HealthCheck & { provider?: stri
     };
   }
 
+  if (provider === 'openrouter') {
+    return {
+      status: 'ok',
+      message: `Using OpenRouter embeddings (${model})`,
+      provider,
+      model,
+    };
+  }
+
   if (provider === 'openai') {
     return {
       status: 'ok',
-      message: 'Using OpenAI embeddings',
+      message: `Using OpenAI embeddings (${model})`,
       provider,
+      model,
     };
   }
 
   if (provider === 'local') {
     return {
       status: 'ok',
-      message: 'Using local transformer embeddings',
+      message: 'Using local transformer embeddings (all-MiniLM-L6-v2)',
       provider,
+      model: 'all-MiniLM-L6-v2',
     };
   }
 
@@ -168,6 +186,36 @@ function checkOpenAIKey(): HealthCheck {
   return {
     status: 'ok',
     message: 'OPENAI_API_KEY is set and format looks valid',
+  };
+}
+
+function checkOpenRouterKey(): HealthCheck {
+  const apiKey = process.env.FOREST_OR_KEY;
+
+  if (!apiKey) {
+    return {
+      status: 'error',
+      message: 'FOREST_OR_KEY is not set (required for OpenRouter provider)',
+    };
+  }
+
+  if (apiKey.trim().length === 0) {
+    return {
+      status: 'error',
+      message: 'FOREST_OR_KEY is empty',
+    };
+  }
+
+  if (!apiKey.startsWith('sk-or-')) {
+    return {
+      status: 'warning',
+      message: 'FOREST_OR_KEY format looks unusual (expected to start with "sk-or-")',
+    };
+  }
+
+  return {
+    status: 'ok',
+    message: 'FOREST_OR_KEY is set and format looks valid',
   };
 }
 

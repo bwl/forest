@@ -199,7 +199,6 @@ async function runExportGraphviz(flags: ExportGraphvizFlags) {
   const { payload } = await buildNeighborhoodPayload(center.id, depth, limit);
   const nodes = await listNodes();
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const suggestions = flags.includeSuggestions ? await fetchSuggestionsForNode(center.id) : [];
 
   const lines: string[] = [];
   lines.push('graph forest {');
@@ -221,15 +220,7 @@ async function runExportGraphviz(flags: ExportGraphvizFlags) {
     lines.push(`  "${edge.source}" -- "${edge.target}" [label="${edge.score.toFixed(3)}"];`);
   });
 
-  for (const suggestion of suggestions) {
-    ensureNodeDefined(center.id);
-    ensureNodeDefined(suggestion.otherId);
-    lines.push(
-      `  "${center.id}" -- "${suggestion.otherId}" [style=dotted, color=gray50, label="${suggestion.score.toFixed(
-        3,
-      )}"];`,
-    );
-  }
+  // Suggestions no longer exist - edges are auto-created above threshold
 
   lines.push('}');
 

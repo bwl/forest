@@ -3,17 +3,33 @@ import path from 'path';
 import fs from 'fs';
 
 // Provider selection via env:
-//  - FOREST_EMBED_PROVIDER=mock | openai | none
+//  - FOREST_EMBED_PROVIDER=openrouter | openai | local | mock | none
+//  - OPENROUTER_API_KEY required if provider=openrouter
 //  - OPENAI_API_KEY required if provider=openai
+//  - FOREST_EMBED_MODEL to override default model per provider
 
-export type EmbeddingProvider = 'mock' | 'openai' | 'local' | 'none';
+export type EmbeddingProvider = 'openrouter' | 'openai' | 'local' | 'mock' | 'none';
 
 export function getEmbeddingProvider(): EmbeddingProvider {
   const raw = (process.env.FOREST_EMBED_PROVIDER || 'local').toLowerCase();
+  if (raw === 'openrouter') return 'openrouter';
   if (raw === 'openai') return 'openai';
   if (raw === 'local' || raw === 'transformers' || raw === 'xenova') return 'local';
   if (raw === 'none' || raw === 'off' || raw === 'disabled') return 'none';
   return 'mock';
+}
+
+export function getEmbeddingModel(): string {
+  const provider = getEmbeddingProvider();
+  const envModel = process.env.FOREST_EMBED_MODEL;
+  if (envModel) return envModel;
+
+  // Provider defaults
+  switch (provider) {
+    case 'openrouter': return 'qwen/qwen3-embedding-8b';
+    case 'openai': return 'text-embedding-3-small';
+    default: return '';
+  }
 }
 
 export function embeddingsEnabled(): boolean {
@@ -23,6 +39,7 @@ export function embeddingsEnabled(): boolean {
 export async function embedNoteText(text: string): Promise<number[] | undefined> {
   const provider = getEmbeddingProvider();
   if (provider === 'none') return undefined;
+  if (provider === 'openrouter') return embedOpenRouter(text);
   if (provider === 'openai') return embedOpenAI(text);
   if (provider === 'local') return embedLocal(text);
   return embedMock(text);
@@ -57,11 +74,37 @@ async function embedMock(text: string): Promise<number[]> {
   return Array.from(vec);
 }
 
+// OpenRouter provider - unified API for multiple embedding models
+// Default: qwen/qwen3-embedding-8b (33K context, $0.01/M tokens)
+async function embedOpenRouter(text: string): Promise<number[]> {
+  const apiKey = process.env.FOREST_OR_KEY;
+  if (!apiKey) throw new Error('FOREST_OR_KEY is required for openrouter embedding provider');
+  const model = getEmbeddingModel();
+  const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/forest-cli',
+      'X-Title': 'Forest CLI',
+    },
+    body: JSON.stringify({ model, input: text }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenRouter embeddings error: ${res.status} ${res.statusText} - ${body}`);
+  }
+  const json: any = await res.json();
+  const arr: number[] = json.data?.[0]?.embedding;
+  if (!Array.isArray(arr)) throw new Error('Invalid embedding response from OpenRouter');
+  return arr;
+}
+
 // OpenAI provider using text-embedding-3-small (1536-d)
 async function embedOpenAI(text: string): Promise<number[]> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY is required for openai embedding provider');
-  const model = process.env.FOREST_EMBED_MODEL || 'text-embedding-3-small';
+  const model = getEmbeddingModel();
   const res = await fetch('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
@@ -138,8 +181,8 @@ export async function findForestEmbedBinary(): Promise<string> {
     path.join(path.dirname(process.execPath), 'forest-embed-x86_64-unknown-linux-gnu'),
     path.join(path.dirname(process.execPath), 'forest-embed-x86_64-pc-windows-msvc.exe'),
 
-    // 2. Development build location
-    path.join(__dirname, '..', '..', 'forest-desktop', 'src-tauri', 'target', 'release', 'forest-embed'),
+    // 2. Development build location (standalone crate)
+    path.join(__dirname, '..', '..', 'forest-embed', 'target', 'release', 'forest-embed'),
 
     // 3. In PATH
     'forest-embed',
@@ -156,5 +199,5 @@ export async function findForestEmbedBinary(): Promise<string> {
     }
   }
 
-  throw new Error('forest-embed binary not found. Please build it with: cd forest-desktop/src-tauri && cargo build --release --bin forest-embed');
+  throw new Error('forest-embed binary not found. Please build it with: cd forest-embed && cargo build --release');
 }

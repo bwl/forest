@@ -44,13 +44,10 @@ export type GetNodeOptions = {
 export type GetNodeResult = {
   node: NodeRecord;
   edges: EdgeRecord[];
-  suggestions: EdgeRecord[];
   edgesTotal: number;
-  suggestionsTotal: number;
 };
 
 export type GetNodeEdgesOptions = {
-  status?: 'accepted' | 'suggested' | 'all';
   limit?: number;
   offset?: number;
 };
@@ -71,7 +68,6 @@ export type CreateNodeResult = {
   node: NodeRecord;
   linking: {
     edgesCreated: number;
-    suggestionsCreated: number;
   };
 };
 
@@ -86,7 +82,6 @@ export type UpdateNodeResult = {
   node: NodeRecord;
   linking: {
     edgesCreated: number;
-    suggestionsCreated: number;
   };
 };
 
@@ -176,37 +171,23 @@ export async function getNodeCore(
   }
 
   let edges: EdgeRecord[] = [];
-  let suggestions: EdgeRecord[] = [];
   let edgesTotal = 0;
-  let suggestionsTotal = 0;
 
-  if (options.includeEdges !== false || options.includeSuggestions !== false) {
-    const allEdges = await listEdges('all');
+  if (options.includeEdges !== false) {
+    const allEdges = await listEdges('accepted');
     const nodeEdges = allEdges.filter(
       (edge) => edge.sourceId === nodeId || edge.targetId === nodeId,
     );
 
-    if (options.includeEdges !== false) {
-      const acceptedEdges = nodeEdges.filter((edge) => edge.status === 'accepted');
-      edgesTotal = acceptedEdges.length;
-      const edgesLimit = options.edgesLimit ?? 50;
-      edges = acceptedEdges.slice(0, edgesLimit);
-    }
-
-    if (options.includeSuggestions !== false) {
-      const suggestedEdges = nodeEdges.filter((edge) => edge.status === 'suggested');
-      suggestionsTotal = suggestedEdges.length;
-      const suggestionsLimit = options.suggestionsLimit ?? 20;
-      suggestions = suggestedEdges.slice(0, suggestionsLimit);
-    }
+    edgesTotal = nodeEdges.length;
+    const edgesLimit = options.edgesLimit ?? 50;
+    edges = nodeEdges.slice(0, edgesLimit);
   }
 
   return {
     node,
     edges,
-    suggestions,
     edgesTotal,
-    suggestionsTotal,
   };
 }
 
@@ -227,8 +208,7 @@ export async function getNodeEdgesCore(
     throw new Error(`Node with ID '${nodeId}' not found`);
   }
 
-  const status = options.status ?? 'accepted';
-  const allEdges = await listEdges(status === 'all' ? 'all' : status);
+  const allEdges = await listEdges('accepted');
   const nodeEdges = allEdges.filter(
     (edge) => edge.sourceId === nodeId || edge.targetId === nodeId,
   );
@@ -296,14 +276,12 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
 
   // Auto-link if requested
   let edgesCreated = 0;
-  let suggestionsCreated = 0;
 
   if (data.autoLink !== false) {
     const existing = await dbListNodes();
     const others = existing.filter((n) => n.id !== node.id);
     const linkResult = await linkAgainstExisting(node, others);
     edgesCreated = linkResult.accepted;
-    suggestionsCreated = linkResult.suggested;
   }
 
   // Emit event
@@ -318,7 +296,6 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
     node,
     linking: {
       edgesCreated,
-      suggestionsCreated,
     },
   };
 }
@@ -371,12 +348,10 @@ export async function updateNodeCore(
 
   // Auto-link if requested
   let edgesCreated = 0;
-  let suggestionsCreated = 0;
 
   if (data.autoLink !== false) {
     const linkResult = await rescoreNode(node);
     edgesCreated = linkResult.accepted;
-    suggestionsCreated = linkResult.suggested;
   }
 
   // Emit event with changes
@@ -398,7 +373,6 @@ export async function updateNodeCore(
     node,
     linking: {
       edgesCreated,
-      suggestionsCreated,
     },
   };
 }

@@ -20,24 +20,13 @@ export const statsRoutes = new Elysia({ prefix: '/api/v1' })
             })),
           },
           edges: {
-            accepted: stats.counts.edges,
-            suggested: stats.counts.suggested,
-            total: stats.counts.edges + stats.counts.suggested,
+            total: stats.counts.edges,
           },
           tags: {
             total: stats.tags.reduce((sum, tag) => sum + tag.count, 0),
             topTags: stats.tags.map((tag) => ({
               name: tag.tag,
               count: tag.count,
-            })),
-          },
-          suggestions: {
-            highScoreCount: stats.topSuggestions.length,
-            topSuggestions: stats.topSuggestions.map((suggestion) => ({
-              ref: suggestion.code,
-              sourceId: suggestion.sourceId,
-              targetId: suggestion.targetId,
-              score: suggestion.score,
             })),
           },
           highDegreeNodes: stats.highDegree.map((node) => ({
@@ -48,7 +37,7 @@ export const statsRoutes = new Elysia({ prefix: '/api/v1' })
         },
         meta: {
           timestamp: new Date().toISOString(),
-          version: '0.3.0',
+          version: '0.4.0',
         },
       };
     },

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Unified development script for Forest CLI and Desktop
+# Unified development script for Forest CLI
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DESKTOP_DIR="$SCRIPT_DIR/forest-desktop"
+EMBED_DIR="$SCRIPT_DIR/forest-embed"
 
 # Colors for output
 RED='\033[0;31m'
@@ -35,20 +35,19 @@ Forest Development Script
 Usage: ./dev.sh [COMMAND] [TARGET]
 
 Commands:
-  dev [cli|desktop|server]  Run in development mode
-  build [cli|desktop|all]   Build projects
-  test [cli|desktop|all]    Run tests
-  lint [cli|desktop|all]    Run type checking
-  clean [cli|desktop|all]   Clean build artifacts
-  install                   Install dependencies for both projects
+  dev [cli|server]        Run in development mode
+  build [cli|embed|all]   Build projects
+  test [cli|embed|all]    Run tests
+  lint [cli|embed|all]    Run type checking
+  clean [cli|embed|all]   Clean build artifacts
+  install                 Install dependencies
 
 Examples:
-  ./dev.sh dev cli          Run CLI in dev mode
-  ./dev.sh dev desktop      Run desktop app in dev mode
-  ./dev.sh dev server       Run API server
-  ./dev.sh build all        Build both CLI and desktop
-  ./dev.sh test all         Run all tests
-  ./dev.sh lint all         Type-check both projects
+  ./dev.sh dev cli        Run CLI in dev mode
+  ./dev.sh dev server     Run API server
+  ./dev.sh build all      Build CLI and forest-embed
+  ./dev.sh test cli       Run CLI tests
+  ./dev.sh lint cli       Type-check CLI
 
 EOF
 }
@@ -59,11 +58,6 @@ cmd_install() {
     cd "$SCRIPT_DIR"
     bun install
     success "CLI dependencies installed"
-
-    info "Installing desktop dependencies..."
-    cd "$DESKTOP_DIR"
-    bun install
-    success "Desktop dependencies installed"
 
     info "Checking Rust toolchain..."
     if ! command -v cargo &> /dev/null; then
@@ -86,14 +80,9 @@ cmd_dev() {
             cd "$SCRIPT_DIR"
             bun run dev:server
             ;;
-        desktop)
-            info "Running desktop app in dev mode..."
-            cd "$DESKTOP_DIR"
-            bun run tauri dev
-            ;;
         *)
             error "Unknown target: $1"
-            echo "Valid targets: cli, server, desktop"
+            echo "Valid targets: cli, server"
             exit 1
             ;;
     esac
@@ -115,41 +104,20 @@ cmd_build() {
             bun run build
             success "CLI built successfully"
             ;;
-        desktop)
-            info "Building desktop app..."
-            cd "$DESKTOP_DIR"
-
-            # Check if dependencies are installed
-            if [ ! -d "node_modules" ]; then
-                info "Dependencies not found, installing..."
-                bun install
-            fi
-
-            # Build Rust backend first
-            info "Building Rust backend..."
-            cd "$DESKTOP_DIR/src-tauri"
+        embed)
+            info "Building forest-embed..."
+            cd "$EMBED_DIR"
             cargo build --release
-            success "Rust backend built"
-
-            # Build forest-embed helper
-            info "Building forest-embed helper..."
-            cargo build --release --bin forest-embed
-            success "forest-embed built"
-
-            # Build frontend and create Tauri bundle
-            info "Building Tauri bundle..."
-            cd "$DESKTOP_DIR"
-            bun run release
-            success "Desktop app built successfully"
+            success "forest-embed built at $EMBED_DIR/target/release/forest-embed"
             ;;
         all)
             cmd_build cli
-            cmd_build desktop
+            cmd_build embed
             success "All projects built successfully"
             ;;
         *)
             error "Unknown target: $1"
-            echo "Valid targets: cli, desktop, all"
+            echo "Valid targets: cli, embed, all"
             exit 1
             ;;
     esac
@@ -168,20 +136,20 @@ cmd_test() {
                 warn "No tests configured for CLI"
             fi
             ;;
-        desktop)
-            info "Running desktop Rust tests..."
-            cd "$DESKTOP_DIR/src-tauri"
+        embed)
+            info "Running forest-embed tests..."
+            cd "$EMBED_DIR"
             cargo test
-            success "Desktop tests passed"
+            success "forest-embed tests passed"
             ;;
         all)
             cmd_test cli
-            cmd_test desktop
+            cmd_test embed
             success "All tests passed"
             ;;
         *)
             error "Unknown target: $1"
-            echo "Valid targets: cli, desktop, all"
+            echo "Valid targets: cli, embed, all"
             exit 1
             ;;
     esac
@@ -196,25 +164,20 @@ cmd_lint() {
             bun run lint
             success "CLI type-check passed"
             ;;
-        desktop)
-            info "Type-checking desktop frontend..."
-            cd "$DESKTOP_DIR"
-            bunx tsc --noEmit
-            success "Desktop frontend type-check passed"
-
-            info "Checking desktop Rust code..."
-            cd "$DESKTOP_DIR/src-tauri"
+        embed)
+            info "Checking forest-embed Rust code..."
+            cd "$EMBED_DIR"
             cargo check
-            success "Desktop Rust check passed"
+            success "forest-embed check passed"
             ;;
         all)
             cmd_lint cli
-            cmd_lint desktop
+            cmd_lint embed
             success "All type-checks passed"
             ;;
         *)
             error "Unknown target: $1"
-            echo "Valid targets: cli, desktop, all"
+            echo "Valid targets: cli, embed, all"
             exit 1
             ;;
     esac
@@ -229,21 +192,20 @@ cmd_clean() {
             rm -rf dist/
             success "CLI cleaned"
             ;;
-        desktop)
-            info "Cleaning desktop build artifacts..."
-            cd "$DESKTOP_DIR"
-            rm -rf dist/
-            rm -rf src-tauri/target/
-            success "Desktop cleaned"
+        embed)
+            info "Cleaning forest-embed build artifacts..."
+            cd "$EMBED_DIR"
+            rm -rf target/
+            success "forest-embed cleaned"
             ;;
         all)
             cmd_clean cli
-            cmd_clean desktop
+            cmd_clean embed
             success "All build artifacts cleaned"
             ;;
         *)
             error "Unknown target: $1"
-            echo "Valid targets: cli, desktop, all"
+            echo "Valid targets: cli, embed, all"
             exit 1
             ;;
     esac

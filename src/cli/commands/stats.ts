@@ -62,8 +62,7 @@ async function runStats(flags: StatsFlags) {
 
   console.log('forest stats');
   console.log(`Nodes: ${stats.counts.nodes}`);
-  console.log(`Accepted edges: ${stats.counts.edges}`);
-  console.log(`Suggested edges: ${stats.counts.suggested}`);
+  console.log(`Edges: ${stats.counts.edges}`);
   console.log('');
   console.log(`Degree — avg ${stats.degree.avg.toFixed(3)}  median ${stats.degree.median}  p90 ${stats.degree.p90}  max ${stats.degree.max}`);
   console.log('');
@@ -98,17 +97,5 @@ async function runStats(flags: StatsFlags) {
     console.log('Top tag pairs:');
     stats.tagPairs.forEach((entry) => console.log(`  ${String(entry.count).padStart(3, ' ')}  ${entry.pair.replace('::', ' + ')}`));
     console.log('');
-  }
-
-  if (stats.topSuggestions.length > 0) {
-    console.log('Top suggestions:');
-    stats.topSuggestions.forEach((suggestion) => {
-      const indexLabel = String(suggestion.index).padStart(2, ' ');
-      const coloredCode = colorize.edgeCode(suggestion.code);
-      const coloredScore = colorize.aggregateScore(suggestion.score);
-      console.log(
-        `  ${indexLabel}. [${coloredCode}] ${suggestion.shortId}  score=${coloredScore}  ${suggestion.sourceTitle ?? formatId(suggestion.sourceId)} ↔ ${suggestion.targetTitle ?? formatId(suggestion.targetId)}`,
-      );
-    });
   }
 }

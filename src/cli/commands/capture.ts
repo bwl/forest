@@ -3,12 +3,11 @@ import { randomUUID } from 'crypto';
 import { NodeRecord, insertNode, listNodes } from '../../lib/db';
 import { pickTitle, tokenize, extractTags } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { getAutoAcceptThreshold, getSuggestionThreshold } from '../../lib/scoring';
+import { getEdgeThreshold } from '../../lib/scoring';
 
 import { handleError, resolveBodyInput } from '../shared/utils';
 import {
   SelectionResult,
-  fetchSuggestionsForNode,
   printExplore,
 } from '../shared/explore';
 import { linkAgainstExisting } from '../shared/linking';
@@ -142,7 +141,7 @@ async function runCapture(flags: CaptureFlags) {
 
   const autoLink = computeAutoLinkIntent(flags);
 
-  let summary = { accepted: 0, suggested: 0 };
+  let summary = { accepted: 0 };
   if (autoLink) {
     summary = await linkAgainstExisting(newNode, existingNodes);
   }
@@ -175,8 +174,7 @@ function resolveTags(tagsOption: string | undefined, combined: string, tokenCoun
   return extractTags(combined, tokenCounts);
 }
 
-async function emitJsonSummary(node: NodeRecord, summary: { accepted: number; suggested: number }, autoLinked: boolean) {
-  const suggestions = await fetchSuggestionsForNode(node.id);
+async function emitJsonSummary(node: NodeRecord, summary: { accepted: number }, autoLinked: boolean) {
   console.log(
     JSON.stringify(
       {
@@ -191,18 +189,8 @@ async function emitJsonSummary(node: NodeRecord, summary: { accepted: number; su
         links: {
           autoLinked,
           accepted: summary.accepted,
-          suggested: summary.suggested,
-          thresholds: {
-            auto: getAutoAcceptThreshold(),
-            suggest: getSuggestionThreshold(),
-          },
+          threshold: getEdgeThreshold(),
         },
-        suggestions: suggestions.map((s) => ({
-          id: s.id,
-          score: s.score,
-          otherId: s.otherId,
-          otherTitle: s.otherTitle,
-        })),
       },
       null,
       2,
@@ -213,7 +201,7 @@ async function emitJsonSummary(node: NodeRecord, summary: { accepted: number; su
 function emitTextSummary(
   node: NodeRecord,
   tags: string[],
-  summary: { accepted: number; suggested: number },
+  summary: { accepted: number },
   autoLinked: boolean,
 ) {
   console.log(`${colorize.success('✔')} Captured idea: ${node.title}`);
@@ -224,9 +212,7 @@ function emitTextSummary(
   }
   if (autoLinked) {
     console.log(
-      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} accepted, ${colorize.aggregateScore(summary.suggested / 10)} pending (thresholds auto=${getAutoAcceptThreshold().toFixed(
-        3,
-      )}, suggest=${getSuggestionThreshold().toFixed(3)})`,
+      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} edges (threshold=${getEdgeThreshold().toFixed(3)})`,
     );
   } else {
     console.log(`   ${colorize.label('links:')} auto-linking skipped (--no-auto-link)`);

@@ -5,17 +5,12 @@ import {
   getRecentNodes,
   getHighDegreeNodes,
   getDegreeStats,
-  listEdges,
-  NodeRecord,
-  getNodeById,
 } from '../lib/db';
-import { describeSuggestion } from '../cli/shared/edges';
 
 export type StatsResult = {
   counts: {
     nodes: number;
     edges: number;
-    suggested: number;
   };
   degree: {
     avg: number;
@@ -36,17 +31,6 @@ export type StatsResult = {
     title: string;
     degree: number;
   }>;
-  topSuggestions: Array<{
-    index: number;
-    id: string;
-    shortId: string;
-    code: string;
-    score: number;
-    sourceId: string;
-    targetId: string;
-    sourceTitle: string | null;
-    targetTitle: string | null;
-  }>;
 };
 
 export type StatsOptions = {
@@ -61,7 +45,6 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   // Optimized: Use COUNT queries instead of loading all nodes
   const nodeCount = await countNodes();
   const edgeCount = await countEdges('accepted');
-  const suggestedCount = await countEdges('suggested');
 
   // Optimized: Compute degree stats directly in SQL
   const degreeStats = await getDegreeStats();
@@ -100,31 +83,10 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
   // Optimized: Use SQL to get high degree nodes
   const highDegree = await getHighDegreeNodes(5);
 
-  // Get top suggestions
-  const suggestions = (await listEdges('suggested'))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  // Build nodeMap only for suggestions (much smaller set)
-  const nodeMap = new Map<string, NodeRecord>();
-  for (const edge of suggestions) {
-    if (!nodeMap.has(edge.sourceId)) {
-      const node = await getNodeById(edge.sourceId);
-      if (node) nodeMap.set(edge.sourceId, node);
-    }
-    if (!nodeMap.has(edge.targetId)) {
-      const node = await getNodeById(edge.targetId);
-      if (node) nodeMap.set(edge.targetId, node);
-    }
-  }
-  // For stats, we only need suggestions for edge prefix calculation
-  const allEdges = suggestions;
-
   return {
     counts: {
       nodes: nodeCount,
       edges: edgeCount,
-      suggested: suggestedCount,
     },
     degree: {
       avg: degreeStats.avg,
@@ -145,19 +107,5 @@ export async function getStats(options: StatsOptions = {}): Promise<StatsResult>
       title: entry.title,
       degree: entry.degree,
     })),
-    topSuggestions: suggestions.map((edge, index) => {
-      const desc = describeSuggestion(edge, nodeMap, { longIds: true, allEdges });
-      return {
-        index: index + 1,
-        id: edge.id,
-        shortId: desc.shortId,
-        code: desc.code,
-        score: edge.score,
-        sourceId: edge.sourceId,
-        targetId: edge.targetId,
-        sourceTitle: desc.sourceTitle,
-        targetTitle: desc.targetTitle,
-      };
-    }),
   };
 }

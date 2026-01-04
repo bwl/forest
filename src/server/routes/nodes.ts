@@ -88,24 +88,12 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
         const node = await resolveNodeId(params.id);
         const includeBody = parseQueryBoolean(query.includeBody as string | undefined, true);
         const includeEdges = parseQueryBoolean(query.includeEdges as string | undefined, true);
-        const includeSuggestions = parseQueryBoolean(
-          query.includeSuggestions as string | undefined,
-          true,
-        );
         const edgesLimit = parseQueryInt(query.edgesLimit as string | undefined, 50, 1, 200);
-        const suggestionsLimit = parseQueryInt(
-          query.suggestionsLimit as string | undefined,
-          20,
-          1,
-          100,
-        );
 
         const result = await getNodeCore(node.id, {
           includeBody,
           includeEdges,
-          includeSuggestions,
           edgesLimit,
-          suggestionsLimit,
         });
 
         // Format edges with connected nodes
@@ -118,21 +106,10 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
           }),
         );
 
-        const formattedSuggestions = await Promise.all(
-          result.suggestions.map(async (edge) => {
-            const connectedNodeId =
-              edge.sourceId === node.id ? edge.targetId : edge.sourceId;
-            const connectedNode = await getNodeById(connectedNodeId);
-            return formatEdgeForResponse(edge, connectedNode, { includeRef: true });
-          }),
-        );
-
         return createSuccessResponse({
           node: formatNodeForDetail(result.node, { includeBody }),
           edges: formattedEdges,
-          suggestions: formattedSuggestions,
           edgesTotal: result.edgesTotal,
-          suggestionsTotal: result.suggestionsTotal,
         });
       } catch (error) {
         if (error instanceof ForestError) {
@@ -185,14 +162,12 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
     async ({ params, query, set }) => {
       try {
         const node = await resolveNodeId(params.id);
-        const status = (query.status as 'accepted' | 'suggested' | 'all') ?? 'accepted';
         const limit = parseQueryInt(query.limit as string | undefined, 50, 1, 200);
         const offset = parseQueryInt(query.offset as string | undefined, 0, 0);
 
         validatePaginationParams(limit, offset);
 
         const result = await getNodeEdgesCore(node.id, {
-          status,
           limit,
           offset,
         });
