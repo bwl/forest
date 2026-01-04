@@ -87,6 +87,7 @@ type NodeDeleteFlags = {
 
 type NodeLinkFlags = {
   score?: number;
+  type?: string;
   suggest?: boolean;
   explain?: boolean;
   tldr?: string;
@@ -284,6 +285,10 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         score: {
           type: Number,
           description: 'Override score value',
+        },
+        type: {
+          type: String,
+          description: 'Edge type (e.g., manual, inspired-by, implemented-as, documents)',
         },
         explain: {
           type: Boolean,
@@ -870,21 +875,23 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
 
   const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
 
+  const edgeType = flags.type || 'manual';
   const edge: EdgeRecord = {
     id: edgeIdentifier(sourceId, targetId),
     sourceId,
     targetId,
     score: usedScore,
     status: 'accepted',
-    edgeType: 'manual',
+    edgeType,
     metadata: { components },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   await insertOrUpdateEdge(edge);
+  const typeLabel = edgeType !== 'manual' ? `  type=${edgeType}` : '';
   console.log(
-    `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  score=${usedScore.toFixed(3)}`,
+    `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  score=${usedScore.toFixed(3)}${typeLabel}`,
   );
 
   if (flags.explain) {

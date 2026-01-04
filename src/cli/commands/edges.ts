@@ -180,6 +180,7 @@ async function runEdgesList(flags: EdgesListFlags) {
             sourceTitle: desc.sourceTitle,
             targetTitle: desc.targetTitle,
             score: edge.score,
+            edgeType: edge.edgeType,
             metadata: edge.metadata,
             updatedAt: edge.updatedAt,
           };

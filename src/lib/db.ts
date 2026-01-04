@@ -21,7 +21,9 @@ export type NodeRecord = {
 };
 
 export type EdgeStatus = 'accepted';
-export type EdgeType = 'semantic' | 'parent-child' | 'sequential' | 'manual';
+// Well-known edge types: semantic, parent-child, sequential, manual
+// Custom types allowed: inspired-by, implemented-as, documents, depends-on, etc.
+export type EdgeType = string;
 
 export type EdgeRecord = {
   id: string;
