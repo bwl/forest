@@ -17,10 +17,9 @@ export interface MarkdownOutputConfig {
 }
 
 export interface ForestConfig {
-  embedProvider?: 'local' | 'openai' | 'none';
+  embedProvider?: 'openrouter' | 'openai' | 'mock' | 'none';
   openaiApiKey?: string;
-  openaiModel?: 'text-embedding-3-small' | 'text-embedding-3-large';
-  localModel?: string;
+  openrouterApiKey?: string;
   taggingMethod?: 'lexical' | 'llm' | 'none';
   llmTaggerModel?: 'gpt-5-nano' | 'gpt-4o-mini' | 'gpt-4o';
   colorScheme?: ColorSchemeName;
@@ -64,13 +63,9 @@ export function loadConfig(): ForestConfig {
     : undefined;
 
   const config: ForestConfig = {
-    embedProvider: fileConfig.embedProvider || getEmbedProviderFromEnv(),
+    embedProvider: normalizeEmbedProvider(fileConfig.embedProvider) || getEmbedProviderFromEnv(),
     openaiApiKey: fileConfig.openaiApiKey || process.env.OPENAI_API_KEY,
-    openaiModel:
-      fileConfig.openaiModel ||
-      (process.env.FOREST_EMBED_MODEL as any) ||
-      'text-embedding-3-small',
-    localModel: fileConfig.localModel || process.env.FOREST_EMBED_LOCAL_MODEL,
+    openrouterApiKey: fileConfig.openrouterApiKey || process.env.FOREST_OR_KEY,
     taggingMethod: fileConfig.taggingMethod || 'lexical', // Default to lexical (backward compat)
     llmTaggerModel: fileConfig.llmTaggerModel || 'gpt-5-nano',
     colorScheme: schemeFromFile || schemeFromEnv || DEFAULT_COLOR_SCHEME,
@@ -106,13 +101,30 @@ export function saveConfig(config: ForestConfig): void {
 }
 
 /**
- * Get embedding provider from env var (legacy support)
+ * Get embedding provider from env var
  */
 function getEmbedProviderFromEnv(): ForestConfig['embedProvider'] {
-  const raw = (process.env.FOREST_EMBED_PROVIDER || 'local').toLowerCase();
+  const raw = process.env.FOREST_EMBED_PROVIDER?.toLowerCase();
+  if (!raw) return 'openrouter'; // Default
+  if (raw === 'openrouter') return 'openrouter';
   if (raw === 'openai') return 'openai';
+  if (raw === 'mock') return 'mock';
   if (raw === 'none' || raw === 'off' || raw === 'disabled') return 'none';
-  return 'local';
+  return 'openrouter';
+}
+
+/**
+ * Normalize embed provider from config file (handles legacy 'local' value)
+ */
+function normalizeEmbedProvider(value: string | undefined): ForestConfig['embedProvider'] | undefined {
+  if (!value) return undefined;
+  const raw = value.toLowerCase();
+  if (raw === 'openrouter') return 'openrouter';
+  if (raw === 'openai') return 'openai';
+  if (raw === 'mock') return 'mock';
+  if (raw === 'none' || raw === 'off' || raw === 'disabled') return 'none';
+  // Legacy 'local' or unknown values fall through to undefined (use default)
+  return undefined;
 }
 
 /**

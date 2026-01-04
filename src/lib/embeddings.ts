@@ -1,7 +1,12 @@
 import { NodeRecord } from './db';
+import { loadConfig } from './config';
 
-// Provider selection via env:
-//  - FOREST_EMBED_PROVIDER=openrouter | openai | mock | none
+// Provider selection priority:
+//  1. FOREST_EMBED_PROVIDER env var (explicit override)
+//  2. ~/.forestrc embedProvider setting
+//  3. Default: 'openrouter'
+//
+// API keys:
 //  - FOREST_OR_KEY required if provider=openrouter
 //  - OPENAI_API_KEY required if provider=openai
 //  - FOREST_EMBED_MODEL to override default model per provider
@@ -9,11 +14,24 @@ import { NodeRecord } from './db';
 export type EmbeddingProvider = 'openrouter' | 'openai' | 'mock' | 'none';
 
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const raw = (process.env.FOREST_EMBED_PROVIDER || 'openrouter').toLowerCase();
-  if (raw === 'openrouter') return 'openrouter';
-  if (raw === 'openai') return 'openai';
-  if (raw === 'none' || raw === 'off' || raw === 'disabled') return 'none';
-  return 'mock';
+  // Env var takes priority (explicit override)
+  const envVar = process.env.FOREST_EMBED_PROVIDER?.toLowerCase();
+  if (envVar) {
+    if (envVar === 'openrouter') return 'openrouter';
+    if (envVar === 'openai') return 'openai';
+    if (envVar === 'mock') return 'mock';
+    if (envVar === 'none' || envVar === 'off' || envVar === 'disabled') return 'none';
+    return 'mock'; // Unknown value falls back to mock
+  }
+
+  // Fall back to config file
+  const config = loadConfig();
+  if (config.embedProvider) {
+    return config.embedProvider;
+  }
+
+  // Default
+  return 'openrouter';
 }
 
 export function getEmbeddingModel(): string {

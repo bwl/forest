@@ -72,22 +72,17 @@ async function runConfigWizard() {
       options: [
         {
           value: 'embedProvider',
-          label: `Embedding Provider (${config.embedProvider || 'local'})`,
+          label: `Embedding Provider (${config.embedProvider || 'openrouter'})`,
+        },
+        {
+          value: 'openrouterApiKey',
+          label: `OpenRouter API Key (${config.openrouterApiKey ? 'set' : 'not set'})`,
+          hint: 'Required when Embedding Provider = OpenRouter',
         },
         {
           value: 'openaiApiKey',
           label: `OpenAI API Key (${config.openaiApiKey ? 'set' : 'not set'})`,
-          hint: 'Only used when Embedding Provider = OpenAI',
-        },
-        {
-          value: 'openaiModel',
-          label: `OpenAI Model (${config.openaiModel || 'text-embedding-3-small'})`,
-          hint: 'Only used when Embedding Provider = OpenAI',
-        },
-        {
-          value: 'localModel',
-          label: `Local Model (${config.localModel || 'built-in'})`,
-          hint: 'Only used when Embedding Provider = Local',
+          hint: 'Required when Embedding Provider = OpenAI',
         },
         {
           value: 'taggingMethod',
@@ -119,9 +114,8 @@ async function runConfigWizard() {
       ],
     })) as
       | 'embedProvider'
+      | 'openrouterApiKey'
       | 'openaiApiKey'
-      | 'openaiModel'
-      | 'localModel'
       | 'taggingMethod'
       | 'llmTaggerModel'
       | 'writeModel'
@@ -146,14 +140,19 @@ async function runConfigWizard() {
           message: 'Embedding Provider',
           options: [
             {
-              value: 'local',
-              label: 'Local',
-              hint: 'Offline, free, good quality (all-MiniLM-L6-v2)',
+              value: 'openrouter',
+              label: 'OpenRouter (Recommended)',
+              hint: 'Qwen3 8B, 4096-dim, 33K context, $0.01/M tokens',
             },
             {
               value: 'openai',
               label: 'OpenAI',
-              hint: 'Best quality, requires API key ($0.02/1M tokens)',
+              hint: 'text-embedding-3-small, 1536-dim, $0.02/1M tokens',
+            },
+            {
+              value: 'mock',
+              label: 'Mock',
+              hint: 'Deterministic hashing, for testing (no API calls)',
             },
             {
               value: 'none',
@@ -161,11 +160,47 @@ async function runConfigWizard() {
               hint: 'Disable embeddings (lexical scoring only)',
             },
           ],
-          initialValue: config.embedProvider || 'local',
+          initialValue: config.embedProvider || 'openrouter',
         })) as ForestConfig['embedProvider'];
 
         if (!clack.isCancel(provider)) {
           config.embedProvider = provider;
+        }
+        break;
+      }
+
+      case 'openrouterApiKey': {
+        let shouldPrompt = true;
+        if (config.openrouterApiKey) {
+          const nextAction = (await clack.select({
+            message: 'OpenRouter API key',
+            options: [
+              { value: 'update', label: 'Update key' },
+              { value: 'clear', label: 'Clear key' },
+              { value: 'back', label: 'Back' },
+            ],
+          })) as 'update' | 'clear' | 'back';
+
+          if (clack.isCancel(nextAction) || nextAction === 'back') {
+            shouldPrompt = false;
+          } else if (nextAction === 'clear') {
+            delete config.openrouterApiKey;
+            shouldPrompt = false;
+          }
+        }
+
+        if (shouldPrompt) {
+          const apiKey = (await clack.password({
+            message: 'OpenRouter API Key',
+            validate: (value) => {
+              if (!value || value.length === 0) return 'API key is required';
+              if (!value.startsWith('sk-or-')) return 'API key should start with sk-or-';
+            },
+          })) as string;
+
+          if (!clack.isCancel(apiKey)) {
+            config.openrouterApiKey = apiKey;
+          }
         }
         break;
       }
@@ -202,74 +237,6 @@ async function runConfigWizard() {
           if (!clack.isCancel(apiKey)) {
             config.openaiApiKey = apiKey;
           }
-        }
-        break;
-      }
-
-      case 'openaiModel': {
-        const model = (await clack.select({
-          message: 'OpenAI Model',
-          options: [
-            {
-              value: 'text-embedding-3-small',
-              label: 'text-embedding-3-small',
-              hint: '1536-dim, $0.02/1M tokens (recommended)',
-            },
-            {
-              value: 'text-embedding-3-large',
-              label: 'text-embedding-3-large',
-              hint: '3072-dim, $0.13/1M tokens (maximum quality)',
-            },
-          ],
-          initialValue: config.openaiModel || 'text-embedding-3-small',
-        })) as ForestConfig['openaiModel'];
-
-        if (!clack.isCancel(model)) {
-          config.openaiModel = model;
-        }
-        break;
-      }
-
-      case 'localModel': {
-        const hasCustomModel = !!config.localModel;
-        const options: Array<{ value: 'update' | 'clear' | 'back'; label: string }> = [
-          {
-            value: 'update',
-            label: hasCustomModel ? 'Update custom model' : 'Set custom model',
-          },
-        ];
-
-        if (hasCustomModel) {
-          options.push({ value: 'clear', label: 'Use built-in default' });
-        }
-
-        options.push({ value: 'back', label: 'Back' });
-
-        const nextAction = (await clack.select({
-          message: 'Local embedding model',
-          options,
-        })) as 'update' | 'clear' | 'back';
-
-        if (clack.isCancel(nextAction) || nextAction === 'back') {
-          break;
-        }
-
-        if (nextAction === 'clear') {
-          delete config.localModel;
-          break;
-        }
-
-        const localModel = (await clack.text({
-          message: 'Local model name',
-          placeholder: 'Xenova/all-MiniLM-L6-v2',
-          initialValue: config.localModel,
-          validate: (value) => {
-            if (!value || value.length === 0) return 'Model name is required';
-          },
-        })) as string;
-
-        if (!clack.isCancel(localModel)) {
-          config.localModel = localModel;
         }
         break;
       }
