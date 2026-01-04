@@ -26,7 +26,7 @@ export type ImportOptions = {
   documentTitle?: string;    // Override auto-detected title
   tags?: string[];            // Override auto-detected tags
   chunkStrategy?: 'headers' | 'size' | 'hybrid';
-  maxTokens?: number;         // Default: 2000
+  maxTokens?: number;         // Default: 9999 (env: FOREST_CHUNK_MAX_TOKENS)
   overlap?: number;           // Default: 200 characters
   autoLink?: boolean;         // Default: true
   createParent?: boolean;     // Create root/index node (default: true)
@@ -61,9 +61,10 @@ export async function importDocumentCore(
   // Extract document title
   const documentTitle = options.documentTitle || extractDocumentTitle(documentText);
 
-  // Set defaults
+  // Set defaults (FOREST_CHUNK_MAX_TOKENS env var overrides default)
   const chunkStrategy = options.chunkStrategy || 'headers';
-  const maxTokens = options.maxTokens || 2000;
+  const defaultMaxTokens = parseInt(process.env.FOREST_CHUNK_MAX_TOKENS || '9999', 10);
+  const maxTokens = options.maxTokens || defaultMaxTokens;
   const overlap = options.overlap || 200;
   const autoLink = options.autoLink !== false;
   const createParent = options.createParent !== false;
