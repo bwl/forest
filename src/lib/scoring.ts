@@ -1,108 +1,176 @@
 import { NodeRecord } from './db';
-import { tokensFromTitle } from './text';
 
-export type ScoreComponents = {
-  tagOverlap: number;
-  tokenSimilarity: number;
-  titleSimilarity: number;
-  embeddingSimilarity: number;
-  penalty: number;
+const DEFAULT_SEMANTIC_THRESHOLD = 0.5;
+const DEFAULT_TAG_THRESHOLD = 0.3;
+
+export type TagIdfContext = {
+  totalNodes: number;
+  maxIdf: number;
+  idfByTag: Map<string, number>;
 };
 
-const DEFAULT_EDGE_THRESHOLD = 0.5;
+export type TagScoreComponents = {
+  jaccard: number;
+  avgIdf: number;
+  maxIdf: number;
+  normalizedIdf: number;
+  bridgeScore?: number;
+  bridgeTags?: string;
+};
 
-export function getEdgeThreshold(): number {
-  return process.env.FOREST_EDGE_THRESHOLD ? Number(process.env.FOREST_EDGE_THRESHOLD) : DEFAULT_EDGE_THRESHOLD;
+export type TagScoreResult = {
+  score: number | null;
+  sharedTags: string[];
+  components: TagScoreComponents;
+};
+
+export type EdgeScoreResult = {
+  score: number;
+  semanticScore: number | null;
+  tagScore: number | null;
+  sharedTags: string[];
+  components: {
+    tag: TagScoreComponents;
+  };
+};
+
+export function getSemanticThreshold(): number {
+  if (!process.env.FOREST_SEMANTIC_THRESHOLD) {
+    return DEFAULT_SEMANTIC_THRESHOLD;
+  }
+  const parsed = Number(process.env.FOREST_SEMANTIC_THRESHOLD);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_SEMANTIC_THRESHOLD;
 }
 
-export function computeScore(a: NodeRecord, b: NodeRecord): { score: number; components: ScoreComponents } {
-  const tagOverlap = jaccard(a.tags, b.tags);
-  const tokenSimilarity = cosineSimilarity(a.tokenCounts, b.tokenCounts);
-  const titleSimilarity = titleCosine(a.title, b.title);
-  const embeddingSimilarityRaw = cosineEmbeddings(a.embedding, b.embedding);
-  // Mild nonlinearity to reduce mid-range crowding; preserve high similarities
-  const embeddingSimilarity = Math.pow(Math.max(0, embeddingSimilarityRaw), 1.25);
-
-  // Hybrid score: increase embedding influence to reduce lexical tie clusters
-  let score =
-    0.25 * tokenSimilarity +
-    0.55 * embeddingSimilarity +
-    0.15 * tagOverlap +
-    0.05 * titleSimilarity;
-  // Penalize pairs with zero lexical/title overlap to avoid purely semantic weak links flooding suggestions
-  const penalty = (tagOverlap === 0 && titleSimilarity === 0) ? 0.9 : 1.0;
-  score *= penalty;
-  return { score, components: { tagOverlap, tokenSimilarity, titleSimilarity, embeddingSimilarity, penalty } };
+export function getTagThreshold(): number {
+  if (!process.env.FOREST_TAG_THRESHOLD) {
+    return DEFAULT_TAG_THRESHOLD;
+  }
+  const parsed = Number(process.env.FOREST_TAG_THRESHOLD);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_TAG_THRESHOLD;
 }
 
-export function classifyScore(score: number): 'accepted' | 'discard' {
-  if (score >= getEdgeThreshold()) return 'accepted';
-  return 'discard';
+export function buildTagIdfContext(nodes: Array<Pick<NodeRecord, 'tags'>>): TagIdfContext {
+  const totalNodes = nodes.length;
+  const docFreqByTag = new Map<string, number>();
+
+  for (const node of nodes) {
+    const uniqueTags = new Set(node.tags.map((tag) => tag.toLowerCase()));
+    for (const tag of uniqueTags) {
+      docFreqByTag.set(tag, (docFreqByTag.get(tag) ?? 0) + 1);
+    }
+  }
+
+  const idfByTag = new Map<string, number>();
+  for (const [tag, docFreq] of docFreqByTag.entries()) {
+    const idf = totalNodes > 0 && docFreq > 0 ? Math.log(totalNodes / docFreq) : 0;
+    idfByTag.set(tag, idf);
+  }
+
+  const maxIdf = totalNodes > 0 ? Math.log(totalNodes / 1) : 0;
+  return { totalNodes, maxIdf, idfByTag };
 }
 
-export function normalizeEdgePair(a: string, b: string): [string, string] {
-  return a < b ? [a, b] : [b, a];
+export function computeSemanticScore(a: NodeRecord, b: NodeRecord): number | null {
+  if (!a.embedding || !b.embedding || a.embedding.length === 0 || b.embedding.length === 0) return null;
+  const raw = cosineEmbeddings(a.embedding, b.embedding);
+  return Math.max(0, Math.min(1, raw));
 }
 
-function jaccard(a: string[], b: string[]): number {
-  if (a.length === 0 && b.length === 0) return 0;
-  const setA = new Set(a);
-  const setB = new Set(b);
-  let intersection = 0;
+export function computeTagScore(aTags: string[], bTags: string[], context: TagIdfContext): TagScoreResult {
+  const setA = new Set(aTags.map((tag) => tag.toLowerCase()));
+  const setB = new Set(bTags.map((tag) => tag.toLowerCase()));
+
+  if (setA.size === 0 && setB.size === 0) {
+    return {
+      score: null,
+      sharedTags: [],
+      components: { jaccard: 0, avgIdf: 0, maxIdf: context.maxIdf, normalizedIdf: 0 },
+    };
+  }
+
+  const sharedTags: string[] = [];
   let union = setA.size;
-  for (const token of setB) {
-    if (setA.has(token)) {
-      intersection += 1;
+  for (const tag of setB) {
+    if (setA.has(tag)) {
+      sharedTags.push(tag);
     } else {
       union += 1;
     }
   }
-  return union === 0 ? 0 : intersection / union;
+
+  sharedTags.sort((x, y) => x.localeCompare(y));
+
+  const intersection = sharedTags.length;
+  const jaccard = union === 0 ? 0 : intersection / union;
+
+  if (intersection === 0) {
+    return {
+      score: null,
+      sharedTags: [],
+      components: { jaccard, avgIdf: 0, maxIdf: context.maxIdf, normalizedIdf: 0 },
+    };
+  }
+
+  let idfSum = 0;
+  let bridgeIdfSum = 0;
+  const bridgeTags: string[] = [];
+  for (const tag of sharedTags) {
+    const idf = context.idfByTag.get(tag) ?? 0;
+    idfSum += idf;
+    if (tag.startsWith('link/')) {
+      bridgeTags.push(tag);
+      bridgeIdfSum += idf;
+    }
+  }
+  const avgIdf = idfSum / sharedTags.length;
+  const normalizedIdf = context.maxIdf > 0 ? avgIdf / context.maxIdf : 0;
+
+  const baseScore = Math.max(0, Math.min(1, jaccard * normalizedIdf));
+  const bridgeScore = (() => {
+    if (bridgeTags.length === 0) return null;
+    if (context.maxIdf <= 0) return 0;
+    const avgBridgeIdf = bridgeIdfSum / bridgeTags.length;
+    return Math.max(0, Math.min(1, avgBridgeIdf / context.maxIdf));
+  })();
+  const score = bridgeScore === null ? baseScore : Math.max(baseScore, bridgeScore);
+
+  return {
+    score,
+    sharedTags,
+    components: {
+      jaccard,
+      avgIdf,
+      maxIdf: context.maxIdf,
+      normalizedIdf,
+      ...(bridgeScore === null ? {} : { bridgeScore, bridgeTags: bridgeTags.join(', ') }),
+    },
+  };
 }
 
-// Down-weight generic technical terms that over-connect unrelated domains
-const TOKEN_DOWNWEIGHT: Record<string, number> = {
-  flow: 0.4,
-  flows: 0.4,
-  stream: 0.4,
-  streams: 0.4,
-  pipe: 0.4,
-  pipes: 0.4,
-  branch: 0.4,
-  branches: 0.4,
-  terminal: 0.4,
-  terminals: 0.4,
-};
+export function computeEdgeScore(a: NodeRecord, b: NodeRecord, context: TagIdfContext): EdgeScoreResult {
+  const semanticScore = computeSemanticScore(a, b);
+  const tagResult = computeTagScore(a.tags, b.tags, context);
+  const tagScore = tagResult.score;
+  const score = Math.max(semanticScore ?? 0, tagScore ?? 0);
 
-function cosineSimilarity(a: Record<string, number>, b: Record<string, number>): number {
-  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
-  if (keys.size === 0) return 0;
-  let dot = 0;
-  let magA = 0;
-  let magB = 0;
-  for (const key of keys) {
-    const w = TOKEN_DOWNWEIGHT[key] ?? 1;
-    const valA = (a[key] ?? 0) * w;
-    const valB = (b[key] ?? 0) * w;
-    dot += valA * valB;
-    magA += valA * valA;
-    magB += valB * valB;
-  }
-  if (magA === 0 || magB === 0) return 0;
-  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+  return {
+    score,
+    semanticScore,
+    tagScore,
+    sharedTags: tagResult.sharedTags,
+    components: { tag: tagResult.components },
+  };
 }
 
-function titleCosine(a: string, b: string): number {
-  const tokensA = tokensFromTitle(a);
-  const tokensB = tokensFromTitle(b);
-  if (tokensA.length === 0 || tokensB.length === 0) return 0;
-  const setB = new Set(tokensB);
-  let overlap = 0;
-  for (const token of tokensA) {
-    if (setB.has(token)) overlap += 1;
-  }
-  const denom = Math.sqrt(tokensA.length * tokensB.length);
-  return denom === 0 ? 0 : overlap / denom;
+export function classifyEdgeScores(semanticScore: number | null, tagScore: number | null): 'accepted' | 'discard' {
+  const semanticOk = semanticScore !== null && semanticScore >= getSemanticThreshold();
+  const tagOk = tagScore !== null && tagScore >= getTagThreshold();
+  return semanticOk || tagOk ? 'accepted' : 'discard';
+}
+
+export function normalizeEdgePair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
 }
 
 export function cosineEmbeddings(a?: number[], b?: number[]): number {

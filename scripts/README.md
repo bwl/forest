@@ -322,8 +322,8 @@ Forest Environment Preflight Check
 # Use mock embeddings for faster testing
 FOREST_EMBED_PROVIDER=mock ./bulk-import.sh test
 
-# Use local embeddings (default, slower but better quality)
-FOREST_EMBED_PROVIDER=local ./bulk-import.sh shakespeare individual
+# Use OpenRouter embeddings
+FOREST_EMBED_PROVIDER=openrouter FOREST_OR_KEY=... ./bulk-import.sh shakespeare individual
 
 # Use OpenAI embeddings
 FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=sk-... ./bulk-import.sh classics 20
@@ -338,14 +338,14 @@ FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=sk-... ./bulk-import.sh classics 20
 
 **Performance Notes:**
 - **Mock embeddings**: ~1-2 seconds per document (testing only)
-- **Local embeddings**: ~5-10 seconds per chunk (production quality)
+- **OpenRouter embeddings**: API latency + rate limits
 - **OpenAI embeddings**: ~2-3 seconds per chunk (API latency)
 
 **Recommendations:**
 - Use `test` mode first to verify everything works
 - Use `mock` provider for quick database population
-- Use `local` provider for realistic semantic links
-- Large imports can take hours with local embeddings
+- Use `openrouter`/`openai` providers for realistic semantic links
+- Large imports can take hours with API embeddings
 
 **Examples:**
 

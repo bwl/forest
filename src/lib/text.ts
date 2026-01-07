@@ -152,7 +152,7 @@ export function extractTags(
   limit = 5
 ): string[] {
   // Check for explicit hashtags first
-  const matches = text.match(/#[a-zA-Z0-9_-]+/g) ?? [];
+  const matches = text.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
   const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
   if (normalizedMatches.size > 0) {
     return [...normalizedMatches];
@@ -252,7 +252,7 @@ export async function extractTagsAsync(
   limit = 7
 ): Promise<string[]> {
   // Check for explicit hashtags first
-  const matches = text.match(/#[a-zA-Z0-9_-]+/g) ?? [];
+  const matches = text.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
   const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
   if (normalizedMatches.size > 0) {
     return [...normalizedMatches];

@@ -25,7 +25,11 @@ export function graphFromRecords(nodes: NodeRecord[], edges: EdgeRecord[]): Grap
     if (graph.hasEdge(edge.sourceId, edge.targetId)) continue;
     graph.addUndirectedEdgeWithKey(edge.id, edge.sourceId, edge.targetId, {
       score: edge.score,
+      semanticScore: edge.semanticScore,
+      tagScore: edge.tagScore,
+      sharedTags: edge.sharedTags,
       status: edge.status,
+      edgeType: edge.edgeType,
     });
   }
 

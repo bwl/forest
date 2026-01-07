@@ -1,6 +1,6 @@
-import { listNodes, updateNode } from '../../lib/db';
+import { bulkSyncNodeTags, bulkUpdateEdgesV2, listEdges, listNodes, rebuildTagIdf, updateNode } from '../../lib/db';
 import { computeEmbeddingForNode, embeddingsEnabled } from '../../lib/embeddings';
-import { classifyScore, computeScore, normalizeEdgePair, getEdgeThreshold } from '../../lib/scoring';
+import { buildTagIdfContext, classifyEdgeScores, computeEdgeScore, normalizeEdgePair } from '../../lib/scoring';
 import { extractTagsAsync } from '../../lib/text';
 import { loadConfig } from '../../lib/config';
 import { getHealthReport, isHealthy, HealthCheck } from '../../core/health';
@@ -41,6 +41,10 @@ type AdminDoctorFlags = {
   tldr?: string;
 };
 
+type AdminMigrateV2Flags = {
+  tldr?: string;
+};
+
 type AdminBaseFlags = {
   tldr?: string;
 };
@@ -48,6 +52,31 @@ type AdminBaseFlags = {
 // === Command Registration ===
 
 export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
+  // admin migrate-v2
+  const migrateV2Command = clerc.defineCommand(
+    {
+      name: 'admin migrate-v2',
+      description: 'Migrate database to scoring v2 (dual semantic/tag scores)',
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ flags }: { flags: AdminMigrateV2Flags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          emitTldrAndExit(COMMAND_TLDR['admin.migrate-v2'], getVersion());
+        }
+        await runAdminMigrateV2();
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(migrateV2Command);
+
   // admin embeddings
   const embeddingsCommand = clerc.defineCommand(
     {
@@ -189,6 +218,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
           'Administrative commands for system maintenance.',
           '',
           'Subcommands:',
+          '  migrate-v2   Migrate database to scoring v2',
           '  embeddings  Recompute embeddings for all nodes',
           '  tags        Regenerate tags using current method',
           '  health      Check system health and configuration',
@@ -212,6 +242,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
         console.log('forest admin - System maintenance and diagnostics');
         console.log('');
         console.log('Subcommands:');
+        console.log('  migrate-v2   Migrate database to scoring v2');
         console.log('  embeddings  Recompute embeddings for all nodes');
         console.log('  tags        Regenerate tags using current method');
         console.log('  health      Check system health and configuration');
@@ -227,6 +258,78 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
 }
 
 // === Implementation Functions ===
+
+async function runAdminMigrateV2() {
+  console.log('forest admin migrate-v2');
+  console.log('');
+
+  const nodes = await listNodes();
+  const edges = await listEdges('all');
+
+  console.log(`Found ${nodes.length} nodes and ${edges.length} edges`);
+  console.log('');
+
+  console.log('1) Backfilling node_tags...');
+  await bulkSyncNodeTags(nodes.map((node) => ({ nodeId: node.id, tags: node.tags })));
+  console.log('   ✔ node_tags updated');
+
+  console.log('2) Rebuilding tag_idf...');
+  const idf = await rebuildTagIdf();
+  console.log(`   ✔ tag_idf rebuilt (${idf.totalTags} tags, N=${idf.totalNodes})`);
+
+  console.log('3) Backfilling edge v2 columns...');
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const context = buildTagIdfContext(nodes);
+
+  const updates: Array<{
+    sourceId: string;
+    targetId: string;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+    metadata: Record<string, unknown> | null;
+  }> = [];
+  let skipped = 0;
+
+  for (const edge of edges) {
+    const a = nodeMap.get(edge.sourceId);
+    const b = nodeMap.get(edge.targetId);
+    if (!a || !b) {
+      skipped += 1;
+      continue;
+    }
+
+    const computed = computeEdgeScore(a, b, context);
+    const shouldBackfillSemanticScore = edge.edgeType === 'semantic' && edge.semanticScore === null && edge.tagScore === null;
+
+    const prevMetadata = edge.metadata && typeof edge.metadata === 'object' ? edge.metadata : {};
+    const prevComponents =
+      (prevMetadata as any).components && typeof (prevMetadata as any).components === 'object'
+        ? (prevMetadata as any).components
+        : {};
+
+    updates.push({
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      // Migration path: preserve legacy `score` and copy it into semantic_score for now.
+      semanticScore: shouldBackfillSemanticScore ? edge.score : edge.semanticScore,
+      tagScore: edge.tagScore ?? computed.tagScore,
+      sharedTags: edge.tagScore === null ? computed.sharedTags : edge.sharedTags,
+      metadata: {
+        ...prevMetadata,
+        components: {
+          ...prevComponents,
+          tag: computed.components.tag,
+        },
+      },
+    });
+  }
+
+  const result = await bulkUpdateEdgesV2(updates);
+  console.log(`   ✔ updated ${result.updated} edges (${skipped} skipped: missing endpoints)`);
+  console.log('');
+  console.log('Migration complete.');
+}
 
 async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
   if (!embeddingsEnabled()) {
@@ -248,12 +351,13 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
 
   let accepted = 0;
   const refreshed = await listNodes();
+  const context = buildTagIdfContext(refreshed);
   for (let i = 0; i < refreshed.length; i += 1) {
     const a = refreshed[i];
     for (let j = i + 1; j < refreshed.length; j += 1) {
       const b = refreshed[j];
-      const { score, components } = computeScore(a, b);
-      const status = classifyScore(score);
+      const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
+      const status = classifyEdgeScores(semanticScore, tagScore);
       const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
 
       if (status === 'discard') {
@@ -266,6 +370,9 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
         sourceId,
         targetId,
         score,
+        semanticScore,
+        tagScore,
+        sharedTags,
         status,
         edgeType: 'semantic',
         metadata: { components },

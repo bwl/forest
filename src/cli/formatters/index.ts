@@ -4,7 +4,7 @@
  * Modular presentation layer for CLI commands
  *
  * This module provides reusable formatting utilities extracted from the
- * excellent design work in `forest edges propose`. All commands should
+ * original design work in the legacy `forest edges propose` command. All commands should
  * import formatters from this module for consistent theming.
  *
  * @example

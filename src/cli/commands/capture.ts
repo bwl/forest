@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { NodeRecord, insertNode, listNodes } from '../../lib/db';
 import { pickTitle, tokenize, extractTags } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { getEdgeThreshold } from '../../lib/scoring';
+import { getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
 
 import { handleError, resolveBodyInput } from '../shared/utils';
 import {
@@ -189,7 +189,10 @@ async function emitJsonSummary(node: NodeRecord, summary: { accepted: number }, 
         links: {
           autoLinked,
           accepted: summary.accepted,
-          threshold: getEdgeThreshold(),
+          thresholds: {
+            semantic: getSemanticThreshold(),
+            tags: getTagThreshold(),
+          },
         },
       },
       null,
@@ -212,7 +215,7 @@ function emitTextSummary(
   }
   if (autoLinked) {
     console.log(
-      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} edges (threshold=${getEdgeThreshold().toFixed(3)})`,
+      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} edges (semantic>=${getSemanticThreshold().toFixed(3)}, tags>=${getTagThreshold().toFixed(3)})`,
     );
   } else {
     console.log(`   ${colorize.label('links:')} auto-linking skipped (--no-auto-link)`);

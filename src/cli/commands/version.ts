@@ -107,7 +107,7 @@ export function displayBriefInfo() {
   console.log('  Quick start:');
   console.log('    forest capture --stdin    # Capture ideas from stdin');
   console.log('    forest explore <term>     # Search and explore connections');
-  console.log('    forest edges propose      # Review suggested links');
+  console.log('    forest edges              # View recent links');
   console.log('');
 }
 

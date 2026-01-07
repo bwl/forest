@@ -128,6 +128,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'capture',
       'write',
       'explore',
+      'link',
       'search',
       'stats',
       'serve',
@@ -144,6 +145,8 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'edges.explain',
       'edges.threshold',
       'edges',
+      'tags.add',
+      'tags.remove',
       'tags.list',
       'tags.rename',
       'tags.stats',
@@ -152,6 +155,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'admin.tags',
       'admin.health',
       'admin.doctor',
+      'admin.migrate-v2',
       'admin',
       'export.graphviz',
       'export.json',
@@ -200,6 +204,9 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'id', t: 'str', desc: 'node id or short id (positional or flag)' },
       { n: 'title', t: 'str', desc: 'exact title of the node to open' },
       { n: 'depth', t: 'int', d: 1, desc: 'neighborhood depth (1 or 2)' },
+      { n: 'by', t: 'str', desc: 'filter edges by layer: semantic|tags' },
+      { n: 'min-semantic', t: 'float', desc: 'only include edges with semantic_score >= N' },
+      { n: 'min-tags', t: 'float', desc: 'only include edges with tag_score >= N' },
       { n: 'limit', t: 'int', d: 25, desc: 'max neighbors to render' },
       { n: 'include-suggestions', t: 'bool', d: false, desc: 'show suggested edges from the focus node' },
       { n: 'long-ids', t: 'bool', d: false, desc: 'show full UUIDs' },
@@ -211,6 +218,23 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest explore --include-suggestions --depth 2',
     ],
     rel: ['search', 'node.read', 'edges.propose'],
+  },
+
+  link: {
+    cmd: 'link',
+    p: 'Create a bridge tag between two notes (#link/...)',
+    in: ['args'],
+    out: ['updated_nodes', 'edge_update'],
+    fx: 'db:write',
+    fl: [
+      { n: 'name', t: 'str', desc: 'optional bridge name (creates #link/<name>)' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest link abc123 def456',
+      'forest link abc123 def456 --name=chapter-1-arc',
+    ],
+    rel: ['explore', 'node.connect', 'tags.list'],
   },
 
   search: {
@@ -304,6 +328,17 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fl: [],
     ex: ['forest admin'],
     rel: ['admin.health', 'admin.embeddings', 'admin.tags', 'admin.doctor'],
+  },
+
+  'admin.migrate-v2': {
+    cmd: 'admin.migrate-v2',
+    p: 'Migrate database to scoring v2 (dual semantic/tag scores)',
+    in: [],
+    out: ['progress_log', 'updated_records'],
+    fx: 'db:write',
+    fl: [],
+    ex: ['forest admin migrate-v2'],
+    rel: ['edges', 'admin.embeddings', 'link'],
   },
 
   'admin.embeddings': {
@@ -547,6 +582,40 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     rel: ['tags.stats', 'tags.rename'],
   },
 
+  'tags.add': {
+    cmd: 'tags.add',
+    p: 'Add one or more tags to a note',
+    in: ['args'],
+    out: ['updated_node_tags'],
+    fx: 'db:write',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest tags add @0 to-review',
+      'forest tags add abc123 focus,ops',
+      'forest tags add abc123 #link/chapter-1-arc',
+    ],
+    rel: ['tags.remove', 'tags.list', 'node.update'],
+  },
+
+  'tags.remove': {
+    cmd: 'tags.remove',
+    p: 'Remove one or more tags from a note',
+    in: ['args'],
+    out: ['updated_node_tags'],
+    fx: 'db:write',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest tags remove @0 to-review',
+      'forest tags remove abc123 focus,ops',
+      'forest tags remove abc123 #link/chapter-1-arc',
+    ],
+    rel: ['tags.add', 'tags.list', 'node.update'],
+  },
+
   'tags.rename': {
     cmd: 'tags.rename',
     p: 'Rename a tag across all notes',
@@ -588,7 +657,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'none',
     fl: [],
     ex: ['forest tags'],
-    rel: ['tags.list', 'tags.stats', 'tags.rename'],
+    rel: ['tags.list', 'tags.stats', 'tags.rename', 'tags.add', 'tags.remove'],
   },
 
   'export.graphviz': {

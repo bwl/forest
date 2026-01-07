@@ -242,6 +242,9 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
         sourceId: rootNode.id < node.id ? rootNode.id : node.id,
         targetId: rootNode.id < node.id ? node.id : rootNode.id,
         score: 1.0, // Perfect score for structural relationship
+        semanticScore: null,
+        tagScore: null,
+        sharedTags: [],
         status: 'accepted',
         edgeType: 'parent-child',
         createdAt: new Date().toISOString(),
@@ -268,6 +271,9 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
         sourceId: current.id < next.id ? current.id : next.id,
         targetId: current.id < next.id ? next.id : current.id,
         score: 0.95, // High score for sequential relationship
+        semanticScore: null,
+        tagScore: null,
+        sharedTags: [],
         status: 'accepted',
         edgeType: 'sequential',
         createdAt: new Date().toISOString(),

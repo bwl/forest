@@ -234,6 +234,22 @@ export const colorize = {
   label: (text: string) => chalk.hex(getRoleHex('muted'))(text),
   bullet: (symbol: string) => chalk.hex(getRoleHex('success'))(symbol),
   info: (text: string) => chalk.hex(getRoleHex('info'))(text),
+  edgeDualScore: (semanticScore: number | null, tagScore: number | null) => {
+    const fmt = (value: number | null) => {
+      if (value === null || !Number.isFinite(value)) return '--';
+      const clamped = clamp(value, 0, 1);
+      return clamped.toFixed(2);
+    };
+
+    const painter = (() => {
+      if (semanticScore === null || tagScore === null) return chalk.gray;
+      if (semanticScore > tagScore * 1.2) return chalk.blue;
+      if (tagScore > semanticScore * 1.2) return chalk.green;
+      return chalk.magenta;
+    })();
+
+    return painter(`[S:${fmt(semanticScore)} T:${fmt(tagScore)}]`);
+  },
 };
 
 export const COLOR_SCHEMES = COLOR_SCHEME_PRESETS;

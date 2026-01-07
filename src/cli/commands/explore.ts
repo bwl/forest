@@ -26,6 +26,18 @@ export function createExploreCommand(clerc: ClercModule) {
           description: 'Neighborhood depth',
           default: 1,
         },
+        by: {
+          type: String,
+          description: 'Filter edges by score layer: semantic or tags',
+        },
+        minSemantic: {
+          type: Number,
+          description: 'Only include edges with semantic_score >= this value',
+        },
+        minTags: {
+          type: Number,
+          description: 'Only include edges with tag_score >= this value',
+        },
         limit: {
           type: Number,
           alias: 'l',
@@ -86,6 +98,10 @@ export function createExploreCommand(clerc: ClercModule) {
           json: Boolean(flags.json),
           showMatches: !Boolean(flags.json),
           focusSelected: true,
+          by: flags.by === 'semantic' || flags.by === 'tags' ? flags.by : undefined,
+          minSemantic:
+            typeof flags.minSemantic === 'number' && Number.isFinite(flags.minSemantic) ? flags.minSemantic : undefined,
+          minTags: typeof flags.minTags === 'number' && Number.isFinite(flags.minTags) ? flags.minTags : undefined,
         });
       } catch (error) {
         handleError(error);

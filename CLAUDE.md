@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Forest is a graph-native knowledge base CLI that captures unstructured ideas and automatically links them using a hybrid scoring algorithm combining semantic embeddings and lexical similarity. All data is stored in a single SQLite database (`forest.db`).
+Forest is a graph-native knowledge base CLI that captures unstructured ideas and automatically links them using a **dual-score edge model**:
+- **Semantic score**: embedding cosine similarity (optional, provider-dependent)
+- **Tag score**: IDF-weighted Jaccard similarity over tags
+
+All data is stored in a single SQLite database (`forest.db`).
 
 **Database Location:**
 - **macOS**: `~/Library/Application Support/com.ettio.forest.desktop/forest.db`
@@ -21,7 +25,7 @@ Forest is a graph-native knowledge base CLI that captures unstructured ideas and
 
 ## Agent-First TLDR Standard
 
-Forest implements the **TLDR Standard (v0.1)** for agent ingestion - a minimal, parseable command metadata format designed for AI agents.
+Forest implements the **TLDR Standard (v0.2)** for agent ingestion - NDJSON command metadata designed for fast discovery and reliable parsing.
 
 ### Quick Start for Agents
 
@@ -36,21 +40,14 @@ forest edges --tldr
 # Get JSON format for programmatic parsing
 forest --tldr=json
 forest search --tldr=json
+
+# Get everything at once (NDJSON stream)
+forest --tldr=all
 ```
 
 ### TLDR Format
 
-**ASCII mode** (default): Single-pass parseable KEY: value pairs
-```
-CMD: capture
-PURPOSE: Create a new note and auto-link into the graph
-INPUTS: ARGS(title,body,tags),STDIN,FILE
-OUTPUTS: node record,edges summary
-SIDE_EFFECTS: writes to SQLite DB,computes embeddings,creates edges
-FLAGS: --title=STR|note title;--body=STR|note body;--stdin=BOOL=false|read entire stdin as body
-EXAMPLES: forest capture --stdin < note.md|forest capture --title "Idea" --body "Text"
-RELATED: explore,node.read
-```
+Output is NDJSON with a small metadata header (see `src/cli/tldr.ts`).
 
 ### Benefits for Agents
 
@@ -74,22 +71,16 @@ The `./dev.sh` script provides a unified interface:
 **Building:**
 ```bash
 ./dev.sh build cli            # Build CLI TypeScript
-./dev.sh build embed          # Build forest-embed Rust binary
-./dev.sh build all            # Build both
 ```
 
 **Testing:**
 ```bash
 ./dev.sh test cli             # Run CLI tests
-./dev.sh test embed           # Run Rust tests
-./dev.sh test all             # Run all tests
 ```
 
 **Type Checking:**
 ```bash
 ./dev.sh lint cli             # Type-check CLI
-./dev.sh lint embed           # Check Rust code
-./dev.sh lint all             # Check all
 ```
 
 ### Direct Commands
@@ -125,13 +116,17 @@ The CLI uses **Clerc** for command parsing and help generation. Entry point is `
 forest capture                  # Capture new notes
 forest explore                  # Explore the graph
 forest search ["query"]         # Semantic search using embeddings
+forest link [ref1] [ref2]       # Create bridge tags (#link/...)
 forest node read [id]           # Read a note
 forest node edit [id]           # Edit a note
+forest node update [id]         # Update note fields (and rescore)
 forest node delete [id]         # Delete a note
-forest node connect [id] [id2]  # Link two notes
+forest node connect [id] [id2]  # Manually create an edge
 forest edges                    # Show recent edges
 forest edges explain [ref]      # Explain scoring
 forest edges threshold          # View edge threshold
+forest tags add [ref] [tags]    # Add tag(s) to a note
+forest tags remove [ref] [tags] # Remove tag(s) from a note
 forest tags list                # List tags
 forest tags rename [old] [new]  # Rename a tag
 forest tags stats               # Tag statistics
@@ -141,6 +136,7 @@ forest export graphviz          # Export as DOT
 forest export json              # Export as JSON
 forest stats                    # Graph statistics
 forest admin health             # System health check
+forest admin migrate-v2         # Backfill scoring v2 columns/tables
 forest admin embeddings         # Recompute embeddings
 forest admin tags               # Regenerate tags
 forest admin doctor             # Guided troubleshooting
@@ -202,17 +198,22 @@ forest node read 7fa7acb2-ed4a-4f3b-9c1e-8a2b3c4d5e6f  # full UUID
 Uses **sql.js** (SQLite compiled to WASM) with in-memory database persisted to disk on mutation.
 
 **Core types:**
-- `NodeRecord`: Nodes with id, title, body, tags, tokenCounts, optional embedding, isChunk, parentDocumentId, chunkOrder
-- `EdgeRecord`: Edges with sourceId, targetId, score, status ('accepted'), edgeType
+- `NodeRecord`: Nodes with id, title, body, tags, tokenCounts, optional embedding, and `approximateScored` plus chunk metadata
+- `EdgeRecord`: Edges with `score` plus `semanticScore`, `tagScore`, `sharedTags`, status ('accepted'), edgeType
 - `DocumentRecord`: Canonical documents with id, title, body, metadata, version, rootNodeId
 - `DocumentChunkRecord`: Segment mappings for chunked documents
 
 **Database Schema:**
 ```sql
 nodes: id, title, body, tags, token_counts, embedding, created_at, updated_at,
-       is_chunk, parent_document_id, chunk_order, accepted_degree
+       approximate_scored, is_chunk, parent_document_id, chunk_order, accepted_degree
 
-edges: id, source_id, target_id, score, status, edge_type, metadata, created_at, updated_at
+edges: id, source_id, target_id, score, semantic_score, tag_score, shared_tags,
+       status, edge_type, metadata, created_at, updated_at
+
+node_tags: node_id, tag  (PK: node_id+tag, indexed by tag)
+
+tag_idf: tag, doc_freq, idf
 
 documents: id, title, body, metadata, version, root_node_id, created_at, updated_at
 
@@ -225,34 +226,23 @@ metadata: key, value
 
 ### Scoring Algorithm (src/lib/scoring.ts)
 
-**Hybrid scoring** computes edge weights between node pairs:
+Forest uses a **dual-score edge model**:
 
-```typescript
-score = 0.25 * tokenSimilarity +
-        0.55 * embeddingSimilarity +  // Dominant factor
-        0.15 * tagOverlap +
-        0.05 * titleSimilarity
-```
+- `semantic_score = cosine(embedding_a, embedding_b)` (nullable when embeddings are disabled/unavailable)
+- `tag_score = jaccard(tags_a, tags_b) × (avg_idf(shared_tags) / max_idf)` (nullable when no shared tags)
 
-Then applies a 0.9× penalty if both `tagOverlap` and `titleSimilarity` are zero.
+Edge creation rule:
+- Keep an edge if `semantic_score >= FOREST_SEMANTIC_THRESHOLD` OR `tag_score >= FOREST_TAG_THRESHOLD`
 
-**Edge creation** (single threshold model):
-- `score >= FOREST_EDGE_THRESHOLD` (default 0.25): Edge created
-- `score < threshold`: No edge
-
-Configure via `FOREST_EDGE_THRESHOLD` environment variable.
+`score` is retained as a compatibility field and is currently computed as `max(semantic_score, tag_score)` for new/updated edges.
 
 ### Embeddings
 
-**CLI uses `forest-embed`** - a standalone Rust binary using fastembed with `all-MiniLM-L6-v2` (384-dim).
-
 **Providers via `FOREST_EMBED_PROVIDER`:**
-1. **local** (default): Uses `forest-embed` binary
-   - Build with: `cd forest-embed && cargo build --release`
-   - Falls back to mock if binary not found
+1. **openrouter** (default): Calls OpenRouter embeddings API (requires `FOREST_OR_KEY`)
 2. **openai**: Calls OpenAI embeddings API (requires `OPENAI_API_KEY`)
 3. **mock**: Deterministic hash-based vectors for offline testing
-4. **none**: Disables embeddings (pure lexical scoring)
+4. **none**: Disables embeddings (tags-only linking)
 
 ### Text Processing (src/lib/text.ts)
 
@@ -266,8 +256,9 @@ Configure via `FOREST_EDGE_THRESHOLD` environment variable.
 
 1. **Edge normalization**: Edges are undirected; `sourceId < targetId` is enforced via `normalizeEdgePair()`.
 2. **Short IDs**: First 8 hex chars of UUIDs used for display; must be unique to resolve.
-3. **Auto-linking**: When a node is captured or edited with `--auto-link` (default), it's scored against all existing nodes to create edges above threshold.
+3. **Auto-linking**: When a node is captured or updated, it's scored against existing nodes and edges are created/removed based on the dual thresholds.
 4. **Embedding backfill**: Use `forest admin embeddings --rescore` to recompute embeddings and rescore edges.
+5. **Bridge tags**: Use `forest link` to add `#link/...` tags to both nodes (high-IDF explicit connections).
 
 ## Shared Utilities (src/cli/shared/)
 
@@ -288,8 +279,9 @@ Edit `src/lib/scoring.ts`. After changing, run `forest admin embeddings --rescor
 
 **Testing with different embedding providers:**
 ```bash
-FOREST_EMBED_PROVIDER=none forest capture --stdin < test.txt   # Lexical only
-FOREST_EMBED_PROVIDER=local forest capture --stdin < test.txt  # Local embeddings
+FOREST_EMBED_PROVIDER=none forest capture --stdin < test.txt   # Tags-only (no embeddings)
+FOREST_EMBED_PROVIDER=mock forest capture --stdin < test.txt   # Deterministic offline embeddings
+FOREST_EMBED_PROVIDER=openrouter FOREST_OR_KEY=... forest capture --stdin < test.txt
 FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=... forest capture --stdin < test.txt
 ```
 
@@ -297,5 +289,6 @@ FOREST_EMBED_PROVIDER=openai OPENAI_API_KEY=... forest capture --stdin < test.tx
 - `FOREST_PORT` - Server port (default: 3000)
 - `FOREST_HOST` - Server hostname (default: `::` for dual-stack IPv4/IPv6)
 - `FOREST_DB_PATH` - Database file path
-- `FOREST_EMBED_PROVIDER` - Embedding provider (default: `local`)
-- `FOREST_EDGE_THRESHOLD` - Minimum score to create edge (default: 0.25)
+- `FOREST_EMBED_PROVIDER` - Embedding provider (default: `openrouter`)
+- `FOREST_SEMANTIC_THRESHOLD` - Minimum semantic_score to keep an edge (default: 0.5)
+- `FOREST_TAG_THRESHOLD` - Minimum tag_score to keep an edge (default: 0.3)

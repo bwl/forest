@@ -2,7 +2,7 @@
 
 **Status**: ✅ Phase 1 Complete - Color utilities extracted and ready to use
 
-This directory contains the modular formatting system for Forest CLI, extracted from the excellent design work in `forest edges propose`.
+This directory contains the modular formatting system for Forest CLI, extracted from the original design work in the legacy `forest edges propose` command.
 
 ## What's Here
 

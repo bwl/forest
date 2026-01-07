@@ -1,12 +1,21 @@
 import {
   EdgeRecord,
   listEdges as dbListEdges,
+  listNodes as dbListNodes,
   insertOrUpdateEdge,
   deleteEdgeBetween,
   logEdgeEvent,
   getNodeById,
 } from '../lib/db';
-import { computeScore, normalizeEdgePair, getEdgeThreshold } from '../lib/scoring';
+import {
+  buildTagIdfContext,
+  classifyEdgeScores,
+  computeEdgeScore,
+  getSemanticThreshold,
+  getTagThreshold,
+  normalizeEdgePair,
+  TagScoreComponents,
+} from '../lib/scoring';
 import { edgeIdentifier, formatId } from '../cli/shared/utils';
 import { eventBus } from '../server/events/eventBus';
 
@@ -84,12 +93,12 @@ export async function createEdgeCore(data: CreateEdgeData): Promise<CreateEdgeRe
   // Normalize edge pair
   const [sourceId, targetId] = normalizeEdgePair(data.sourceId, data.targetId);
 
-  // Compute score if not provided
-  let score = data.score;
-  if (score === undefined) {
-    const { score: computedScore } = computeScore(sourceNode, targetNode);
-    score = computedScore;
-  }
+  const allNodes = await dbListNodes();
+  const context = buildTagIdfContext(allNodes);
+  const computed = computeEdgeScore(sourceNode, targetNode, context);
+
+  // Compute score if not provided (default: max(semantic, tags))
+  const score = data.score ?? computed.score;
 
   // Create edge
   const now = new Date().toISOString();
@@ -98,6 +107,9 @@ export async function createEdgeCore(data: CreateEdgeData): Promise<CreateEdgeRe
     sourceId,
     targetId,
     score,
+    semanticScore: computed.semanticScore,
+    tagScore: computed.tagScore,
+    sharedTags: computed.sharedTags,
     status: 'accepted',
     edgeType: 'manual',
     metadata: null,
@@ -165,38 +177,20 @@ export type ExplainEdgeResult = {
     sourceId: string;
     targetId: string;
     score: number;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
   };
   breakdown: {
-    tokenSimilarity: {
-      raw: number;
-      weight: number;
-      weighted: number;
-    };
-    embeddingSimilarity: {
-      raw: number;
-      weight: number;
-      weighted: number;
-    };
-    tagOverlap: {
-      raw: number;
-      weight: number;
-      weighted: number;
-    };
-    titleSimilarity: {
-      raw: number;
-      weight: number;
-      weighted: number;
-    };
-    penalty: {
-      applied: boolean;
-      factor: number;
-      reason: string | null;
-    };
-    finalScore: number;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+    tagComponents: TagScoreComponents;
   };
   classification: {
     status: 'accepted' | 'discarded';
-    threshold: number;
+    semanticThreshold: number;
+    tagThreshold: number;
   };
 };
 
@@ -208,8 +202,11 @@ export async function explainEdgeCore(edge: EdgeRecord): Promise<ExplainEdgeResu
     throw new Error('Cannot explain edge: one or both nodes not found');
   }
 
-  const { score, components } = computeScore(sourceNode, targetNode);
-  const threshold = getEdgeThreshold();
+  const context = buildTagIdfContext(await dbListNodes());
+  const computed = computeEdgeScore(sourceNode, targetNode, context);
+  const semanticThreshold = getSemanticThreshold();
+  const tagThreshold = getTagThreshold();
+  const status = classifyEdgeScores(computed.semanticScore, computed.tagScore) === 'accepted' ? 'accepted' : 'discarded';
 
   return {
     edge: {
@@ -217,40 +214,20 @@ export async function explainEdgeCore(edge: EdgeRecord): Promise<ExplainEdgeResu
       sourceId: edge.sourceId,
       targetId: edge.targetId,
       score: edge.score,
+      semanticScore: edge.semanticScore,
+      tagScore: edge.tagScore,
+      sharedTags: edge.sharedTags,
     },
     breakdown: {
-      tokenSimilarity: {
-        raw: components.tokenSimilarity,
-        weight: 0.25,
-        weighted: components.tokenSimilarity * 0.25,
-      },
-      embeddingSimilarity: {
-        raw: components.embeddingSimilarity,
-        weight: 0.55,
-        weighted: components.embeddingSimilarity * 0.55,
-      },
-      tagOverlap: {
-        raw: components.tagOverlap,
-        weight: 0.15,
-        weighted: components.tagOverlap * 0.15,
-      },
-      titleSimilarity: {
-        raw: components.titleSimilarity,
-        weight: 0.05,
-        weighted: components.titleSimilarity * 0.05,
-      },
-      penalty: {
-        applied: components.penalty !== 1.0,
-        factor: components.penalty,
-        reason: components.penalty !== 1.0
-          ? 'Both tag overlap and title similarity are zero'
-          : null,
-      },
-      finalScore: score,
+      semanticScore: computed.semanticScore,
+      tagScore: computed.tagScore,
+      sharedTags: computed.sharedTags,
+      tagComponents: computed.components.tag,
     },
     classification: {
-      status: score >= threshold ? 'accepted' : 'discarded',
-      threshold,
+      status,
+      semanticThreshold,
+      tagThreshold,
     },
   };
 }

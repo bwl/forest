@@ -20,7 +20,7 @@ import {
 import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { computeScore, normalizeEdgePair } from '../../lib/scoring';
+import { buildTagIdfContext, computeEdgeScore, normalizeEdgePair } from '../../lib/scoring';
 
 import { buildNeighborhoodPayload, printNodeOverview } from '../shared/explore';
 import {
@@ -868,7 +868,8 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
     return;
   }
 
-  const { score: computedScore, components } = computeScore(a, b);
+  const context = buildTagIdfContext(await listNodes());
+  const { score: computedScore, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
   const scoreOverride =
     typeof flags.score === 'number' && !Number.isNaN(flags.score) ? flags.score : undefined;
   const usedScore = scoreOverride ?? computedScore;
@@ -881,6 +882,9 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
     sourceId,
     targetId,
     score: usedScore,
+    semanticScore,
+    tagScore,
+    sharedTags,
     status: 'accepted',
     edgeType,
     metadata: { components },
@@ -895,13 +899,13 @@ async function runNodeLink(aRef: string | undefined, bRef: string | undefined, f
   );
 
   if (flags.explain) {
-    console.log('components:');
-    for (const [key, value] of Object.entries(components)) {
-      if (typeof value === 'number') {
-        console.log(`  ${key}: ${value.toFixed(3)}`);
-      } else {
-        console.log(`  ${key}: ${String(value)}`);
-      }
+    console.log('scores:');
+    console.log(`  semantic: ${typeof semanticScore === 'number' ? semanticScore.toFixed(3) : '--'}`);
+    console.log(`  tags:     ${typeof tagScore === 'number' ? tagScore.toFixed(3) : '--'}`);
+    console.log('tag components:');
+    for (const [key, value] of Object.entries(components.tag)) {
+      if (typeof value === 'number') console.log(`  ${key}: ${value.toFixed(3)}`);
+      else console.log(`  ${key}: ${String(value)}`);
     }
   }
 }

@@ -1,6 +1,6 @@
 import { listNodes, updateNodeIndexData } from '../../lib/db';
 
-import { handleError } from '../shared/utils';
+import { formatId, handleError, resolveNodeReference } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
@@ -24,7 +24,70 @@ type TagsStatsFlags = {
   tldr?: string;
 };
 
+type TagsModifyFlags = {
+  json?: boolean;
+  tldr?: string;
+};
+
 export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
+  const addCommand = clerc.defineCommand(
+    {
+      name: 'tags add',
+      description: 'Add one or more tags to a note',
+      parameters: ['<ref>', '<tags>'],
+      flags: {
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ parameters, flags }: { parameters: { ref?: string; tags?: string }; flags: TagsModifyFlags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          emitTldrAndExit(COMMAND_TLDR['tags.add'], getVersion());
+        }
+        await runTagsAdd(parameters.ref, parameters.tags, flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(addCommand);
+
+  const removeCommand = clerc.defineCommand(
+    {
+      name: 'tags remove',
+      description: 'Remove one or more tags from a note',
+      parameters: ['<ref>', '<tags>'],
+      flags: {
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ parameters, flags }: { parameters: { ref?: string; tags?: string }; flags: TagsModifyFlags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          emitTldrAndExit(COMMAND_TLDR['tags.remove'], getVersion());
+        }
+        await runTagsRemove(parameters.ref, parameters.tags, flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(removeCommand);
+
   const listCommand = clerc.defineCommand(
     {
       name: 'tags list',
@@ -137,6 +200,8 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
       help: {
         notes: [
           'Subcommands:',
+          '  add     Add tag(s) to a note',
+          '  remove  Remove tag(s) from a note',
           '  list    List tags with usage counts',
           '  rename  Rename a tag across all notes',
           '  stats   Show tag co-occurrence statistics',
@@ -145,6 +210,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         ],
         examples: [
           ['$ forest tags list', 'Show the most common tags'],
+          ['$ forest tags add @0 to-review', 'Add a tag to the most recent note'],
           ['$ forest tags rename old new', 'Rename a tag across all notes'],
         ],
       },
@@ -195,10 +261,144 @@ async function runTagsDashboard() {
   }
 
   console.log('Quick actions:');
+  console.log('  forest tags add <ref> <tag>        Add a tag to a note');
+  console.log('  forest tags remove <ref> <tag>     Remove a tag from a note');
   console.log('  forest tags list                 List all tags');
   console.log('  forest tags stats                Tag co-occurrence stats');
   console.log('  forest tags rename <old> <new>   Rename a tag');
   console.log('');
+}
+
+function parseTagList(value: string | undefined): string[] {
+  if (typeof value !== 'string') return [];
+  return Array.from(
+    new Set(
+      value
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
+        .map((tag) => (tag.startsWith('#') ? tag.slice(1) : tag))
+        .map((tag) => tag.toLowerCase()),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+async function runTagsAdd(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
+  if (!ref) {
+    console.error('✖ Provide a node reference.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const tags = parseTagList(tagsArg);
+  if (tags.length === 0) {
+    console.error('✖ Provide one or more tags (comma-separated).');
+    process.exitCode = 1;
+    return;
+  }
+
+  const node = await resolveNodeReference(ref);
+  if (!node) {
+    console.error('✖ No node found. Provide a full id, unique short id, @ref, or "title".');
+    process.exitCode = 1;
+    return;
+  }
+
+  const nextTags = Array.from(new Set([...node.tags, ...tags].map((tag) => tag.toLowerCase()))).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  await updateNodeIndexData(node.id, nextTags, node.tokenCounts);
+
+  if (flags.json) {
+    console.log(
+      JSON.stringify(
+        {
+          id: node.id,
+          shortId: formatId(node.id),
+          title: node.title,
+          added: tags,
+          tags: nextTags,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Added ${tags.length} tag(s) to ${formatId(node.id)} (${node.title})`);
+  console.log(`   ${colorize.label('tags:')} ${nextTags.map((t) => colorize.tag(t)).join(', ')}`);
+}
+
+async function runTagsRemove(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
+  if (!ref) {
+    console.error('✖ Provide a node reference.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const tags = parseTagList(tagsArg);
+  if (tags.length === 0) {
+    console.error('✖ Provide one or more tags (comma-separated).');
+    process.exitCode = 1;
+    return;
+  }
+
+  const node = await resolveNodeReference(ref);
+  if (!node) {
+    console.error('✖ No node found. Provide a full id, unique short id, @ref, or "title".');
+    process.exitCode = 1;
+    return;
+  }
+
+  const removeSet = new Set(tags.map((tag) => tag.toLowerCase()));
+  const before = node.tags.map((tag) => tag.toLowerCase());
+  const nextTags = before.filter((tag) => !removeSet.has(tag)).sort((a, b) => a.localeCompare(b));
+  const removed = before.filter((tag) => removeSet.has(tag));
+
+  if (removed.length === 0) {
+    if (flags.json) {
+      console.log(
+        JSON.stringify(
+          {
+            id: node.id,
+            shortId: formatId(node.id),
+            title: node.title,
+            removed: [],
+            tags: node.tags,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    console.log(`${colorize.info('ℹ')} No matching tags to remove on ${formatId(node.id)} (${node.title})`);
+    return;
+  }
+
+  await updateNodeIndexData(node.id, nextTags, node.tokenCounts);
+
+  if (flags.json) {
+    console.log(
+      JSON.stringify(
+        {
+          id: node.id,
+          shortId: formatId(node.id),
+          title: node.title,
+          removed,
+          tags: nextTags,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Removed ${removed.length} tag(s) from ${formatId(node.id)} (${node.title})`);
+  console.log(`   ${colorize.label('tags:')} ${nextTags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
 }
 
 async function runTagsList(flags: TagsListFlags) {

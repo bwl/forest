@@ -2,11 +2,13 @@
 
 This document reviews the current setup for bundling the Forest CLI with Forest Desktop and recommends improvements to make the integration more robust across platforms and releases.
 
+> Note: This repository’s CLI now uses `FOREST_EMBED_PROVIDER` (`openrouter|openai|mock|none`) and does not ship a `forest-embed` helper binary. Sections below that mention `forest-embed` reflect an older Desktop integration plan and may be stale.
+
 ## What’s Good
 
 - Single‑binary CLI: `scripts/build-cli.sh` compiles a standalone executable with `bun build --compile` and embeds `sql.js`’s WASM via `scripts/embed-wasm.ts` so the CLI runs without `node_modules`.
 - Shared DB location: `src/lib/db.ts` defaults to a platform‑appropriate app data path (overridable with `FOREST_DB_PATH`) so Desktop and CLI share data.
-- Embeddings parity: CLI uses the Rust `forest-embed` helper (`src/lib/embeddings.ts`), matching Desktop’s engine; falls back to mock embeddings when unavailable.
+- Embeddings parity: CLI uses `FOREST_EMBED_PROVIDER` to select embeddings (or disable them); Desktop bundling can choose its own embedding strategy independently.
 - Tauri hooks: `forest-desktop/src-tauri/tauri.conf.json` includes `bundle.externalBin` and a `beforeBuildCommand` to produce the CLI binary, plus `plugins.cli` so the Desktop binary supports CLI subcommands.
 
 ## Gaps and concrete fixes

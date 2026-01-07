@@ -10,16 +10,22 @@ _forest_complete() {
     _init_completion || return
 
     # Top-level commands
-    local commands="capture explore search node edges tags export stats health admin:recompute-embeddings serve --help --version --tldr"
+    local commands="capture write explore link path search node edges tags documents export stats admin config serve version --help --version --tldr"
 
     # Subcommands for node
-    local node_commands="read edit delete link recent synthesize import"
+    local node_commands="read update edit delete connect synthesize import"
 
     # Subcommands for edges
-    local edges_commands="propose accept reject promote sweep explain undo"
+    local edges_commands="explain threshold"
 
     # Subcommands for tags
-    local tags_commands="list rename stats"
+    local tags_commands="add remove list rename stats"
+
+    # Subcommands for documents
+    local documents_commands="list show stats"
+
+    # Subcommands for admin
+    local admin_commands="migrate-v2 embeddings tags health doctor"
 
     # Subcommands for export
     local export_commands="graphviz json"
@@ -51,6 +57,18 @@ _forest_complete() {
                 return 0
             fi
             ;;
+        documents)
+            if [[ ${cword} -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "${documents_commands}" -- "${cur}"))
+                return 0
+            fi
+            ;;
+        admin)
+            if [[ ${cword} -eq 2 ]]; then
+                COMPREPLY=($(compgen -W "${admin_commands}" -- "${cur}"))
+                return 0
+            fi
+            ;;
         export)
             if [[ ${cword} -eq 2 ]]; then
                 COMPREPLY=($(compgen -W "${export_commands}" -- "${cur}"))
@@ -61,7 +79,7 @@ _forest_complete() {
 
     # Suggest recency references (@, @1, @2) for commands that take node refs
     case "${subcmd}" in
-        node|read|edit|delete|link)
+        explore|node|link|tags)
             if [[ ${cur} == @* ]]; then
                 COMPREPLY=($(compgen -W "@ @1 @2 @3 @4 @5" -- "${cur}"))
                 return 0

@@ -6,8 +6,9 @@ import {
   searchNodes,
   NodeRecord,
   SearchMatch,
+  EdgeRecord,
 } from '../../lib/db';
-import { collectNeighborhood, buildGraph } from '../../lib/graph';
+import { collectNeighborhood, buildGraph, graphFromRecords } from '../../lib/graph';
 import { filterOutChunks } from '../../lib/reconstruction';
 
 import {
@@ -55,6 +56,9 @@ export type ExploreRenderOptions = {
   showMatches: boolean;
   focusSelected: boolean;
   suppressOverview?: boolean;
+  by?: 'semantic' | 'tags';
+  minSemantic?: number;
+  minTags?: number;
 };
 
 export async function selectNode(input: SelectionInput): Promise<SelectionResult> {
@@ -195,18 +199,27 @@ export async function selectNode(input: SelectionInput): Promise<SelectionResult
   return { selected: matches[index], matches, limit: searchLimit };
 }
 
-export async function buildNeighborhoodPayload(centerId: string, depth: number, limit: number) {
-  const graph = await buildGraph();
+export async function buildNeighborhoodPayload(
+  centerId: string,
+  depth: number,
+  limit: number,
+  filters: { by?: 'semantic' | 'tags'; minSemantic?: number; minTags?: number } = {},
+) {
+  const nodes = await listNodes();
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+
+  const edges = await listEdges('accepted');
+  const filteredEdges = filterEdgesForExplore(edges, filters);
+  const graph = graphFromRecords(nodes, filteredEdges);
+
   if (!graph.hasNode(centerId)) {
     return {
       payload: { center: centerId, nodes: [], edges: [] },
-      directEdges: [] as Array<{ otherId: string; otherTitle: string; score: number }>,
+      directEdges: [] as DirectEdge[],
     };
   }
 
   const neighborhood = collectNeighborhood(graph, centerId, depth, limit);
-  const allNodes = await listNodes();
-  const nodeMap = new Map(allNodes.map((node) => [node.id, node]));
 
   const payload = {
     center: centerId,
@@ -228,7 +241,11 @@ export async function buildNeighborhoodPayload(centerId: string, depth: number, 
       source: edge.source,
       target: edge.target,
       score: edge.attributes.score,
+      semanticScore: edge.attributes.semanticScore ?? null,
+      tagScore: edge.attributes.tagScore ?? null,
+      sharedTags: edge.attributes.sharedTags ?? [],
       status: edge.attributes.status,
+      edgeType: edge.attributes.edgeType ?? 'semantic',
     })),
   };
 
@@ -241,9 +258,20 @@ export async function buildNeighborhoodPayload(centerId: string, depth: number, 
         otherId,
         otherTitle: otherNode ? otherNode.title : otherId,
         score: edge.score,
+        semanticScore: edge.semanticScore,
+        tagScore: edge.tagScore,
+        edgeType: edge.edgeType,
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      if (filters.by === 'tags') {
+        return (b.tagScore ?? -1) - (a.tagScore ?? -1);
+      }
+      if (filters.by === 'semantic') {
+        return (b.semanticScore ?? -1) - (a.semanticScore ?? -1);
+      }
+      return b.score - a.score;
+    });
 
   return { payload, directEdges };
 }
@@ -276,7 +304,11 @@ export async function printExplore(options: ExploreRenderOptions) {
   const matches = selection.matches;
   const focusSelected = options.focusSelected ?? true;
 
-  const neighborhoodData = await buildNeighborhoodPayload(match.node.id, options.depth, options.limit);
+  const neighborhoodData = await buildNeighborhoodPayload(match.node.id, options.depth, options.limit, {
+    by: options.by,
+    minSemantic: options.minSemantic,
+    minTags: options.minTags,
+  });
   const suggestionData = await fetchSuggestionsForNode(match.node.id);
 
   if (options.json) {
@@ -314,7 +346,7 @@ export async function printExplore(options: ExploreRenderOptions) {
 
 export async function printNodeOverview(
   node: NodeRecord,
-  directEdges: Array<{ otherId: string; otherTitle: string; score: number }>,
+  directEdges: DirectEdge[],
   options: { longIds: boolean },
 ) {
   // Use progressive IDs unless --long is specified
@@ -334,15 +366,52 @@ export async function printNodeOverview(
   if (directEdges.length > 0) {
     console.log(`${colorize.label('accepted edges:')}`);
     for (const edge of directEdges) {
-      const coloredScore = colorize.embeddingScore(edge.score);
+      const coloredScore = colorize.edgeDualScore(edge.semanticScore, edge.tagScore);
       const coloredId = colorize.nodeId(formatNodeId(edge.otherId));
-      console.log(
-        `  ${coloredScore}  ${coloredId}  ${edge.otherTitle}`,
-      );
+      const typeLabel = edge.edgeType && edge.edgeType !== 'semantic' ? `  [${edge.edgeType}]` : '';
+      console.log(`  ${coloredScore}  ${coloredId}  ${edge.otherTitle}${typeLabel}`);
     }
   } else {
     console.log(`${colorize.label('accepted edges:')} none`);
   }
+}
+
+type DirectEdge = {
+  otherId: string;
+  otherTitle: string;
+  score: number;
+  semanticScore: number | null;
+  tagScore: number | null;
+  edgeType?: string;
+};
+
+function filterEdgesForExplore(
+  edges: EdgeRecord[],
+  filters: { by?: 'semantic' | 'tags'; minSemantic?: number; minTags?: number },
+): EdgeRecord[] {
+  const by = filters.by;
+  const minSemantic =
+    typeof filters.minSemantic === 'number' && Number.isFinite(filters.minSemantic)
+      ? filters.minSemantic
+      : undefined;
+  const minTags = typeof filters.minTags === 'number' && Number.isFinite(filters.minTags) ? filters.minTags : undefined;
+
+  return edges.filter((edge) => {
+    if (by === 'semantic' && edge.semanticScore === null) return false;
+    if (by === 'tags' && edge.tagScore === null) return false;
+
+    if (typeof minSemantic === 'number') {
+      if (edge.semanticScore === null) return false;
+      if (edge.semanticScore < minSemantic) return false;
+    }
+
+    if (typeof minTags === 'number') {
+      if (edge.tagScore === null) return false;
+      if (edge.tagScore < minTags) return false;
+    }
+
+    return true;
+  });
 }
 
 async function printMatches(

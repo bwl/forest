@@ -6,7 +6,7 @@ import {
   listEdges,
   listNodes,
 } from '../../lib/db';
-import { computeScore, getEdgeThreshold } from '../../lib/scoring';
+import { buildTagIdfContext, computeEdgeScore, getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
 
 import {
   describeSuggestion,
@@ -180,6 +180,9 @@ async function runEdgesList(flags: EdgesListFlags) {
             sourceTitle: desc.sourceTitle,
             targetTitle: desc.targetTitle,
             score: edge.score,
+            semanticScore: edge.semanticScore,
+            tagScore: edge.tagScore,
+            sharedTags: edge.sharedTags,
             edgeType: edge.edgeType,
             metadata: edge.metadata,
             updatedAt: edge.updatedAt,
@@ -220,9 +223,17 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
     return;
   }
 
-  const components = (match.metadata as any)?.components ?? computeScore(a, b).components;
+  const context = buildTagIdfContext(nodes);
+  const computed = computeEdgeScore(a, b, context);
+  const sharedTags = match.sharedTags.length > 0 ? match.sharedTags : computed.sharedTags;
+  const tagComponents = (() => {
+    const fromMetadata = (match.metadata as any)?.components?.tag;
+    if (fromMetadata && typeof fromMetadata === 'object') return fromMetadata;
+    return computed.components.tag;
+  })();
   const code = getEdgePrefix(match.sourceId, match.targetId, edges);
-  const threshold = getEdgeThreshold();
+  const semanticThreshold = getSemanticThreshold();
+  const tagThreshold = getTagThreshold();
 
   if (flags.json) {
     console.log(
@@ -233,8 +244,14 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
           targetId: match.targetId,
           code,
           score: match.score,
-          threshold,
-          components,
+          semanticScore: match.semanticScore,
+          tagScore: match.tagScore,
+          sharedTags,
+          thresholds: {
+            semantic: semanticThreshold,
+            tags: tagThreshold,
+          },
+          tagComponents,
         },
         null,
         2,
@@ -244,19 +261,25 @@ async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags
   }
 
   console.log(
-    `${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  score=${match.score.toFixed(3)}  threshold=${threshold}`,
+    `${formatId(match.sourceId)}::${formatId(match.targetId)} [${code}]  score=${match.score.toFixed(3)}  ` +
+      `S=${match.semanticScore === null ? '--' : match.semanticScore.toFixed(3)}  ` +
+      `T=${match.tagScore === null ? '--' : match.tagScore.toFixed(3)}`,
   );
-  console.log('components:');
-  for (const [key, value] of Object.entries(components)) {
+  console.log(`thresholds: semantic>=${semanticThreshold.toFixed(3)} OR tags>=${tagThreshold.toFixed(3)}`);
+  console.log(`shared tags: ${sharedTags.length > 0 ? sharedTags.join(', ') : 'none'}`);
+  console.log('tag components:');
+  for (const [key, value] of Object.entries(tagComponents)) {
     if (typeof value === 'number') console.log(`  ${key}: ${value.toFixed(3)}`);
     else console.log(`  ${key}: ${String(value)}`);
   }
 }
 
 async function runEdgesThreshold() {
-  const threshold = getEdgeThreshold();
-  console.log(`Current edge threshold: ${threshold}`);
+  const semanticThreshold = getSemanticThreshold();
+  const tagThreshold = getTagThreshold();
+  console.log(`Semantic threshold: ${semanticThreshold}`);
+  console.log(`Tag threshold: ${tagThreshold}`);
   console.log('');
-  console.log('Edges are created when the similarity score >= threshold.');
-  console.log('Set via FOREST_EDGE_THRESHOLD environment variable.');
+  console.log('Edges are created when semantic_score or tag_score exceeds its threshold.');
+  console.log('Set via FOREST_SEMANTIC_THRESHOLD / FOREST_TAG_THRESHOLD environment variables.');
 }

@@ -91,10 +91,10 @@ check_requirements() {
   fi
 
   # Set default embedding provider if not set
-  # Use 'mock' for testing if local embeddings are not available
+  # Use 'mock' for offline testing
   if [ -z "${FOREST_EMBED_PROVIDER:-}" ]; then
     export FOREST_EMBED_PROVIDER="mock"
-    log_info "Using mock embeddings (set FOREST_EMBED_PROVIDER=local for real embeddings)"
+    log_info "Using mock embeddings (set FOREST_EMBED_PROVIDER=openrouter or openai for real embeddings)"
   fi
 
   # Basic sanity check - just verify forest command works

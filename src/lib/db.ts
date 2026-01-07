@@ -14,6 +14,7 @@ export type NodeRecord = {
   embedding?: number[];
   createdAt: string;
   updatedAt: string;
+  approximateScored?: boolean;
   // Document chunking metadata
   isChunk: boolean;
   parentDocumentId: string | null;
@@ -30,6 +31,9 @@ export type EdgeRecord = {
   sourceId: string;
   targetId: string;
   score: number;
+  semanticScore: number | null;
+  tagScore: number | null;
+  sharedTags: string[];
   status: EdgeStatus;
   edgeType: EdgeType;
   createdAt: string;
@@ -209,7 +213,8 @@ function runMigrations(db: Database) {
       token_counts TEXT NOT NULL,
       embedding TEXT,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      approximate_scored INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS edges (
@@ -217,11 +222,29 @@ function runMigrations(db: Database) {
       source_id TEXT NOT NULL,
       target_id TEXT NOT NULL,
       score REAL NOT NULL,
+      semantic_score REAL,
+      tag_score REAL,
+      shared_tags TEXT DEFAULT '[]',
       status TEXT NOT NULL CHECK (status IN ('accepted')),
+      edge_type TEXT NOT NULL DEFAULT 'semantic',
       metadata TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       UNIQUE(source_id, target_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS node_tags (
+      node_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      PRIMARY KEY (node_id, tag)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_node_tags_tag ON node_tags(tag);
+
+    CREATE TABLE IF NOT EXISTS tag_idf (
+      tag TEXT PRIMARY KEY,
+      doc_freq INTEGER NOT NULL,
+      idf REAL NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS metadata (
@@ -307,14 +330,35 @@ function runMigrations(db: Database) {
       backfillAllDegrees(db);
       dirty = true;
     }
+
+    // Scoring v2: approximate scoring marker
+    if (!columns.includes('approximate_scored')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN approximate_scored INTEGER NOT NULL DEFAULT 1;`);
+      dirty = true;
+    }
   } catch (_) {
     // Best-effort; ignore if pragma not supported in this context
   }
 
-  // Add edge_type column to edges table if missing
+  // Add scoring v2 columns to edges table if missing
   try {
     const res = db.exec(`PRAGMA table_info(edges);`);
     const columns = res.length > 0 ? res[0].values.map((row) => String(row[1])) : [];
+
+    if (!columns.includes('semantic_score')) {
+      db.exec(`ALTER TABLE edges ADD COLUMN semantic_score REAL;`);
+      dirty = true;
+    }
+
+    if (!columns.includes('tag_score')) {
+      db.exec(`ALTER TABLE edges ADD COLUMN tag_score REAL;`);
+      dirty = true;
+    }
+
+    if (!columns.includes('shared_tags')) {
+      db.exec(`ALTER TABLE edges ADD COLUMN shared_tags TEXT DEFAULT '[]';`);
+      dirty = true;
+    }
 
     if (!columns.includes('edge_type')) {
       db.exec(`ALTER TABLE edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'semantic';`);
@@ -560,6 +604,7 @@ function parseNodeRow(row: any): NodeRecord {
     embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+    approximateScored: Number(row.approximate_scored ?? 1) === 1,
     isChunk: Number(row.is_chunk || 0) === 1,
     parentDocumentId: row.parent_document_id ? String(row.parent_document_id) : null,
     chunkOrder: row.chunk_order ? Number(row.chunk_order) : null,
@@ -600,12 +645,155 @@ function parseEdgeRow(row: any): EdgeRecord {
     sourceId: String(row.source_id),
     targetId: String(row.target_id),
     score: Number(row.score),
+    semanticScore: row.semantic_score === null || row.semantic_score === undefined ? null : Number(row.semantic_score),
+    tagScore: row.tag_score === null || row.tag_score === undefined ? null : Number(row.tag_score),
+    sharedTags: row.shared_tags ? (JSON.parse(String(row.shared_tags)) as string[]) : [],
     status: row.status as EdgeStatus,
     edgeType: (row.edge_type as EdgeType) || 'semantic',
     metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function normalizeTagsForStorage(tags: string[]): string[] {
+  return Array.from(
+    new Set(
+      tags
+        .map((tag) => tag.trim().toLowerCase())
+        .filter((tag) => tag.length > 0),
+    ),
+  );
+}
+
+function syncNodeTagsInternal(db: Database, nodeId: string, tags: string[]) {
+  // Best-effort: if table does not exist yet, do nothing.
+  try {
+    const del = db.prepare('DELETE FROM node_tags WHERE node_id = :id');
+    del.bind({ ':id': nodeId });
+    del.step();
+    del.free();
+
+    const normalized = normalizeTagsForStorage(tags);
+    if (normalized.length === 0) return;
+
+    const ins = db.prepare('INSERT OR IGNORE INTO node_tags (node_id, tag) VALUES (:id, :tag)');
+    for (const tag of normalized) {
+      ins.bind({ ':id': nodeId, ':tag': tag });
+      ins.step();
+      ins.reset();
+    }
+    ins.free();
+  } catch (_) {
+    // Ignore missing table during early migrations.
+  }
+}
+
+export async function syncNodeTags(nodeId: string, tags: string[]): Promise<void> {
+  const db = await ensureDatabase();
+  syncNodeTagsInternal(db, nodeId, tags);
+  await markDirtyAndPersist();
+}
+
+export async function bulkSyncNodeTags(
+  entries: Array<{ nodeId: string; tags: string[] }>
+): Promise<{ nodes: number; rowsAttempted: number }> {
+  const db = await ensureDatabase();
+
+  // Best-effort: if table does not exist yet, do nothing.
+  try {
+    db.exec('BEGIN');
+
+    const del = db.prepare('DELETE FROM node_tags WHERE node_id = :id');
+    const ins = db.prepare('INSERT OR IGNORE INTO node_tags (node_id, tag) VALUES (:id, :tag)');
+
+    let rowsAttempted = 0;
+
+    for (const entry of entries) {
+      del.bind({ ':id': entry.nodeId });
+      del.step();
+      del.reset();
+
+      const normalized = normalizeTagsForStorage(entry.tags);
+      for (const tag of normalized) {
+        ins.bind({ ':id': entry.nodeId, ':tag': tag });
+        ins.step();
+        ins.reset();
+        rowsAttempted += 1;
+      }
+    }
+
+    del.free();
+    ins.free();
+
+    db.exec('COMMIT');
+
+    await markDirtyAndPersist();
+    return { nodes: entries.length, rowsAttempted };
+  } catch (_) {
+    try {
+      db.exec('ROLLBACK');
+    } catch (_) {
+      // ignore
+    }
+    return { nodes: entries.length, rowsAttempted: 0 };
+  }
+}
+
+export type TagIdfRecord = { tag: string; docFreq: number; idf: number };
+
+export async function rebuildTagIdf(): Promise<{ totalNodes: number; totalTags: number }> {
+  const db = await ensureDatabase();
+
+  const countStmt = db.prepare('SELECT COUNT(*) as count FROM nodes');
+  countStmt.step();
+  const totalNodes = Number(countStmt.getAsObject().count);
+  countStmt.free();
+
+  const freqStmt = db.prepare(
+    'SELECT tag, COUNT(DISTINCT node_id) AS doc_freq FROM node_tags GROUP BY tag',
+  );
+
+  const rows: TagIdfRecord[] = [];
+  while (freqStmt.step()) {
+    const row = freqStmt.getAsObject();
+    const tag = String(row.tag);
+    const docFreq = Number(row.doc_freq);
+    const idf = totalNodes > 0 && docFreq > 0 ? Math.log(totalNodes / docFreq) : 0;
+    rows.push({ tag, docFreq, idf });
+  }
+  freqStmt.free();
+
+  db.exec('DELETE FROM tag_idf');
+
+  const insertStmt = db.prepare(
+    'INSERT OR REPLACE INTO tag_idf (tag, doc_freq, idf) VALUES (:tag, :docFreq, :idf)',
+  );
+  for (const row of rows) {
+    insertStmt.bind({ ':tag': row.tag, ':docFreq': row.docFreq, ':idf': row.idf });
+    insertStmt.step();
+    insertStmt.reset();
+  }
+  insertStmt.free();
+
+  await markDirtyAndPersist();
+  return { totalNodes, totalTags: rows.length };
+}
+
+export async function listTagIdf(): Promise<TagIdfRecord[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT tag, doc_freq, idf FROM tag_idf ORDER BY idf DESC, tag ASC');
+  const rows: TagIdfRecord[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    rows.push({
+      tag: String(row.tag),
+      docFreq: Number(row.doc_freq),
+      idf: Number(row.idf),
+    });
+  }
+  stmt.free();
+  return rows;
 }
 
 export async function insertNode(record: NodeRecord): Promise<void> {
@@ -629,6 +817,7 @@ export async function insertNode(record: NodeRecord): Promise<void> {
   });
   stmt.step();
   stmt.free();
+  syncNodeTagsInternal(db, record.id, record.tags);
   await markDirtyAndPersist();
 }
 
@@ -652,6 +841,7 @@ export async function updateNode(
   fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts' | 'embedding'>>
 ): Promise<void> {
   const db = await ensureDatabase();
+  const nextTags = Array.isArray(fields.tags) ? fields.tags : undefined;
   const sets: string[] = [];
   const params: Record<string, unknown> = { ':id': id, ':updatedAt': new Date().toISOString() };
   if (typeof fields.title === 'string') {
@@ -680,6 +870,9 @@ export async function updateNode(
   stmt.bind(params as any);
   stmt.step();
   stmt.free();
+  if (nextTags) {
+    syncNodeTagsInternal(db, id, nextTags);
+  }
   await markDirtyAndPersist();
 }
 
@@ -728,6 +921,7 @@ export async function updateNodeIndexData(
   });
   stmt.step();
   stmt.free();
+  syncNodeTagsInternal(db, id, tags);
   await markDirtyAndPersist();
 }
 
@@ -1160,11 +1354,14 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
     prev.free();
   }
   const stmt = db.prepare(
-    `INSERT INTO edges (id, source_id, target_id, score, status, edge_type, metadata, created_at, updated_at)
-     VALUES (:id, :sourceId, :targetId, :score, :status, :edgeType, :metadata, :createdAt, :updatedAt)
+    `INSERT INTO edges (id, source_id, target_id, score, semantic_score, tag_score, shared_tags, status, edge_type, metadata, created_at, updated_at)
+     VALUES (:id, :sourceId, :targetId, :score, :semanticScore, :tagScore, :sharedTags, :status, :edgeType, :metadata, :createdAt, :updatedAt)
      ON CONFLICT(source_id, target_id)
      DO UPDATE SET
        score = excluded.score,
+       semantic_score = excluded.semantic_score,
+       tag_score = excluded.tag_score,
+       shared_tags = excluded.shared_tags,
        status = excluded.status,
        edge_type = excluded.edge_type,
        metadata = excluded.metadata,
@@ -1175,6 +1372,9 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
     ':sourceId': record.sourceId,
     ':targetId': record.targetId,
     ':score': record.score,
+    ':semanticScore': record.semanticScore,
+    ':tagScore': record.tagScore,
+    ':sharedTags': JSON.stringify(record.sharedTags ?? []),
     ':status': record.status,
     ':edgeType': record.edgeType,
     ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
@@ -1188,6 +1388,52 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   applyDegreeTransition(db, record.sourceId, record.targetId, existedBefore, true);
 
   await markDirtyAndPersist();
+}
+
+export async function bulkUpdateEdgesV2(
+  updates: Array<{
+    sourceId: string;
+    targetId: string;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+    metadata: Record<string, unknown> | null;
+  }>,
+): Promise<{ updated: number }> {
+  if (updates.length === 0) return { updated: 0 };
+
+  const db = await ensureDatabase();
+  db.exec('BEGIN');
+
+  const stmt = db.prepare(
+    `UPDATE edges
+     SET semantic_score = :semanticScore,
+         tag_score = :tagScore,
+         shared_tags = :sharedTags,
+         metadata = :metadata
+     WHERE source_id = :sourceId AND target_id = :targetId`,
+  );
+
+  let updated = 0;
+  for (const edge of updates) {
+    stmt.bind({
+      ':sourceId': edge.sourceId,
+      ':targetId': edge.targetId,
+      ':semanticScore': edge.semanticScore,
+      ':tagScore': edge.tagScore,
+      ':sharedTags': JSON.stringify(edge.sharedTags ?? []),
+      ':metadata': edge.metadata ? JSON.stringify(edge.metadata) : null,
+    });
+    stmt.step();
+    updated += db.getRowsModified();
+    stmt.reset();
+  }
+
+  stmt.free();
+  db.exec('COMMIT');
+
+  await markDirtyAndPersist();
+  return { updated };
 }
 
 export type ListEdgesOptions = {
@@ -1401,6 +1647,14 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
   delEdges.bind({ ':id': id });
   delEdges.step();
   delEdges.free();
+
+  // Delete normalized tags
+  {
+    const delTags = db.prepare('DELETE FROM node_tags WHERE node_id = :id');
+    delTags.bind({ ':id': id });
+    delTags.step();
+    delTags.free();
+  }
 
   // Adjust neighbors' degree counters (the node itself is being deleted)
   for (const otherId of affectedNeighbors) {

@@ -193,9 +193,11 @@ export function formatAcceptedEdgesTable(
     const edgeId = formatId(edge.sourceId, { long: longIds }) + '::' + formatId(edge.targetId, { long: longIds });
     const sourceLabel = sourceNode.title;
     const targetLabel = targetNode.title;
+    const dualScore = colorize.edgeDualScore(edge.semanticScore, edge.tagScore);
+    const typeLabel = edge.edgeType && edge.edgeType !== 'semantic' ? `  type=${edge.edgeType}` : '';
 
     lines.push(
-      `${indexLabel}. [${code}] ${edgeId}  score=${edge.score.toFixed(3)}  ${sourceLabel} ↔ ${targetLabel}`
+      `${indexLabel}. [${code}] ${edgeId}  ${dualScore}${typeLabel}  ${sourceLabel} ↔ ${targetLabel}`
     );
   });
 

@@ -5,7 +5,7 @@ import {
   insertOrUpdateEdge,
   listNodes,
 } from '../../lib/db';
-import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring';
+import { buildTagIdfContext, classifyEdgeScores, computeEdgeScore, normalizeEdgePair } from '../../lib/scoring';
 
 import { edgeIdentifier } from './utils';
 
@@ -14,10 +14,11 @@ type RescoreOptions = {
 };
 
 export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRecord[]) {
+  const context = buildTagIdfContext([newNode, ...existing]);
   let accepted = 0;
   for (const other of existing) {
-    const { score, components } = computeScore(newNode, other);
-    const status = classifyScore(score);
+    const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(newNode, other, context);
+    const status = classifyEdgeScores(semanticScore, tagScore);
     if (status === 'discard') continue;
     const [sourceId, targetId] = normalizeEdgePair(newNode.id, other.id);
     const edge: EdgeRecord = {
@@ -25,6 +26,9 @@ export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRec
       sourceId,
       targetId,
       score,
+      semanticScore,
+      tagScore,
+      sharedTags,
       status,
       edgeType: 'semantic',
       metadata: {
@@ -43,10 +47,11 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
   let accepted = 0;
 
   const all = options.allNodes ?? (await listNodes());
+  const context = buildTagIdfContext(all);
   for (const other of all) {
     if (other.id === node.id) continue;
-    const { score, components } = computeScore(node, other);
-    const status = classifyScore(score);
+    const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(node, other, context);
+    const status = classifyEdgeScores(semanticScore, tagScore);
     const [sourceId, targetId] = normalizeEdgePair(node.id, other.id);
     if (status === 'discard') {
       await deleteEdgeBetween(sourceId, targetId);
@@ -57,6 +62,9 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
       sourceId,
       targetId,
       score,
+      semanticScore,
+      tagScore,
+      sharedTags,
       status,
       edgeType: 'semantic',
       metadata: { components },

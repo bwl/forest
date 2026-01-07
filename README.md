@@ -1,6 +1,8 @@
 # Forest
 
-A graph-native knowledge base that captures ideas and automatically links them using semantic embeddings and lexical analysis. Everything lives in a single SQLite database.
+Forest is a graph-native knowledge base CLI. It stores notes in a single SQLite database and creates one edge per node-pair with two independent scores:
+- **Semantic score**: embedding cosine similarity (optional, depends on embedding provider)
+- **Tag score**: IDF-weighted Jaccard similarity over tags
 
 ## Quick Start
 
@@ -8,411 +10,142 @@ A graph-native knowledge base that captures ideas and automatically links them u
 bun install
 bun run build
 
-# Capture ideas from different sources
-forest capture --stdin < idea.txt
-forest capture --title "Project idea" --body "Build a graph database for notes"
+# Project-local DB (recommended for project docs)
+export FOREST_DB_PATH=./forest.db
 
-# Search and explore connections
-forest explore "machine learning"
-forest search "neural networks" --limit 20
+# Offline mode (no network calls)
+export FOREST_EMBED_PROVIDER=none
 
-# Generate long-form content
-forest write "Explain knowledge graphs and their applications"
+# Capture notes
+forest capture --title "Project overview" --body "What this repo does. #docs"
+forest capture --stdin < docs/architecture.md
 
-# Review and manage connections
-forest edges propose
-forest edges accept 1
+# Explore + inspect edges
+forest explore --title "Project overview"
+forest edges
+forest edges explain <ref>
+
+# Workflow tags
+forest tags add <ref> to-review
+forest tags remove <ref> to-review
+
+# Explicit “bridge” link tag between two notes
+forest link <ref1> <ref2> --name=chapter-1-arc
 ```
 
-## Core Features
+## Scoring & Linking (v2)
 
-### Capture and Storage
+Forest stores **dual scores on a single edge**:
+- `semantic_score` (nullable): cosine similarity between embeddings
+- `tag_score` (nullable): IDF-weighted Jaccard over tags
+- `shared_tags`: for explainability
 
-**Capture notes** from multiple input methods with automatic linking:
-```bash
-forest capture --stdin < note.md
-forest capture --file document.md
-forest capture --title "Idea" --body "Text with #tags"
-```
+Edges are kept if **either** layer meets its threshold:
+- `semantic_score >= FOREST_SEMANTIC_THRESHOLD` (default `0.5`), OR
+- `tag_score >= FOREST_TAG_THRESHOLD` (default `0.3`)
 
-Notes are automatically:
-- Analyzed for semantic content via embeddings
-- Tagged using GPT-5-nano or lexical extraction
-- Linked to related notes based on hybrid scoring
-- Chunked transparently if they exceed length limits
+`score` is kept as a compatibility field and is currently `max(semantic_score, tag_score)` for new computations.
 
-**Configuration** is interactive and persistent:
-```bash
-forest config  # Interactive setup wizard
-forest config --show
-```
+## Bridge Tags (`forest link`)
 
-### Search and Discovery
+`forest link <a> <b> [--name=...]` adds a `#link/...` tag to both nodes. Because `link/*` tags are rare (usually 2 nodes), they produce a high `tag_score` and create a strong explicit edge.
 
-**Semantic search** finds notes by meaning, not just keywords:
-```bash
-forest search "distributed systems"
-forest search --min-score 0.3 "async patterns"
-```
-
-**Graph exploration** shows neighborhoods and connections:
-```bash
-forest explore "context"
-forest explore --id abc12345 --depth 2 --limit 50
-forest explore --tag research,priority --since 2025-10-01
-```
-
-**Activity timeline** tracks recent changes:
-```bash
-forest node recent
-forest node recent --limit 20 --since 24h
-forest node recent --created  # Only show created, not updated
-```
-
-### Node Operations
-
-**Read** notes with multiple output modes:
-```bash
-forest node read abc12345
-forest node read abc12345 --raw | glow  # Pipe to markdown viewer
-forest node read abc12345 --json
-```
-
-**Edit** existing notes with your editor:
-```bash
-forest node edit abc12345
-forest node edit abc12345 --editor "code --wait"
-```
-
-**Refresh** notes from flags or files:
-```bash
-forest node refresh abc12345 --title "New title"
-forest node refresh abc12345 --stdin < updated.md
-```
-
-**Synthesize** combines multiple notes into new perspectives:
-```bash
-forest node synthesize abc12345 def67890
-forest node synthesize abc12345 def67890 --reasoning high
-```
-
-**Link** notes manually when needed:
-```bash
-forest node link abc12345 def67890
-forest node link abc12345 def67890 --score 0.8
-```
-
-### Edge Management
-
-**Propose** shows suggested connections ranked by confidence:
-```bash
-forest edges propose
-forest edges propose --limit 30
-```
-
-**Accept or reject** suggestions individually:
-```bash
-forest edges accept 1
-forest edges accept qpfs  # Using 4-char reference code
-forest edges reject 2
-forest edges undo qpfs
-```
-
-**Promote** auto-accepts high-confidence suggestions in bulk:
-```bash
-forest edges promote --min-score 0.6
-```
-
-**Sweep** bulk-rejects low-confidence suggestions:
-```bash
-forest edges sweep --max-score 0.2
-forest edges sweep --range 1-10,15
-```
-
-**Explain** shows detailed scoring breakdown:
-```bash
-forest edges explain abc12345::def67890
-forest edges explain 1 --json
-```
-
-### Content Generation
-
-**Write** produces long-form articles on any topic:
-```bash
-forest write "Knowledge graphs and their applications"
-forest write "Explain neural networks" --max-tokens 5000
-forest write "Systems thinking" --model claude-opus-4
-```
-
-Generated content is automatically:
-- Captured as a node in your graph
-- Tagged appropriately
-- Linked to related existing notes
-
-### Tags and Organization
-
-**List** all tags with usage counts:
-```bash
-forest tags list
-forest tags list --top 20
-```
-
-**Rename** tags across the entire graph:
-```bash
-forest tags rename old-tag new-tag
-```
-
-**Tag statistics** show co-occurrence patterns:
-```bash
-forest tags stats
-forest tags stats --tag graphs --top 10
-forest tags stats --min-count 5
-```
-
-### Data Management
-
-**Stats** provides graph-level metrics:
-```bash
-forest stats
-forest stats --json
-```
-
-Includes node/edge counts, degree distribution, top tags, and tag pair co-occurrence.
-
-**Health** checks system integrity:
-```bash
-forest health
-forest health --json
-```
-
-Validates embeddings coverage, database state, and configuration.
-
-**Export** for backup or analysis:
-```bash
-forest export json --file backup.json
-forest export graphviz --id abc12345 --file graph.dot
-dot -Tpng graph.dot -o visualization.png
-```
-
-### API Server
-
-**Serve** the REST API with WebSocket event stream:
-```bash
-forest serve
-forest serve --port 8080 --host 0.0.0.0
-```
-
-Provides full CLI feature parity through HTTP endpoints.
-
-## Scoring and Linking
-
-Forest uses hybrid scoring that combines:
-- **Semantic similarity** (55%): Embedding cosine distance
-- **Lexical overlap** (25%): Token frequency comparison
-- **Tag overlap** (15%): Shared tags
-- **Title similarity** (5%): Title text matching
-
-Scores are classified into:
-- **≥ 0.50**: Auto-accepted as edges
-- **0.25-0.50**: Suggested for review
-- **< 0.25**: Discarded
-
-Thresholds are configurable:
-```bash
-export FOREST_AUTO_ACCEPT=0.6
-export FOREST_SUGGESTION_THRESHOLD=0.25
-```
+Hashtags in text support `/` (e.g. `#link/chapter-1-arc`).
 
 ## Embedding Providers
 
-Forest supports multiple embedding providers via `FOREST_EMBED_PROVIDER`:
+Embedding provider selection:
+- `openrouter` (default): `FOREST_OR_KEY` (or `openrouterApiKey` in `~/.forestrc`)
+- `openai`: `OPENAI_API_KEY` (or `openaiApiKey` in `~/.forestrc`)
+- `mock`: deterministic embeddings for offline testing
+- `none`: disable embeddings entirely (tags-only + lexical search)
 
-**Local** (default): Uses `@xenova/transformers` with offline model
+Override model with `FOREST_EMBED_MODEL`.
+
+Recompute embeddings and rescore links:
 ```bash
-export FOREST_EMBED_PROVIDER=local
-export FOREST_EMBED_LOCAL_MODEL="Xenova/all-MiniLM-L6-v2"
+forest admin embeddings --rescore
 ```
 
-**OpenAI**: Requires API key
+## Tags
+
+Tags are stored as plain strings (no leading `#`). Hashtags in note text are extracted and normalized to lowercase.
+
+Common commands:
 ```bash
-export FOREST_EMBED_PROVIDER=openai
-export OPENAI_API_KEY=sk-...
-export FOREST_EMBED_MODEL=text-embedding-3-small
+forest tags                # dashboard
+forest tags list --top 20  # counts
+forest tags stats --tag docs
+forest tags add @0 to-review
+forest tags remove @0 to-review
+forest tags rename old-tag new-tag
 ```
 
-**Mock**: Deterministic hash-based vectors for testing
+### Suggested Tag Patterns
+
+Forest supports hierarchical tags via `/` (e.g. `#status/to-review`). A few useful conventions:
+- Workflow/status: `to-review` (or `status/to-review`), `status/done`, `status/blocked`
+- Scope: `project/<name>`, `area/<subsystem>`
+- Decisions: `decision/<topic>`
+- People/roles: `person/<name>`
+- Explicit links: `link/<name>` (created by `forest link`)
+
+## Migration
+
+For existing databases created before scoring v2:
 ```bash
-export FOREST_EMBED_PROVIDER=mock
+forest admin migrate-v2
 ```
 
-**None**: Disables embeddings (pure lexical scoring)
-```bash
-export FOREST_EMBED_PROVIDER=none
-```
-
-Recompute embeddings for all nodes:
-```bash
-forest admin:recompute-embeddings --rescore
-```
-
-## LLM-Powered Tagging
-
-Forest can use GPT-5-nano to generate contextual tags:
-
-```bash
-export FOREST_TAGGING_METHOD=llm  # or: lexical (default)
-export FOREST_TAGGING_MODEL=gpt-5-nano
-export OPENAI_API_KEY=sk-...
-
-# Regenerate tags for all nodes
-forest admin:retag-all
-forest admin:retag-all --dry-run
-forest admin:retag-all --limit 10
-```
-
-## Document Chunking
-
-Large documents are automatically chunked for embedding while remaining seamless to users. Chunks are:
-- Created transparently during capture
-- Reassembled automatically during read operations
-- Treated as a single logical document
-
-This happens invisibly when documents exceed the embedding model's token limit.
-
-## Common Workflows
-
-### Daily capture and review
-```bash
-# Morning: capture overnight thoughts
-cat thoughts.md | forest capture --stdin
-
-# Review connections
-forest edges propose --limit 10
-forest edges accept 1
-forest edges accept 3
-```
-
-### Research and synthesis
-```bash
-# Find related notes
-forest search "distributed consensus" --limit 15
-
-# Explore neighborhood
-forest explore "consensus" --depth 2
-
-# Synthesize insights
-forest node synthesize abc12345 def67890 ghi78901
-```
-
-### Content creation
-```bash
-# Generate article
-forest write "The evolution of database systems"
-
-# Read and refine
-forest node read <newly-created-id> --raw | vim -
-
-# Link to related work
-forest node link <new-id> <related-id>
-```
-
-### Bulk operations
-```bash
-# Accept high-confidence suggestions
-forest edges propose --json \
-  | jq -r '.[] | select(.score >= 0.4) | .code' \
-  | xargs -n1 forest edges accept
-
-# Clean up low-confidence suggestions
-forest edges sweep --max-score 0.15
-
-# Retag everything with LLM
-FOREST_TAGGING_METHOD=llm forest admin:retag-all
-```
-
-### Export and backup
-```bash
-# Full backup
-forest export json --file "backup-$(date +%Y%m%d).json"
-
-# Visualize a subgraph
-forest export graphviz --id abc12345 --depth 2 --file graph.dot
-dot -Tpng graph.dot -o graph.png
-```
+Fresh databases run v2 migrations automatically.
 
 ## Configuration
 
-All settings are managed through environment variables or the interactive config command:
-
+Forest stores config in `~/.forestrc` (and supports env var overrides):
 ```bash
-forest config  # Interactive wizard
+forest config
+forest config --show
 ```
 
-Key variables:
-- `FOREST_DB_PATH`: Database location (default: `forest.db`)
-- `FOREST_PORT`: API server port (default: 3000)
-- `FOREST_HOST`: API server host (default: `::` for dual-stack)
-- `FOREST_EMBED_PROVIDER`: Embedding provider (`local`, `openai`, `mock`, `none`)
-- `FOREST_TAGGING_METHOD`: Tag generation (`lexical`, `llm`)
-- `FOREST_AUTO_ACCEPT`: Auto-link threshold (default: 0.50)
-- `FOREST_SUGGESTION_THRESHOLD`: Suggestion threshold (default: 0.25)
+Useful env vars:
+- `FOREST_DB_PATH`: database file path
+- `FOREST_EMBED_PROVIDER`: `openrouter|openai|mock|none`
+- `FOREST_OR_KEY`: OpenRouter API key
+- `OPENAI_API_KEY`: OpenAI API key
+- `FOREST_EMBED_MODEL`: embedding model override
+- `FOREST_SEMANTIC_THRESHOLD`: semantic edge threshold
+- `FOREST_TAG_THRESHOLD`: tag edge threshold
+- `FOREST_PORT`, `FOREST_HOST`: API server bind settings
 
-## Data Model
+## Data Model (v2)
 
-Three main tables in SQLite:
-
-**nodes**: Ideas with metadata
-- id, title, body, tags (JSON)
-- tokenCounts (JSON), embedding (JSON)
-- isChunk, parentDocumentId, chunkOrder
-- createdAt, updatedAt
-
-**edges**: Connections between nodes
-- id, source_id, target_id
-- score, status (accepted/suggested)
-- metadata (JSON)
-- createdAt, updatedAt
-
-**edge_events**: Audit trail for edge changes
-- Tracks accept/reject actions
-- Enables undo functionality
+Key tables:
+- `nodes`: note content + tags JSON + token_counts + embedding + `approximate_scored`
+- `edges`: `score` + `semantic_score` + `tag_score` + `shared_tags` + `edge_type`
+- `node_tags`: normalized `(node_id, tag)` rows for tag lookups
+- `tag_idf`: cached `(tag, doc_freq, idf)` values (rebuilt on demand)
 
 ## For AI Agents
 
-Forest implements the TLDR standard for agent discovery:
-
+Forest implements TLDR v0.2 for agent discovery:
 ```bash
-# Discover all commands
 forest --tldr
-
-# Get detailed metadata (ASCII)
-forest capture --tldr
-forest edges propose --tldr
-
-# Get JSON for parsing
 forest --tldr=json
-forest search --tldr=json
-
-# Get everything at once
 forest --tldr=all
-```
 
-TLDR v0.2 provides condensed command metadata optimized for LLM consumption (60% token reduction vs standard format).
+forest capture --tldr=json
+forest explore --tldr=json
+forest link --tldr=json
+forest admin migrate-v2 --tldr=json
+```
 
 ## Development
 
 ```bash
-# Build from source
 bun run build
-
-# Type checking
-bun run lint
-
-# Run from source
 bun run dev -- capture --stdin
-
-# Start API server
-bun run dev:server
+bun run lint
+bun test
 ```
 
 ## License
