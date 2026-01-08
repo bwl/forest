@@ -21,7 +21,8 @@
       "Bash(bun run dev:*)",
       "Bash(wc:*)",
       "WebFetch(domain:openrouter.ai)",
-      "Bash(~/.local/bin/forest edges:*)"
+      "Bash(~/.local/bin/forest edges:*)",
+      "Skill(lumberjack)"
     ],
     "deny": [],
     "ask": []
