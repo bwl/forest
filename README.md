@@ -2,6 +2,8 @@
 
 A graph-native knowledge base that captures ideas and automatically links them using semantic embeddings and lexical analysis. Everything lives in a single SQLite database.
 
+![Screenshot of `forest -v`](docs/images/forest-version.png)
+
 ## Quick Start
 
 ```bash
