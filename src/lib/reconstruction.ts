@@ -11,7 +11,7 @@
  * When reading, we detect chunks and automatically reconstruct the full document.
  */
 
-import { NodeRecord, listNodes, getNodeById, EdgeRecord, listEdges } from './db';
+import { NodeRecord, listNodes, getNodeById, EdgeRecord, listEdges } from './db.js';
 
 export type ReconstructedDocument = {
   rootNode: NodeRecord;

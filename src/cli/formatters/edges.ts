@@ -1,6 +1,6 @@
-import { EdgeRecord, NodeRecord } from '../../lib/db';
-import { formatId, getEdgePrefix } from '../shared/utils';
-import { colorize, makeHeaderColor, useColors } from './colors';
+import { EdgeRecord, NodeRecord } from '../../lib/db.js';
+import { formatId, getEdgePrefix } from '../shared/utils.js';
+import { colorize, makeHeaderColor, useColors } from './colors.js';
 
 /**
  * Edge suggestion with enriched node data

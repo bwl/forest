@@ -259,13 +259,13 @@ export async function extractTagsAsync(
   }
 
   // Load config to determine tagging method
-  const { loadConfig } = await import('./config');
+  const { loadConfig } = await import('./config.js');
   const config = loadConfig();
 
   // Use LLM tagging if configured
   if (config.taggingMethod === 'llm') {
     try {
-      const { generateTagsLLM } = await import('./llm-tagger');
+      const { generateTagsLLM } = await import('./llm-tagger.js');
       const result = await generateTagsLLM(title || '', text, limit);
       return result.tags;
     } catch (err) {

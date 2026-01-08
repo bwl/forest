@@ -1,5 +1,5 @@
-import { NodeRecord, listNodes, updateNodeIndexData } from '../lib/db';
-import { eventBus } from '../server/events/eventBus';
+import { NodeRecord, listNodes, updateNodeIndexData } from '../lib/db.js';
+import { eventBus } from '../server/events/eventBus.js';
 
 export type TagWithCount = {
   name: string;

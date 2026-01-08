@@ -1,19 +1,19 @@
-import { createCaptureCommand } from './commands/capture';
-import { createWriteCommand } from './commands/write';
-import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings';
-import { createAdminRetagAllCommand } from './commands/admin-retag-all';
-import { createExploreCommand } from './commands/explore';
-import { createSearchCommand } from './commands/search';
-import { registerExportCommands } from './commands/export';
-import { registerEdgesCommands } from './commands/edges';
-import { registerNodeCommands } from './commands/node';
-import { registerTagsCommands } from './commands/tags';
-import { registerDocumentsCommands } from './commands/documents';
-import { createStatsCommand } from './commands/stats';
-import { createHealthCommand } from './commands/health';
-import { createServeCommand } from './commands/serve';
-import { createConfigCommand } from './commands/config';
-import { createVersionCommand, displayVersion, getVersion } from './commands/version';
+import { createCaptureCommand } from './commands/capture.js';
+import { createWriteCommand } from './commands/write.js';
+import { createAdminRecomputeEmbeddingsCommand } from './commands/admin-recompute-embeddings.js';
+import { createAdminRetagAllCommand } from './commands/admin-retag-all.js';
+import { createExploreCommand } from './commands/explore.js';
+import { createSearchCommand } from './commands/search.js';
+import { registerExportCommands } from './commands/export.js';
+import { registerEdgesCommands } from './commands/edges.js';
+import { registerNodeCommands } from './commands/node.js';
+import { registerTagsCommands } from './commands/tags.js';
+import { registerDocumentsCommands } from './commands/documents.js';
+import { createStatsCommand } from './commands/stats.js';
+import { createHealthCommand } from './commands/health.js';
+import { createServeCommand } from './commands/serve.js';
+import { createConfigCommand } from './commands/config.js';
+import { createVersionCommand, displayVersion, getVersion } from './commands/version.js';
 
 type ClercModule = typeof import('clerc');
 

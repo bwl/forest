@@ -1,9 +1,9 @@
-import { listNodes, updateNodeIndexData } from '../../lib/db';
+import { listNodes, updateNodeIndexData } from '../../lib/db.js';
 
-import { handleError } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { colorize } from '../formatters';
+import { handleError } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
+import { colorize } from '../formatters/index.js';
 
 import type { HandlerContext } from '@clerc/core';
 

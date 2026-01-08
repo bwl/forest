@@ -1,20 +1,20 @@
 import { randomUUID } from 'crypto';
 
-import { NodeRecord, insertNode, listNodes } from '../../lib/db';
-import { pickTitle, tokenize, extractTags } from '../../lib/text';
-import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { getAutoAcceptThreshold, getSuggestionThreshold } from '../../lib/scoring';
+import { NodeRecord, insertNode, listNodes } from '../../lib/db.js';
+import { pickTitle, tokenize, extractTags } from '../../lib/text.js';
+import { computeEmbeddingForNode } from '../../lib/embeddings.js';
+import { getAutoAcceptThreshold, getSuggestionThreshold } from '../../lib/scoring.js';
 
-import { handleError, resolveBodyInput } from '../shared/utils';
+import { handleError, resolveBodyInput } from '../shared/utils.js';
 import {
   SelectionResult,
   fetchSuggestionsForNode,
   printExplore,
-} from '../shared/explore';
-import { linkAgainstExisting } from '../shared/linking';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { colorize } from '../formatters';
+} from '../shared/explore.js';
+import { linkAgainstExisting } from '../shared/linking.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
+import { colorize } from '../formatters/index.js';
 
 type ClercModule = typeof import('clerc');
 

@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { EdgeRecord, listEdges, getNodeById } from '../../lib/db';
+import { EdgeRecord, listEdges, getNodeById } from '../../lib/db.js';
 import {
   listEdgesCore,
   createEdgeCore,
@@ -10,7 +10,7 @@ import {
   promoteEdgesCore,
   sweepEdgesCore,
   undoEdgeActionCore,
-} from '../../core/edges';
+} from '../../core/edges.js';
 import {
   createSuccessResponse,
   parseQueryInt,
@@ -18,10 +18,10 @@ import {
   formatEdgeForResponse,
   createPaginationInfo,
   validatePaginationParams,
-} from '../utils/helpers';
-import { ForestError, EdgeNotFoundError, ValidationError, createErrorResponse } from '../utils/errors';
-import { formatId } from '../../cli/shared/utils';
-import { resolveEdgeReference } from '../../cli/shared/edges';
+} from '../utils/helpers.js';
+import { ForestError, EdgeNotFoundError, ValidationError, createErrorResponse } from '../utils/errors.js';
+import { formatId } from '../../cli/shared/utils.js';
+import { resolveEdgeReference } from '../../cli/shared/edges.js';
 
 // Helper to resolve edge by reference (short pair, full ID, or progressive code)
 async function resolveEdgeByRef(ref: string, status?: 'accepted' | 'suggested' | 'all'): Promise<EdgeRecord> {

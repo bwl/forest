@@ -1,5 +1,5 @@
-import { getNodeById, NodeRecord } from '../lib/db';
-import { loadConfig } from '../lib/config';
+import { getNodeById, NodeRecord } from '../lib/db.js';
+import { loadConfig } from '../lib/config.js';
 
 export type SynthesisModel = 'gpt-5' | 'gpt-5-mini';
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';

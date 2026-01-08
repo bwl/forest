@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { getNodeById } from '../../lib/db';
+import { getNodeById } from '../../lib/db.js';
 import {
   listNodesCore,
   getNodeCore,
@@ -8,7 +8,7 @@ import {
   createNodeCore,
   updateNodeCore,
   deleteNodeCore,
-} from '../../core/nodes';
+} from '../../core/nodes.js';
 import {
   createSuccessResponse,
   parseQueryInt,
@@ -22,8 +22,8 @@ import {
   formatEdgeForResponse,
   createPaginationInfo,
   validatePaginationParams,
-} from '../utils/helpers';
-import { ForestError, ValidationError, createErrorResponse } from '../utils/errors';
+} from '../utils/helpers.js';
+import { ForestError, ValidationError, createErrorResponse } from '../utils/errors.js';
 
 export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
   // GET /nodes - List and search nodes

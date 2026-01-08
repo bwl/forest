@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getEmbeddingProvider, embeddingsEnabled } from '../lib/embeddings';
+import { getEmbeddingProvider, embeddingsEnabled } from '../lib/embeddings.js';
 
 const DEFAULT_DB_PATH = 'forest.db';
 

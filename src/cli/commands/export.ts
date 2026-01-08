@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 
-import { listEdges, listNodes } from '../../lib/db';
-import { buildNeighborhoodPayload, fetchSuggestionsForNode, selectNode } from '../shared/explore';
-import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { listEdges, listNodes } from '../../lib/db.js';
+import { buildNeighborhoodPayload, fetchSuggestionsForNode, selectNode } from '../shared/explore.js';
+import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 
 import type { HandlerContext } from '@clerc/core';
 

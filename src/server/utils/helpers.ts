@@ -1,11 +1,11 @@
-import { NodeRecord, EdgeRecord, listNodes, getNodeById } from '../../lib/db';
-import { formatId } from '../../cli/shared/utils';
+import { NodeRecord, EdgeRecord, listNodes, getNodeById } from '../../lib/db.js';
+import { formatId } from '../../cli/shared/utils.js';
 import {
   NodeNotFoundError,
   AmbiguousIdError,
   ValidationError,
   ForestError,
-} from './errors';
+} from './errors.js';
 
 export type SuccessResponse<T> = {
   success: true;

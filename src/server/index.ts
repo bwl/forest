@@ -2,14 +2,14 @@ import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
 
-import { healthRoutes } from './routes/health';
-import { statsRoutes } from './routes/stats';
-import { nodesRoutes } from './routes/nodes';
-import { tagsRoutes } from './routes/tags';
-import { edgesRoutes } from './routes/edges';
-import { searchRoutes } from './routes/search';
-import { documentsRoutes } from './routes/documents';
-import { websocketRoute } from './routes/websocket';
+import { healthRoutes } from './routes/health.js';
+import { statsRoutes } from './routes/stats.js';
+import { nodesRoutes } from './routes/nodes.js';
+import { tagsRoutes } from './routes/tags.js';
+import { edgesRoutes } from './routes/edges.js';
+import { searchRoutes } from './routes/search.js';
+import { documentsRoutes } from './routes/documents.js';
+import { websocketRoute } from './routes/websocket.js';
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOSTNAME = '::'; // Dual-stack: listens on both IPv4 and IPv6

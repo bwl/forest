@@ -1,6 +1,6 @@
-import { NodeRecord, listNodes as dbListNodes } from '../lib/db';
-import { embedNoteText } from '../lib/embeddings';
-import { cosineEmbeddings } from '../lib/scoring';
+import { NodeRecord, listNodes as dbListNodes } from '../lib/db.js';
+import { embedNoteText } from '../lib/embeddings.js';
+import { cosineEmbeddings } from '../lib/scoring.js';
 
 export type SemanticSearchOptions = {
   limit?: number;

@@ -1,6 +1,6 @@
-import { handleError } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { handleError } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 
 type ClercModule = typeof import('clerc');
 

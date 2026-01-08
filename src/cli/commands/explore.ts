@@ -1,7 +1,7 @@
-import { DEFAULT_NEIGHBORHOOD_LIMIT, handleError } from '../shared/utils';
-import { printExplore, selectNode } from '../shared/explore';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { DEFAULT_NEIGHBORHOOD_LIMIT, handleError } from '../shared/utils.js';
+import { printExplore, selectNode } from '../shared/explore.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 
 type ClercModule = typeof import('clerc');
 

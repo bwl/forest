@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getNodeById, listNodes, NodeRecord, EdgeRecord } from '../../lib/db';
-import { generateEdgeHash, buildPrefixMap, normalizeNodeId, findHashesByPrefix, buildNodePrefixMap } from '../../lib/progressive-id';
+import { getNodeById, listNodes, NodeRecord, EdgeRecord } from '../../lib/db.js';
+import { generateEdgeHash, buildPrefixMap, normalizeNodeId, findHashesByPrefix, buildNodePrefixMap } from '../../lib/progressive-id.js';
 
 // Cache prefix maps per edge list so callers can reuse them within a command invocation.
 const edgePrefixCache = new WeakMap<EdgeRecord[], Map<string, string>>();

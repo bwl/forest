@@ -5,13 +5,13 @@ import {
   insertOrUpdateEdge,
   listNodes,
   updateNode,
-} from '../../lib/db';
-import { computeEmbeddingForNode, embeddingsEnabled } from '../../lib/embeddings';
-import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring';
+} from '../../lib/db.js';
+import { computeEmbeddingForNode, embeddingsEnabled } from '../../lib/embeddings.js';
+import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring.js';
 
-import { edgeIdentifier, handleError } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { edgeIdentifier, handleError } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 
 type ClercModule = typeof import('clerc');
 

@@ -1,6 +1,6 @@
 import * as clack from '@clack/prompts';
-import { loadConfig, saveConfig, getConfigPath, type ForestConfig } from '../../lib/config';
-import { DEFAULT_COLOR_SCHEME, listColorSchemes } from '../../lib/color-schemes';
+import { loadConfig, saveConfig, getConfigPath, type ForestConfig } from '../../lib/config.js';
+import { DEFAULT_COLOR_SCHEME, listColorSchemes } from '../../lib/color-schemes.js';
 
 type ClercModule = typeof import('clerc');
 

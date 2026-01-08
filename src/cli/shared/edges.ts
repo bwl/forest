@@ -1,7 +1,7 @@
-import { EdgeRecord, NodeRecord, getNodeById, listEdgeEvents, listEdges } from '../../lib/db';
-import { normalizeEdgePair } from '../../lib/scoring';
-import { formatId, isShortId, resolveByIdPrefix, getEdgePrefix, isProgressiveEdgeId } from './utils';
-import { generateEdgeHash, resolvePrefix } from '../../lib/progressive-id';
+import { EdgeRecord, NodeRecord, getNodeById, listEdgeEvents, listEdges } from '../../lib/db.js';
+import { normalizeEdgePair } from '../../lib/scoring.js';
+import { formatId, isShortId, resolveByIdPrefix, getEdgePrefix, isProgressiveEdgeId } from './utils.js';
+import { generateEdgeHash, resolvePrefix } from '../../lib/progressive-id.js';
 
 export type SuggestionDescription = {
   edgeId: string;

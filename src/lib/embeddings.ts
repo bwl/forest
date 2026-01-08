@@ -1,4 +1,4 @@
-import { NodeRecord } from './db';
+import { NodeRecord } from './db.js';
 
 // Provider selection via env:
 //  - FOREST_EMBED_PROVIDER=mock | openai | none

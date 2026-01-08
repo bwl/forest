@@ -1,6 +1,6 @@
-import { listNodes, updateNode } from '../../lib/db';
-import { extractTagsAsync } from '../../lib/text';
-import { loadConfig } from '../../lib/config';
+import { listNodes, updateNode } from '../../lib/db.js';
+import { extractTagsAsync } from '../../lib/text.js';
+import { loadConfig } from '../../lib/config.js';
 
 type ClercModule = typeof import('clerc');
 

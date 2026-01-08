@@ -1,5 +1,9 @@
-import Graph from 'graphology';
-import { EdgeRecord, EdgeStatus, NodeRecord, listEdges, listNodes } from './db';
+import GraphModule from 'graphology';
+import type { AbstractGraph } from 'graphology-types';
+import { EdgeRecord, EdgeStatus, NodeRecord, listEdges, listNodes } from './db.js';
+
+// Type assertion for ESM compatibility
+const Graph = GraphModule as any as new (options?: any) => AbstractGraph;
 
 export async function buildGraph(options: { includeSuggestions?: boolean } = {}) {
   const { includeSuggestions = false } = options;
@@ -8,7 +12,7 @@ export async function buildGraph(options: { includeSuggestions?: boolean } = {})
   return graphFromRecords(nodes, includeSuggestions ? edges : edges.filter((edge) => edge.status === 'accepted'));
 }
 
-export function graphFromRecords(nodes: NodeRecord[], edges: EdgeRecord[]): Graph {
+export function graphFromRecords(nodes: NodeRecord[], edges: EdgeRecord[]): AbstractGraph {
   const graph = new Graph({ type: 'undirected', multi: false });
 
   for (const node of nodes) {
@@ -32,7 +36,7 @@ export function graphFromRecords(nodes: NodeRecord[], edges: EdgeRecord[]): Grap
   return graph;
 }
 
-export function collectNeighborhood(graph: Graph, centerId: string, depth: number, limit: number) {
+export function collectNeighborhood(graph: AbstractGraph, centerId: string, depth: number, limit: number) {
   const visited = new Set<string>();
   const queue: Array<{ id: string; distance: number }> = [{ id: centerId, distance: 0 }];
   const nodes: Set<string> = new Set();
@@ -46,7 +50,7 @@ export function collectNeighborhood(graph: Graph, centerId: string, depth: numbe
 
     if (current.distance >= depth) continue;
 
-    graph.forEachNeighbor(current.id, (neighbor, attributes) => {
+    graph.forEachNeighbor(current.id, (neighbor: string, attributes: any) => {
       const edgeKey = graph.edge(current.id, neighbor);
       if (edgeKey) {
         edges.add(edgeKey);

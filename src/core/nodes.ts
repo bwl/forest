@@ -8,12 +8,12 @@ import {
   updateNode as dbUpdateNode,
   deleteNode as dbDeleteNode,
   listEdges,
-} from '../lib/db';
-import { extractTags, pickTitle, tokenize } from '../lib/text';
-import { computeEmbeddingForNode } from '../lib/embeddings';
-import { linkAgainstExisting, rescoreNode } from '../cli/shared/linking';
-import { formatId } from '../cli/shared/utils';
-import { eventBus } from '../server/events/eventBus';
+} from '../lib/db.js';
+import { extractTags, pickTitle, tokenize } from '../lib/text.js';
+import { computeEmbeddingForNode } from '../lib/embeddings.js';
+import { linkAgainstExisting, rescoreNode } from '../cli/shared/linking.js';
+import { formatId } from '../cli/shared/utils.js';
+import { eventBus } from '../server/events/eventBus.js';
 
 export type ListNodesOptions = {
   search?: string;
@@ -258,7 +258,7 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
   // Extract or use provided tags (use async version for LLM support)
   let tags = data.tags;
   if (!tags || tags.length === 0) {
-    const { extractTagsAsync } = await import('../lib/text');
+    const { extractTagsAsync } = await import('../lib/text.js');
     tags = await extractTagsAsync(`${title}\n${body}`, title);
   }
 

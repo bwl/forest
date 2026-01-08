@@ -1,6 +1,6 @@
 import { Elysia } from 'elysia';
 import { randomUUID } from 'crypto';
-import { eventBus, ForestEvent, ForestEventType } from '../events/eventBus';
+import { eventBus, ForestEvent, ForestEventType } from '../events/eventBus.js';
 
 type SubscribeMessage = {
   type: 'subscribe';

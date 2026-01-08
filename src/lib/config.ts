@@ -6,7 +6,7 @@ import {
   DEFAULT_COLOR_SCHEME,
   isColorSchemeName,
   type ColorSchemeName,
-} from './color-schemes';
+} from './color-schemes.js';
 
 export type WriteModelName = 'gpt-5' | 'gpt-5-mini' | 'gpt-4o';
 export type SynthesizeModelName = 'gpt-5' | 'gpt-5-mini';
@@ -14,6 +14,10 @@ export type SynthesizeModelName = 'gpt-5' | 'gpt-5-mini';
 export interface MarkdownOutputConfig {
   width?: number;
   reflowText?: boolean;
+}
+
+export interface NodeEditConfig {
+  useTui?: boolean;
 }
 
 export interface ForestConfig {
@@ -27,6 +31,7 @@ export interface ForestConfig {
   writeModel?: WriteModelName;
   synthesizeModel?: SynthesizeModelName;
   markdown?: MarkdownOutputConfig;
+  nodeEdit?: NodeEditConfig;
 }
 
 const CONFIG_FILE = path.join(os.homedir(), '.forestrc');
@@ -141,4 +146,26 @@ function normalizeMarkdownConfig(raw: unknown): MarkdownOutputConfig | undefined
   if (width !== undefined) normalized.width = width;
   if (reflowText !== undefined) normalized.reflowText = reflowText;
   return normalized;
+}
+
+/**
+ * Determine if TUI editor should be used for node editing
+ * Precedence: CLI flag > env var > config file > default (false)
+ */
+export function shouldUseTui(cliFlag?: boolean): boolean {
+  // 1. Explicit CLI flag takes precedence
+  if (cliFlag !== undefined) return cliFlag;
+
+  // 2. Environment variable
+  if (process.env.FOREST_NODE_EDIT_TUI === 'true') return true;
+  if (process.env.FOREST_NODE_EDIT_TUI === 'false') return false;
+
+  // 3. Config file
+  const config = loadConfig();
+  if (config.nodeEdit?.useTui !== undefined) {
+    return config.nodeEdit.useTui;
+  }
+
+  // 4. Default: use external editor
+  return false;
 }

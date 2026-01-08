@@ -10,24 +10,24 @@ import {
   logEdgeEvent,
   markEdgeEventUndone,
   promoteSuggestions,
-} from '../../lib/db';
-import { computeScore, getAutoAcceptThreshold } from '../../lib/scoring';
+} from '../../lib/db.js';
+import { computeScore, getAutoAcceptThreshold } from '../../lib/scoring.js';
 
 import {
   describeSuggestion,
   resolveEdgePairFromRef,
   resolveEdgeReference,
   resolveSuggestionReference,
-} from '../shared/edges';
-import { formatId, handleError, getEdgePrefix } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+} from '../shared/edges.js';
+import { formatId, handleError, getEdgePrefix } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 import {
   formatEdgeSuggestionsTable,
   formatEdgeSuggestionsJSON,
   formatAcceptedEdgesTable,
   type EdgeSuggestion,
-} from '../formatters';
+} from '../formatters/index.js';
 
 import type { HandlerContext } from '@clerc/core';
 

@@ -3,13 +3,14 @@ import * as path from 'path';
 
 import chalk from 'chalk';
 
-import { handleError } from '../shared/utils';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { getDirname } from '../../lib/esm.js';
+import { handleError } from '../shared/utils.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 import {
   ACTIVE_SCHEME,
   hslToRgb,
   type ColorRole,
-} from '../formatters/colors';
+} from '../formatters/colors.js';
 
 type ClercModule = typeof import('clerc');
 
@@ -44,6 +45,7 @@ const FOREST_SCENE_LINES = [
 // Read version dynamically from package.json
 function readVersion(): string {
   try {
+    const __dirname = getDirname(import.meta);
     const packageJsonPath = path.join(__dirname, '../../../package.json');
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
     return packageJson.version || '0.0.0';

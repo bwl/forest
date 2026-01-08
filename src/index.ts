@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { runForestCli } from './cli';
-import { handleError } from './cli/shared/utils';
-import { displayVersion, displayBriefInfo, getVersion } from './cli/commands/version';
-import { getGlobalTldr, emitTldrAndExit } from './cli/tldr';
+import { runForestCli } from './cli/index.js';
+import { handleError } from './cli/shared/utils.js';
+import { displayVersion, displayBriefInfo, getVersion } from './cli/commands/version.js';
+import { getGlobalTldr, emitTldrAndExit, formatAllCommandsTldr } from './cli/tldr.js';
 
 const rawArgs = process.argv.slice(2);
 
@@ -20,7 +20,6 @@ if (tldrIndex !== -1 && tldrIndex === 0) {
 
   // Check for --tldr=all (output all commands)
   if (tldrArg === '--tldr=all') {
-    const { formatAllCommandsTldr } = require('./cli/tldr');
     console.log(formatAllCommandsTldr(getVersion()));
     process.exit(0);
   }

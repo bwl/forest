@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { NodeRecord, EdgeRecord } from '../../lib/db';
+import { NodeRecord, EdgeRecord } from '../../lib/db.js';
 
 export type ForestEventType =
   | 'node:created'

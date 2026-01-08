@@ -16,13 +16,13 @@ import {
   upsertDocument,
   replaceDocumentChunks,
   updateNodeChunkOrder,
-} from '../../lib/db';
-import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
-import { extractTags, tokenize } from '../../lib/text';
-import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { computeScore, normalizeEdgePair } from '../../lib/scoring';
+} from '../../lib/db.js';
+import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db.js';
+import { extractTags, tokenize } from '../../lib/text.js';
+import { computeEmbeddingForNode } from '../../lib/embeddings.js';
+import { computeScore, normalizeEdgePair } from '../../lib/scoring.js';
 
-import { buildNeighborhoodPayload, printNodeOverview } from '../shared/explore';
+import { buildNeighborhoodPayload, printNodeOverview } from '../shared/explore.js';
 import {
   DEFAULT_NEIGHBORHOOD_LIMIT,
   edgeIdentifier,
@@ -30,8 +30,8 @@ import {
   handleError,
   resolveBodyInput,
   resolveNodeReference,
-} from '../shared/utils';
-import { rescoreNode } from '../shared/linking';
+} from '../shared/utils.js';
+import { rescoreNode } from '../shared/linking.js';
 import {
   loadDocumentSessionForNode,
   buildDocumentEditorBuffer,
@@ -39,15 +39,15 @@ import {
   type LoadedDocumentSession,
   type DocumentSegment,
   type ParsedDocumentEdit,
-} from '../shared/document-session';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
-import { createNodeCore } from '../../core/nodes';
-import { importDocumentCore } from '../../core/import';
-import { reconstructDocument, filterOutChunks } from '../../lib/reconstruction';
-import { loadConfig } from '../../lib/config';
-import { renderMarkdownToTerminal } from '../formatters';
+} from '../shared/document-session.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
+import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize.js';
+import { createNodeCore } from '../../core/nodes.js';
+import { importDocumentCore } from '../../core/import.js';
+import { reconstructDocument, filterOutChunks } from '../../lib/reconstruction.js';
+import { loadConfig } from '../../lib/config.js';
+import { renderMarkdownToTerminal } from '../formatters/index.js';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -77,6 +77,7 @@ type NodeEditFlags = {
   editor?: string;
   autoLink?: boolean;
   noAutoLink?: boolean;
+  tui?: boolean;
   tldr?: string;
 };
 
@@ -233,6 +234,10 @@ export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
         noAutoLink: {
           type: Boolean,
           description: 'Skip rescoring edges after saving',
+        },
+        tui: {
+          type: Boolean,
+          description: 'Use TUI editor instead of external editor (opt-in, requires ink/react)',
         },
         tldr: {
           type: String,
@@ -793,6 +798,9 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
   }
 
   const documentSession = await loadDocumentSessionForNode(node);
+
+  // TUI mode removed - use LSP-based editor (VS Code, Neovim) with forest-language-server
+  // See forest-vscode/ and LSP-IMPLEMENTATION.md for details
 
   let editorCommand: EditorCommand;
   try {

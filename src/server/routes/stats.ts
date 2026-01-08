@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { getStats } from '../../core/stats';
+import { getStats } from '../../core/stats.js';
 
 export const statsRoutes = new Elysia({ prefix: '/api/v1' })
   .get(

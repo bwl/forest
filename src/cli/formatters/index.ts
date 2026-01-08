@@ -8,7 +8,7 @@
  * import formatters from this module for consistent theming.
  *
  * @example
- * import { colorize, formatEdgeSuggestionsTable } from '../formatters';
+ * import { colorize, formatEdgeSuggestionsTable } from '../formatters/index.js';
  *
  * // Use preset color functions
  * console.log(colorize.embeddingScore(0.85));
@@ -29,9 +29,9 @@ export {
   makeHeaderColor,
   useColors,
   colorize,
-} from './colors';
+} from './colors.js';
 
-export type { ColorRole, ColorSchemeName } from './colors';
+export type { ColorRole, ColorSchemeName } from './colors.js';
 
 // Re-export edge formatters
 export {
@@ -39,11 +39,11 @@ export {
   formatEdgeSuggestionsJSON,
   formatAcceptedEdgesTable,
   formatEdgeExplanation,
-} from './edges';
+} from './edges.js';
 
 // Re-export types
-export type { EdgeSuggestion, EdgeSuggestionsTableOptions } from './edges';
+export type { EdgeSuggestion, EdgeSuggestionsTableOptions } from './edges.js';
 
 // Markdown utilities
-export { renderMarkdownToTerminal } from './markdown';
-export type { MarkdownRenderOptions } from './markdown';
+export { renderMarkdownToTerminal } from './markdown.js';
+export type { MarkdownRenderOptions } from './markdown.js';

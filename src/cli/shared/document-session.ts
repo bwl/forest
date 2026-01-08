@@ -1,12 +1,12 @@
-import type { NodeRecord, DocumentRecord, DocumentChunkRecord } from '../../lib/db';
+import type { NodeRecord, DocumentRecord, DocumentChunkRecord } from '../../lib/db.js';
 
-type DbModule = typeof import('../../lib/db');
+type DbModule = typeof import('../../lib/db.js');
 
 let dbModulePromise: Promise<DbModule> | null = null;
 
 async function getDbModule(): Promise<DbModule> {
   if (!dbModulePromise) {
-    dbModulePromise = import('../../lib/db');
+    dbModulePromise = import('../../lib/db.js');
   }
   return dbModulePromise;
 }

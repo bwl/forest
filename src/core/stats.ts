@@ -1,5 +1,5 @@
-import { listEdges, listNodes, NodeRecord } from '../lib/db';
-import { describeSuggestion } from '../cli/shared/edges';
+import { listEdges, listNodes, NodeRecord } from '../lib/db.js';
+import { describeSuggestion } from '../cli/shared/edges.js';
 
 export type StatsResult = {
   counts: {

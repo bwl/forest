@@ -1,4 +1,4 @@
-import { loadConfig } from '../lib/config';
+import { loadConfig } from '../lib/config.js';
 
 export type WriteModel = 'gpt-5' | 'gpt-5-mini' | 'gpt-4o';
 export type WriteReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';

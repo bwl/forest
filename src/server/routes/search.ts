@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia';
-import { semanticSearchCore } from '../../core/search';
+import { semanticSearchCore } from '../../core/search.js';
 import {
   createSuccessResponse,
   parseQueryInt,
@@ -7,8 +7,8 @@ import {
   formatNodeForList,
   createPaginationInfo,
   validatePaginationParams,
-} from '../utils/helpers';
-import { ForestError, ValidationError, createErrorResponse } from '../utils/errors';
+} from '../utils/helpers.js';
+import { ForestError, ValidationError, createErrorResponse } from '../utils/errors.js';
 
 export const searchRoutes = new Elysia({ prefix: '/api/v1' })
   // GET /search/semantic - Semantic search by query

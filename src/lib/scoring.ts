@@ -1,5 +1,5 @@
-import { NodeRecord, EdgeStatus } from './db';
-import { tokensFromTitle } from './text';
+import { NodeRecord, EdgeStatus } from './db.js';
+import { tokensFromTitle } from './text.js';
 
 export type ScoreComponents = {
   tagOverlap: number;

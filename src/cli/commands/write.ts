@@ -1,9 +1,9 @@
-import { writeArticleCore, WriteModel, WriteReasoningEffort, WriteVerbosity } from '../../core/write';
-import { createNodeCore } from '../../core/nodes';
-import { loadConfig } from '../../lib/config';
-import { formatId, handleError } from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { writeArticleCore, WriteModel, WriteReasoningEffort, WriteVerbosity } from '../../core/write.js';
+import { createNodeCore } from '../../core/nodes.js';
+import { loadConfig } from '../../lib/config.js';
+import { formatId, handleError } from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
 
 type ClercModule = typeof import('clerc');
 

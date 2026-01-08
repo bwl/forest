@@ -16,11 +16,11 @@ import {
   DocumentMetadata,
   upsertDocument,
   replaceDocumentChunks,
-} from '../lib/db';
-import { extractTags, tokenize, pickTitle } from '../lib/text';
-import { computeEmbeddingForNode } from '../lib/embeddings';
-import { linkAgainstExisting } from '../cli/shared/linking';
-import { chunkDocument, extractDocumentTitle, ChunkingOptions, DocumentChunk } from '../lib/chunking';
+} from '../lib/db.js';
+import { extractTags, tokenize, pickTitle } from '../lib/text.js';
+import { computeEmbeddingForNode } from '../lib/embeddings.js';
+import { linkAgainstExisting } from '../cli/shared/linking.js';
+import { chunkDocument, extractDocumentTitle, ChunkingOptions, DocumentChunk } from '../lib/chunking.js';
 
 export type ImportOptions = {
   documentTitle?: string;    // Override auto-detected title

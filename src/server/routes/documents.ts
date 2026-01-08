@@ -5,8 +5,8 @@ import {
   getDocumentChunks,
   DocumentRecord,
   DocumentChunkRecord,
-} from '../../lib/db';
-import { ForestError, createErrorResponse } from '../utils/errors';
+} from '../../lib/db.js';
+import { ForestError, createErrorResponse } from '../utils/errors.js';
 
 export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
   .get(

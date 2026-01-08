@@ -2,6 +2,7 @@ import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { getDirname } from './esm.js';
 
 export type NodeRecord = {
   id: string;
@@ -95,6 +96,7 @@ function getDbPath(): string {
 }
 
 function locateWasmFile(file: string): string {
+  const __dirname = getDirname(import.meta);
   return path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist', file);
 }
 

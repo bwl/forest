@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { DocumentRecord, DocumentChunkRecord, NodeRecord } from '../../../lib/db';
-import type { LoadedDocumentSession } from '../document-session';
-import { buildDocumentEditorBuffer, parseDocumentEditorBuffer } from '../document-session';
+import type { DocumentRecord, DocumentChunkRecord, NodeRecord } from '../../../lib/db.js';
+import type { LoadedDocumentSession } from '../document-session.js';
+import { buildDocumentEditorBuffer, parseDocumentEditorBuffer } from '../document-session.js';
 
 function makeNode(id: string, title: string, body: string): NodeRecord {
   return {

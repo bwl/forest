@@ -1,5 +1,5 @@
-import { loadConfig } from './config';
-import { listNodes } from './db';
+import { loadConfig } from './config.js';
+import { listNodes } from './db.js';
 
 export interface TagSuggestion {
   tag: string;

@@ -1,5 +1,5 @@
 import { Elysia, t } from 'elysia';
-import { getHealthReport, isHealthy } from '../../core/health';
+import { getHealthReport, isHealthy } from '../../core/health.js';
 
 export const healthRoutes = new Elysia({ prefix: '/api/v1' })
   .get(

@@ -10,10 +10,10 @@ import {
   promoteSuggestions,
   deleteSuggestion,
   getNodeById,
-} from '../lib/db';
-import { computeScore, normalizeEdgePair } from '../lib/scoring';
-import { edgeIdentifier, formatId } from '../cli/shared/utils';
-import { eventBus } from '../server/events/eventBus';
+} from '../lib/db.js';
+import { computeScore, normalizeEdgePair } from '../lib/scoring.js';
+import { edgeIdentifier, formatId } from '../cli/shared/utils.js';
+import { eventBus } from '../server/events/eventBus.js';
 
 export type ListEdgesOptions = {
   status?: 'accepted' | 'suggested' | 'all';

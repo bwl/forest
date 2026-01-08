@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 
-import { loadConfig } from '../../lib/config';
+import { loadConfig } from '../../lib/config.js';
 import {
   COLOR_SCHEME_PRESETS,
   DEFAULT_COLOR_SCHEME,
@@ -8,9 +8,9 @@ import {
   type ColorRole,
   type ColorSchemeDefinition,
   type ColorSchemeName,
-} from '../../lib/color-schemes';
+} from '../../lib/color-schemes.js';
 
-export type { ColorRole, ColorSchemeName } from '../../lib/color-schemes';
+export type { ColorRole, ColorSchemeName } from '../../lib/color-schemes.js';
 
 /**
  * HSL tuple representation used for derived palette values.

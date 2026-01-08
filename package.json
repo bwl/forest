@@ -2,6 +2,7 @@
   "name": "forest-cli",
   "version": "0.3.1",
   "description": "Ingest unstructured ideas into a graph-first knowledge base.",
+  "type": "module",
   "bin": {
     "forest": "dist/index.js"
   },
@@ -9,7 +10,7 @@
     "build": "bunx tsc",
     "lint": "bunx tsc --noEmit",
     "dev": "bunx tsx src/index.ts",
-    "dev:server": "bunx tsx src/server/index.ts",
+    "dev:server": "bun src/server/index.ts",
     "start": "bun run dist/index.js",
     "test": "bun test"
   },
@@ -32,6 +33,7 @@
     "graphology": "^0.25.1",
     "marked": "^16.4.1",
     "marked-terminal": "^7.3.0",
+    "memoirist": "^0.4.0",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {
@@ -39,6 +41,7 @@
     "@types/marked-terminal": "^6.1.1",
     "@types/node": "^20.11.20",
     "@types/sql.js": "^1.4.9",
+    "carbon-now-cli": "^2.1.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"

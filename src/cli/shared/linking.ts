@@ -4,10 +4,10 @@ import {
   deleteEdgeBetween,
   insertOrUpdateEdge,
   listNodes,
-} from '../../lib/db';
-import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring';
+} from '../../lib/db.js';
+import { classifyScore, computeScore, normalizeEdgePair } from '../../lib/scoring.js';
 
-import { edgeIdentifier } from './utils';
+import { edgeIdentifier } from './utils.js';
 
 type RescoreOptions = {
   allNodes?: NodeRecord[];

@@ -6,9 +6,9 @@ import {
   searchNodes,
   NodeRecord,
   SearchMatch,
-} from '../../lib/db';
-import { collectNeighborhood, buildGraph } from '../../lib/graph';
-import { filterOutChunks } from '../../lib/reconstruction';
+} from '../../lib/db.js';
+import { collectNeighborhood, buildGraph } from '../../lib/graph.js';
+import { filterOutChunks } from '../../lib/reconstruction.js';
 
 import {
   DEFAULT_MATCH_DISPLAY_LIMIT,
@@ -23,8 +23,8 @@ import {
   parseCsvList,
   parseDate,
   resolveByIdPrefix,
-} from './utils';
-import { colorize } from '../formatters';
+} from './utils.js';
+import { colorize } from '../formatters/index.js';
 
 export type SelectionResult = { selected: SearchMatch; matches: SearchMatch[]; limit: number };
 

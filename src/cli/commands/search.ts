@@ -1,17 +1,17 @@
-import { semanticSearchCore } from '../../core/search';
+import { semanticSearchCore } from '../../core/search.js';
 import {
   handleError,
   formatNodeIdProgressive,
   parseCsvList,
   parseDate,
   normalizeSort,
-} from '../shared/utils';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { deduplicateChunks } from '../../lib/reconstruction';
-import { listNodes } from '../../lib/db';
-import { colorize } from '../formatters';
-import { selectNode, serializeMatch, type SelectionResult } from '../shared/explore';
+} from '../shared/utils.js';
+import { getVersion } from './version.js';
+import { COMMAND_TLDR, emitTldrAndExit } from '../tldr.js';
+import { deduplicateChunks } from '../../lib/reconstruction.js';
+import { listNodes } from '../../lib/db.js';
+import { colorize } from '../formatters/index.js';
+import { selectNode, serializeMatch, type SelectionResult } from '../shared/explore.js';
 
 type ClercModule = typeof import('clerc');
 

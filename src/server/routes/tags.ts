@@ -3,15 +3,15 @@ import {
   listTagsCore,
   getNodesByTagCore,
   renameTagCore,
-} from '../../core/tags';
+} from '../../core/tags.js';
 import {
   createSuccessResponse,
   parseQueryInt,
   formatNodeForList,
   createPaginationInfo,
   validatePaginationParams,
-} from '../utils/helpers';
-import { ForestError, ValidationError, TagNotFoundError, createErrorResponse } from '../utils/errors';
+} from '../utils/helpers.js';
+import { ForestError, ValidationError, TagNotFoundError, createErrorResponse } from '../utils/errors.js';
 
 export const tagsRoutes = new Elysia({ prefix: '/api/v1' })
   // GET /tags - List all tags
