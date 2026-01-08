@@ -10,7 +10,11 @@
       "Bash(gh pr view:*)",
       "Bash(gh pr diff:*)",
       "Bash(bun test:*)",
-      "Bash(bun run lint)"
+      "Bash(bun run lint)",
+      "WebFetch(domain:www.remirror.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:remirror.io)",
+      "WebFetch(domain:medium.com)"
     ],
     "deny": [],
     "ask": []
