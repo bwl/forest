@@ -1,5 +1,7 @@
-import { listDocuments, getDocumentById, getDocumentChunks, DocumentRecord } from '../../lib/db';
-import { formatId } from '../shared/utils';
+import { listDocuments, getDocumentById, getDocumentChunks, getNodeById, DocumentRecord } from '../../lib/db.js';
+import { formatId } from '../shared/utils.js';
+import { loadDocumentSessionForNode, parseDocumentEditorBuffer } from '../shared/document-session.js';
+import * as fs from 'fs/promises';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
@@ -157,6 +159,65 @@ async function runDocumentsStats(flags: { json?: boolean }) {
   console.log();
 }
 
+async function runDocumentsApplyFile(filePath: string | undefined, flags: { json?: boolean }) {
+  if (!filePath) {
+    console.error('✖ Provide a file path');
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    // Read file content
+    const content = await fs.readFile(filePath, 'utf-8');
+
+    // Quick parse to extract first node ID (simple regex for now)
+    const startMarkerMatch = content.match(/<!--\s*forest:segment\s+start\s+.*?node_id=["']?([a-f0-9-]+)/i);
+    if (!startMarkerMatch) {
+      console.error('✖ No valid segment markers found in file');
+      process.exitCode = 1;
+      return;
+    }
+
+    const firstNodeId = startMarkerMatch[1];
+    const node = await getNodeById(firstNodeId);
+
+    if (!node) {
+      console.error(`✖ Node not found: ${firstNodeId}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const session = await loadDocumentSessionForNode(node);
+
+    if (!session) {
+      console.error('✖ Not a multi-segment document');
+      process.exitCode = 1;
+      return;
+    }
+
+    // Parse using document-session parser
+    const parsed = parseDocumentEditorBuffer(session, content);
+
+    // TODO: Implement save logic here using the parsed data
+    // For now, this validates the file structure
+    console.log(`✔ File validated: ${parsed.segments.length} segments found`);
+    console.log(`  Document: ${session.document.title} (v${session.document.version})`);
+
+    if (flags.json) {
+      console.log(JSON.stringify({
+        success: true,
+        documentId: session.document.id,
+        documentTitle: session.document.title,
+        version: session.document.version,
+        segmentsFound: parsed.segments.length,
+      }, null, 2));
+    }
+  } catch (error) {
+    console.error(`✖ Failed to apply file: ${(error as Error).message}`);
+    process.exitCode = 1;
+  }
+}
+
 export function registerDocumentsCommands(cli: ClercInstance, clerc: ClercModule) {
   const documentsCommand = clerc.defineCommand({
     name: 'documents',
@@ -217,8 +278,27 @@ export function registerDocumentsCommands(cli: ClercInstance, clerc: ClercModule
     }
   );
 
+  const applyFileCommand = clerc.defineCommand(
+    {
+      name: 'documents apply-file',
+      description: 'Apply changes from a Forest document file (.forest.md)',
+      parameters: ['<path>'],
+      flags: {
+        json: {
+          type: Boolean,
+          description: 'Output as JSON',
+        },
+      },
+    },
+    async (ctx: any) => {
+      const [path] = ctx.parameters._;
+      await runDocumentsApplyFile(path as string | undefined, ctx.flags as { json?: boolean });
+    }
+  );
+
   cli.command(listCommand);
   cli.command(showCommand);
   cli.command(statsCommand);
+  cli.command(applyFileCommand);
   cli.command(documentsCommand);
 }
