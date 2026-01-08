@@ -1,0 +1,62 @@
+{
+  "name": "forest-vscode",
+  "displayName": "Forest Document Editor",
+  "description": "Enhanced editing for Forest knowledge base documents with LSP support",
+  "version": "0.1.0",
+  "publisher": "forest",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Programming Languages"],
+  "activationEvents": [
+    "onLanguage:forest-document",
+    "onCommand:forest.jumpToNextSegment",
+    "onCommand:forest.jumpToPreviousSegment"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [{
+      "id": "forest-document",
+      "extensions": [".forest.md"],
+      "aliases": ["Forest Document", "forest"],
+      "configuration": "./language-configuration.json"
+    }],
+    "commands": [
+      {
+        "command": "forest.jumpToNextSegment",
+        "title": "Forest: Jump to Next Segment"
+      },
+      {
+        "command": "forest.jumpToPreviousSegment",
+        "title": "Forest: Jump to Previous Segment"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "forest.jumpToNextSegment",
+        "key": "ctrl+alt+down",
+        "mac": "cmd+alt+down",
+        "when": "editorTextFocus && editorLangId == forest-document"
+      },
+      {
+        "command": "forest.jumpToPreviousSegment",
+        "key": "ctrl+alt+up",
+        "mac": "cmd+alt+up",
+        "when": "editorTextFocus && editorLangId == forest-document"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc && node scripts/bundle-server.js",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.20",
+    "@types/vscode": "^1.75.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
