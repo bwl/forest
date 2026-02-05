@@ -130,18 +130,17 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'explore',
       'link',
       'search',
+      'read',
+      'edit',
+      'update',
+      'delete',
+      'import',
+      'synthesize',
+      'tag',
       'stats',
       'serve',
       'config',
       'version',
-      'node.read',
-      'node.edit',
-      'node.update',
-      'node.delete',
-      'node.connect',
-      'node.import',
-      'node.synthesize',
-      'node',
       'edges.explain',
       'edges.threshold',
       'edges',
@@ -191,7 +190,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest capture --file captured.md --tags focus,ops',
       'forest capture --no-preview --json',
     ],
-    rel: ['explore', 'edges.propose', 'node.read'],
+    rel: ['explore', 'read'],
   },
 
   explore: {
@@ -217,7 +216,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest explore --title "Graph architecture notes"',
       'forest explore --include-suggestions --depth 2',
     ],
-    rel: ['search', 'node.read', 'edges.propose'],
+    rel: ['search', 'read'],
   },
 
   link: {
@@ -234,7 +233,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest link abc123 def456',
       'forest link abc123 def456 --name=chapter-1-arc',
     ],
-    rel: ['explore', 'node.connect', 'tags.list'],
+    rel: ['explore', 'link', 'tags.list'],
   },
 
   search: {
@@ -412,112 +411,6 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     rel: ['health'],
   },
 
-  'node.read': {
-    cmd: 'node.read',
-    p: 'Show the full content of a note',
-    in: ['args'],
-    out: ['node_metadata', 'body_text', 'edge_summary'],
-    fx: 'none',
-    fl: [
-      { n: 'meta', t: 'bool', d: false, desc: 'show metadata only (no body)' },
-      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
-      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
-      { n: 'raw', t: 'bool', d: false, desc: 'output only raw markdown body (for piping)' },
-    ],
-    ex: [
-      'forest node read abc123',
-      'forest node read abc123 --meta',
-      'forest node read abc123 --json',
-      'forest node read abc123 --raw | glow',
-    ],
-    rel: ['explore', 'node.edit', 'node.update', 'capture'],
-  },
-
-  'node.edit': {
-    cmd: 'node.edit',
-    p: 'Open an existing note in your editor and optionally rescore links',
-    in: ['args'],
-    out: ['updated_record', 'rescore_summary'],
-    fx: 'db:write,compute:embedding',
-    fl: [
-      { n: 'editor', t: 'str', desc: 'override editor command' },
-      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
-    ],
-    ex: [
-      'forest node edit abc123',
-      'forest node edit abc123 --editor "code --wait"',
-      'forest node edit abc123 --no-auto-link',
-    ],
-    rel: ['node.read', 'node.update', 'capture', 'edges'],
-  },
-
-  'node.update': {
-    cmd: 'node.update',
-    p: 'Update fields from flags or files and rescore links',
-    in: ['args', 'stdin', 'file'],
-    out: ['updated_record', 'rescore_summary'],
-    fx: 'db:write,compute:embedding',
-    fl: [
-      { n: 'title', t: 'str', desc: 'new title' },
-      { n: 'body', t: 'str', desc: 'new body content' },
-      { n: 'file', t: 'file', desc: 'read new body from file' },
-      { n: 'stdin', t: 'bool', d: false, desc: 'read new body from stdin' },
-      { n: 'tags', t: 'list', desc: 'comma-separated tags (overrides auto-detected)' },
-      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
-    ],
-    ex: [
-      'forest node update abc123 --title "New Title"',
-      'forest node update abc123 --stdin < updated.md',
-      'forest node update abc123 --tags focus,ops --no-auto-link',
-    ],
-    rel: ['node.read', 'capture', 'edges'],
-  },
-
-  'node.delete': {
-    cmd: 'node.delete',
-    p: 'Delete a note and its edges',
-    in: ['args'],
-    out: ['deletion_confirmation'],
-    fx: 'db:write',
-    fl: [
-      { n: 'force', t: 'bool', d: false, desc: 'skip confirmation prompt' },
-    ],
-    ex: [
-      'forest node delete abc123',
-      'forest node delete abc123 --force',
-    ],
-    rel: ['node.read', 'edges'],
-  },
-
-  'node.connect': {
-    cmd: 'node.connect',
-    p: 'Manually create an edge between two notes',
-    in: ['args'],
-    out: ['edge_record'],
-    fx: 'db:write',
-    fl: [
-      { n: 'score', t: 'float', desc: 'override computed score' },
-      { n: 'explain', t: 'bool', d: false, desc: 'print scoring components' },
-    ],
-    ex: [
-      'forest node connect abc123 def456',
-      'forest node connect abc123 def456 --score 0.8',
-      'forest node connect abc123 def456 --explain',
-    ],
-    rel: ['edges.explain', 'node.read'],
-  },
-
-  node: {
-    cmd: 'node',
-    p: 'View node dashboard (total count, recent nodes, quick actions)',
-    in: [],
-    out: ['dashboard_summary'],
-    fx: 'none',
-    fl: [],
-    ex: ['forest node'],
-    rel: ['node.read', 'node.edit', 'node.update', 'explore'],
-  },
-
   'edges.explain': {
     cmd: 'edges.explain',
     p: 'Explain scoring components for a link',
@@ -531,7 +424,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest edges explain 0L5a',
       'forest edges explain abc123::def456 --json',
     ],
-    rel: ['edges.threshold', 'node.connect'],
+    rel: ['edges.threshold', 'link'],
   },
 
   'edges.threshold': {
@@ -561,7 +454,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest edges --limit 20',
       'forest edges --json',
     ],
-    rel: ['edges.threshold', 'node.connect'],
+    rel: ['edges.threshold', 'link'],
   },
 
   'tags.list': {
@@ -596,7 +489,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest tags add abc123 focus,ops',
       'forest tags add abc123 #link/chapter-1-arc',
     ],
-    rel: ['tags.remove', 'tags.list', 'node.update'],
+    rel: ['tags.remove', 'tags.list', 'update'],
   },
 
   'tags.remove': {
@@ -613,7 +506,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest tags remove abc123 focus,ops',
       'forest tags remove abc123 #link/chapter-1-arc',
     ],
-    rel: ['tags.add', 'tags.list', 'node.update'],
+    rel: ['tags.add', 'tags.list', 'update'],
   },
 
   'tags.rename': {
@@ -696,5 +589,144 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fl: [],
     ex: ['forest export graphviz', 'forest export json'],
     rel: ['stats', 'health'],
+  },
+
+  // --- Note commands ---
+
+  read: {
+    cmd: 'read',
+    p: 'Show the full content of a note',
+    in: ['args'],
+    out: ['node_metadata', 'body_text', 'edge_summary'],
+    fx: 'none',
+    fl: [
+      { n: 'meta', t: 'bool', d: false, desc: 'show metadata only (no body)' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+      { n: 'long-ids', t: 'bool', d: false, desc: 'display full UUIDs' },
+      { n: 'raw', t: 'bool', d: false, desc: 'output only raw markdown body (for piping)' },
+    ],
+    ex: [
+      'forest read abc123',
+      'forest read @ --raw | glow',
+      'forest read @1 --json',
+    ],
+    rel: ['edit', 'update', 'explore'],
+  },
+
+  edit: {
+    cmd: 'edit',
+    p: 'Open a note in your editor for inline updates',
+    in: ['args'],
+    out: ['updated_record', 'rescore_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'editor', t: 'str', desc: 'override editor command' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
+    ],
+    ex: [
+      'forest edit abc123',
+      'forest edit @ --editor "code --wait"',
+    ],
+    rel: ['read', 'update', 'capture', 'edges'],
+  },
+
+  update: {
+    cmd: 'update',
+    p: 'Update note fields from flags or files and rescore links',
+    in: ['args', 'stdin', 'file'],
+    out: ['updated_record', 'rescore_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'title', t: 'str', desc: 'new title' },
+      { n: 'body', t: 'str', desc: 'new body content' },
+      { n: 'file', t: 'file', desc: 'read new body from file' },
+      { n: 'stdin', t: 'bool', d: false, desc: 'read new body from stdin' },
+      { n: 'tags', t: 'list', desc: 'comma-separated tags (overrides auto-detected)' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges' },
+    ],
+    ex: [
+      'forest update abc123 --title "New Title"',
+      'forest update @ --stdin < updated.md',
+    ],
+    rel: ['read', 'edit', 'capture', 'edges'],
+  },
+
+  'delete': {
+    cmd: 'delete',
+    p: 'Delete a note and its edges',
+    in: ['args'],
+    out: ['deletion_confirmation'],
+    fx: 'db:write',
+    fl: [
+      { n: 'force', t: 'bool', d: false, desc: 'skip confirmation prompt' },
+    ],
+    ex: [
+      'forest delete abc123',
+      'forest delete abc123 --force',
+    ],
+    rel: ['read', 'edges'],
+  },
+
+  'import': {
+    cmd: 'import',
+    p: 'Import a markdown document by chunking into linked nodes',
+    in: ['stdin', 'file'],
+    out: ['document_record', 'chunk_list', 'linking_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'file', t: 'file', desc: 'read document from file' },
+      { n: 'stdin', t: 'bool', d: false, desc: 'read document from stdin' },
+      { n: 'title', t: 'str', desc: 'override auto-detected title' },
+      { n: 'tags', t: 'list', desc: 'comma-separated tags for all chunks' },
+      { n: 'chunk-strategy', t: 'str', d: 'headers', desc: 'chunking strategy: headers, size, hybrid' },
+      { n: 'max-tokens', t: 'int', d: 2000, desc: 'max tokens per chunk' },
+      { n: 'overlap', t: 'int', d: 200, desc: 'character overlap' },
+      { n: 'no-parent', t: 'bool', d: false, desc: 'skip creating root/index node' },
+      { n: 'no-sequential', t: 'bool', d: false, desc: 'skip linking chunks sequentially' },
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip semantic auto-linking' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest import --file doc.md',
+      'forest import --stdin < doc.md',
+    ],
+    rel: ['capture', 'read', 'documents.list'],
+  },
+
+  synthesize: {
+    cmd: 'synthesize',
+    p: 'Synthesize a new article from 2+ notes via GPT-5',
+    in: ['args'],
+    out: ['synthesis_result', 'node_record'],
+    fx: 'db:write,network:api_call',
+    fl: [
+      { n: 'model', t: 'str', d: 'gpt-5', desc: 'model: gpt-5 or gpt-5-mini' },
+      { n: 'reasoning', t: 'str', d: 'high', desc: 'reasoning effort: minimal, low, medium, high' },
+      { n: 'verbosity', t: 'str', d: 'high', desc: 'output verbosity: low, medium, high' },
+      { n: 'preview', t: 'bool', d: false, desc: 'preview without saving' },
+      { n: 'auto-link', t: 'bool', d: true, desc: 'auto-link new node to sources' },
+      { n: 'max-tokens', t: 'int', desc: 'maximum output tokens' },
+    ],
+    ex: [
+      'forest synthesize abc123 def456',
+      'forest synthesize abc123 def456 --preview',
+    ],
+    rel: ['read', 'capture'],
+  },
+
+  tag: {
+    cmd: 'tag',
+    p: 'Add one or more tags to a note (alias for tags add)',
+    in: ['args'],
+    out: ['updated_node_tags'],
+    fx: 'db:write',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest tag @ to-review',
+      'forest tag abc123 focus,ops',
+    ],
+    rel: ['tags.add', 'tags.remove', 'tags.list'],
   },
 };

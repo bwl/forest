@@ -24,7 +24,7 @@ type TagsStatsFlags = {
   tldr?: string;
 };
 
-type TagsModifyFlags = {
+export type TagsModifyFlags = {
   json?: boolean;
   tldr?: string;
 };
@@ -283,7 +283,7 @@ function parseTagList(value: string | undefined): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-async function runTagsAdd(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
+export async function runTagsAdd(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
   if (!ref) {
     console.error('✖ Provide a node reference.');
     process.exitCode = 1;

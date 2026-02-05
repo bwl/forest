@@ -7,9 +7,9 @@ import { createPathCommand } from './commands/path';
 import { createSearchCommand } from './commands/search';
 import { registerExportCommands } from './commands/export';
 import { registerEdgesCommands } from './commands/edges';
-import { registerNodeCommands } from './commands/node';
 import { registerTagsCommands } from './commands/tags';
 import { registerDocumentsCommands } from './commands/documents';
+import { registerAliases } from './aliases';
 import { createStatsCommand } from './commands/stats';
 import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
@@ -50,12 +50,12 @@ export async function createForestCli() {
   cli.command(createServeCommand(clerc));
   cli.command(createConfigCommand(clerc));
   cli.command(createVersionCommand(clerc));
-  registerNodeCommands(cli, clerc);
   registerEdgesCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
   registerDocumentsCommands(cli, clerc);
   registerExportCommands(cli, clerc);
   registerAdminCommands(cli, clerc);
+  registerAliases(cli, clerc);
 
   return cli;
 }

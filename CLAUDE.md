@@ -117,11 +117,13 @@ forest capture                  # Capture new notes
 forest explore                  # Explore the graph
 forest search ["query"]         # Semantic search using embeddings
 forest link [ref1] [ref2]       # Create bridge tags (#link/...)
-forest node read [id]           # Read a note
-forest node edit [id]           # Edit a note
-forest node update [id]         # Update note fields (and rescore)
-forest node delete [id]         # Delete a note
-forest node connect [id] [id2]  # Manually create an edge
+forest read [id]                # Read a note
+forest edit [id]                # Edit a note
+forest update [id]              # Update note fields (and rescore)
+forest delete [id]              # Delete a note
+forest import <file>            # Import a document by chunking
+forest synthesize <refs>        # Synthesize new article from notes
+forest tag <ref> <tags>         # Add tags to a note
 forest edges                    # Show recent edges
 forest edges explain [ref]      # Explain scoring
 forest edges threshold          # View edge threshold
@@ -146,7 +148,8 @@ forest serve                    # Start API server
 
 Commands are modular:
 - **Individual commands**: `src/cli/commands/{capture,explore,search,stats,...}.ts`
-- **Subcommand groups**: `node`, `edges`, `tags`, `documents`, `export`, `admin` use `register*Commands()` pattern
+- **Top-level note commands**: `read`, `edit`, `update`, `delete`, `import`, `synthesize`, `tag` are registered in `src/cli/aliases.ts` and delegate to handlers in `src/cli/commands/node.ts` and `src/cli/commands/tags.ts`
+- **Subcommand groups**: `edges`, `tags`, `documents`, `export`, `admin` use `register*Commands()` pattern
 
 ### Git-Style Node References
 
@@ -154,9 +157,9 @@ Forest uses **Git-inspired progressive abbreviation** for node and edge IDs.
 
 **What Forest accepts** (any unique prefix):
 ```bash
-forest node read 7fa7          # 4 chars
-forest node read 7fa7acb2      # 8 chars
-forest node read 7fa7acb2-ed4a-4f3b-9c1e-8a2b3c4d5e6f  # full UUID
+forest read 7fa7          # 4 chars
+forest read 7fa7acb2      # 8 chars
+forest read 7fa7acb2-ed4a-4f3b-9c1e-8a2b3c4d5e6f  # full UUID
 ```
 
 **Reference Types** (unified resolution in `src/cli/shared/utils.ts:resolveNodeReference()`):

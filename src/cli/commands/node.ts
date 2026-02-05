@@ -8,8 +8,6 @@ import {
   NodeRecord,
   deleteNode,
   updateNode,
-  listNodes,
-  listEdges,
   DocumentRecord,
   DocumentChunkRecord,
   DocumentMetadata,
@@ -17,17 +15,13 @@ import {
   replaceDocumentChunks,
   updateNodeChunkOrder,
 } from '../../lib/db';
-import { EdgeRecord, EdgeStatus, insertOrUpdateEdge } from '../../lib/db';
 import { extractTags, tokenize } from '../../lib/text';
 import { computeEmbeddingForNode } from '../../lib/embeddings';
-import { buildTagIdfContext, computeEdgeScore, normalizeEdgePair } from '../../lib/scoring';
 
 import { buildNeighborhoodPayload, printNodeOverview } from '../shared/explore';
 import {
   DEFAULT_NEIGHBORHOOD_LIMIT,
-  edgeIdentifier,
   formatId,
-  handleError,
   resolveBodyInput,
   resolveNodeReference,
 } from '../shared/utils';
@@ -40,21 +34,15 @@ import {
   type DocumentSegment,
   type ParsedDocumentEdit,
 } from '../shared/document-session';
-import { getVersion } from './version';
-import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
 import { createNodeCore } from '../../core/nodes';
 import { importDocumentCore } from '../../core/import';
-import { reconstructDocument, filterOutChunks } from '../../lib/reconstruction';
+import { reconstructDocument } from '../../lib/reconstruction';
 import { loadConfig } from '../../lib/config';
 import { renderMarkdownToTerminal } from '../formatters';
 
-import type { HandlerContext } from '@clerc/core';
 
-type ClercModule = typeof import('clerc');
-type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
-
-type NodeReadFlags = {
+export type NodeReadFlags = {
   meta?: boolean;
   json?: boolean;
   longIds?: boolean;
@@ -62,7 +50,7 @@ type NodeReadFlags = {
   tldr?: string;
 };
 
-type NodeRefreshFlags = {
+export type NodeRefreshFlags = {
   title?: string;
   body?: string;
   file?: string;
@@ -73,27 +61,19 @@ type NodeRefreshFlags = {
   tldr?: string;
 };
 
-type NodeEditFlags = {
+export type NodeEditFlags = {
   editor?: string;
   autoLink?: boolean;
   noAutoLink?: boolean;
   tldr?: string;
 };
 
-type NodeDeleteFlags = {
+export type NodeDeleteFlags = {
   force?: boolean;
   tldr?: string;
 };
 
-type NodeLinkFlags = {
-  score?: number;
-  type?: string;
-  suggest?: boolean;
-  explain?: boolean;
-  tldr?: string;
-};
-
-type NodeSynthesizeFlags = {
+export type NodeSynthesizeFlags = {
   model?: string;
   reasoning?: string;
   verbosity?: string;
@@ -103,7 +83,7 @@ type NodeSynthesizeFlags = {
   tldr?: string;
 };
 
-type NodeImportFlags = {
+export type NodeImportFlags = {
   file?: string;
   stdin?: boolean;
   title?: string;
@@ -118,408 +98,7 @@ type NodeImportFlags = {
   tldr?: string;
 };
 
-export function registerNodeCommands(cli: ClercInstance, clerc: ClercModule) {
-  const readCommand = clerc.defineCommand(
-    {
-      name: 'node read',
-      description: 'Show the full content of a note',
-      parameters: ['[id]'],
-      flags: {
-        meta: {
-          type: Boolean,
-          description: 'Show metadata summary without the body text',
-        },
-        json: {
-          type: Boolean,
-          description: 'Emit JSON output',
-        },
-        longIds: {
-          type: Boolean,
-          description: 'Display full ids in text output',
-        },
-        raw: {
-          type: Boolean,
-          description: 'Output only the raw markdown body (for piping to glow, bat, etc.)',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeReadFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.read'], getVersion());
-        }
-        await runNodeRead(parameters.id, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(readCommand);
-
-  const refreshCommand = clerc.defineCommand(
-    {
-      name: 'node update',
-      description: 'Update note fields from flags or files and optionally rescore links',
-      parameters: ['[id]'],
-      flags: {
-        title: {
-          type: String,
-          description: 'New title',
-        },
-        body: {
-          type: String,
-          description: 'New body content',
-        },
-        file: {
-          type: String,
-          description: 'Read new body from file',
-        },
-        stdin: {
-          type: Boolean,
-          description: 'Read new body from standard input',
-        },
-        tags: {
-          type: String,
-          description: 'Comma-separated list of tags to set (overrides auto-detected tags)',
-        },
-        noAutoLink: {
-          type: Boolean,
-          description: 'Skip rescoring edges after update',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeRefreshFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['node.refresh'], getVersion());
-        }
-        await runNodeRefresh(parameters.id, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(refreshCommand);
-
-  const editCommand = clerc.defineCommand(
-    {
-      name: 'node edit',
-      description: 'Open a note in your editor for inline updates',
-      parameters: ['[id]'],
-      flags: {
-        editor: {
-          type: String,
-          description: 'Override editor command (defaults to $FOREST_EDITOR, $VISUAL, $EDITOR)',
-        },
-        noAutoLink: {
-          type: Boolean,
-          description: 'Skip rescoring edges after saving',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeEditFlags }) => {
-      try {
-        if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['node.edit'], getVersion());
-        }
-        await runNodeEdit(parameters.id, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(editCommand);
-
-  const deleteCommand = clerc.defineCommand(
-    {
-      name: 'node delete',
-      description: 'Delete a note and its edges',
-      parameters: ['[id]'],
-      flags: {
-        force: {
-          type: Boolean,
-          description: 'Do not prompt for confirmation (non-interactive mode)',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeDeleteFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.delete'], getVersion());
-        }
-        await runNodeDelete(parameters.id, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(deleteCommand);
-
-  const linkCommand = clerc.defineCommand(
-    {
-      name: 'node connect',
-      description: 'Manually create an edge between two notes',
-      parameters: ['[a]', '[b]'],
-      flags: {
-        score: {
-          type: Number,
-          description: 'Override score value',
-        },
-        type: {
-          type: String,
-          description: 'Edge type (e.g., manual, inspired-by, implemented-as, documents)',
-        },
-        explain: {
-          type: Boolean,
-          description: 'Print scoring components',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { a?: string; b?: string }; flags: NodeLinkFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.link'], getVersion());
-        }
-        await runNodeLink(parameters.a, parameters.b, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(linkCommand);
-
-  const synthesizeCommand = clerc.defineCommand(
-    {
-      name: 'node synthesize',
-      description: 'Use GPT-5 to synthesize a new article from 2+ existing notes',
-      parameters: ['[ids...]'],
-      flags: {
-        model: {
-          type: String,
-          description: 'Model to use: gpt-5 or gpt-5-mini (default: gpt-5)',
-        },
-        reasoning: {
-          type: String,
-          description: 'Reasoning effort: minimal, low, medium, high (default: high)',
-        },
-        verbosity: {
-          type: String,
-          description: 'Output verbosity: low, medium, high (default: high)',
-        },
-        preview: {
-          type: Boolean,
-          description: 'Preview synthesis without saving as a new node',
-        },
-        autoLink: {
-          type: Boolean,
-          description: 'Auto-link the new node to source nodes (default: true)',
-          default: true,
-        },
-        maxTokens: {
-          type: Number,
-          description: 'Maximum output tokens (default: 9001)',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ parameters, flags }: { parameters: { ids?: string[] }; flags: NodeSynthesizeFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.synthesize'], getVersion());
-        }
-        await runNodeSynthesize(parameters.ids, flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(synthesizeCommand);
-
-  const importCommand = clerc.defineCommand(
-    {
-      name: 'node import',
-      description: 'Import a large markdown document by chunking it into multiple linked nodes',
-      flags: {
-        file: {
-          type: String,
-          alias: 'f',
-          description: 'Read document from file',
-        },
-        stdin: {
-          type: Boolean,
-          description: 'Read document from standard input',
-        },
-        title: {
-          type: String,
-          alias: 't',
-          description: 'Override auto-detected document title',
-        },
-        tags: {
-          type: String,
-          description: 'Comma-separated tags for all chunks',
-        },
-        chunkStrategy: {
-          type: String,
-          description: 'Chunking strategy: headers, size, hybrid (default: headers)',
-        },
-        maxTokens: {
-          type: Number,
-          description: 'Maximum tokens per chunk (default: 2000)',
-        },
-        overlap: {
-          type: Number,
-          description: 'Character overlap between chunks for size-based strategy (default: 200)',
-        },
-        noParent: {
-          type: Boolean,
-          description: 'Skip creating root/index node',
-        },
-        noSequential: {
-          type: Boolean,
-          description: 'Skip linking chunks sequentially',
-        },
-        noAutoLink: {
-          type: Boolean,
-          description: 'Skip semantic auto-linking to existing graph',
-        },
-        json: {
-          type: Boolean,
-          description: 'Emit JSON output',
-        },
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async ({ flags }: { flags: NodeImportFlags }) => {
-      try {
-        // Handle TLDR request first
-        if (flags.tldr !== undefined) {
-          const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['node.import'], getVersion());
-        }
-        await runNodeImport(flags);
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(importCommand);
-
-  const baseCommand = clerc.defineCommand(
-    {
-      name: 'node',
-      description: 'Manage individual nodes (notes)',
-      help: {
-        notes: [
-          'Subcommands:',
-          '  read        Show the full content of a note',
-          '  edit        Edit an existing note and optionally rescore links',
-          '  update      Update note fields from flags or files',
-          '  delete      Delete a note and its edges',
-          '  connect     Manually create an edge between two notes',
-          '  import      Import a large markdown document by chunking it',
-          '  synthesize  Use GPT-5 to synthesize a new article from 2+ notes',
-          '',
-          'Use `forest node <subcommand> --help` for flag details.',
-        ],
-        examples: [
-          ['$ forest node read abc123', 'Read a note by its short ID'],
-          ['$ forest node edit abc123 --title "New title"', 'Edit a note title'],
-          ['$ forest node connect abc123 def456', 'Create a link between two notes'],
-          ['$ forest node synthesize abc123 def456 --preview', 'Preview synthesis without saving'],
-        ],
-      },
-      flags: {
-        tldr: {
-          type: String,
-          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
-        },
-      },
-    },
-    async (ctx: HandlerContext) => {
-      try {
-        // Handle TLDR request first
-        if ((ctx as any).flags?.tldr !== undefined) {
-          const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.node, getVersion());
-        }
-        await runNodeDashboard();
-      } catch (error) {
-        handleError(error);
-      }
-    },
-  );
-  cli.command(baseCommand);
-}
-
-async function runNodeDashboard() {
-  const nodes = await listNodes();
-  const totalNodes = nodes.length;
-
-  // Sort by creation date (most recent first)
-  const recentNodes = nodes
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
-
-  console.log('');
-  console.log(`Total nodes: ${totalNodes}`);
-  console.log('');
-
-  if (recentNodes.length > 0) {
-    console.log('Recent nodes:');
-    console.log('');
-    for (const node of recentNodes) {
-      const shortId = formatId(node.id);
-      const date = new Date(node.createdAt).toISOString().split('T')[0];
-      const tagStr = node.tags.length > 0 ? ` [${node.tags.slice(0, 3).join(', ')}]` : '';
-      console.log(`  ${shortId}  ${node.title}${tagStr}`);
-      console.log(`         created ${date}`);
-    }
-    console.log('');
-  }
-
-  console.log('Quick actions:');
-  console.log('  forest node read <id>        Read a note');
-  console.log('  forest node edit <id>        Edit a note');
-  console.log('  forest explore <term>        Search all notes');
-  console.log('');
-}
-
-async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
+export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
   if (!idRef || idRef.trim().length === 0) {
     console.error('✖ Provide a node id or unique short id (run `forest explore` to discover ids).');
     process.exitCode = 1;
@@ -630,7 +209,7 @@ async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
   }
 }
 
-async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags) {
+export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
@@ -722,7 +301,7 @@ async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags
   }
 }
 
-async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
+export async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
@@ -815,7 +394,7 @@ async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlags) {
   }
 }
 
-async function runNodeDelete(idRef: string | undefined, _flags: NodeDeleteFlags) {
+export async function runNodeDelete(idRef: string | undefined, _flags: NodeDeleteFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
@@ -838,76 +417,6 @@ async function runNodeDelete(idRef: string | undefined, _flags: NodeDeleteFlags)
 
   console.log(`✔ Deleted note ${formatId(node.id)} (${node.title})`);
   console.log(`   removed ${result.edgesRemoved} associated edges`);
-}
-
-async function runNodeLink(aRef: string | undefined, bRef: string | undefined, flags: NodeLinkFlags) {
-  if (!aRef || !bRef) {
-    console.error('✖ Provide two node IDs to link.');
-    console.error('');
-    console.error('Usage:');
-    console.error('  forest node link <id1> <id2>');
-    console.error('');
-    console.error('Example:');
-    console.error('  forest node link abc123 def456');
-    console.error('  forest node link abc123 def456 --score=0.8');
-    console.error('  forest node link abc123 def456 --explain');
-    console.error('');
-    console.error('Options:');
-    console.error('  --score=N        Override computed score (0.0-1.0)');
-    console.error('  --explain        Show scoring components breakdown');
-    console.error('');
-    process.exitCode = 1;
-    return;
-  }
-
-  const a = await resolveNodeReference(String(aRef));
-  const b = await resolveNodeReference(String(bRef));
-  if (!a || !b) {
-    console.error('✖ Both endpoints must resolve to existing notes.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const context = buildTagIdfContext(await listNodes());
-  const { score: computedScore, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
-  const scoreOverride =
-    typeof flags.score === 'number' && !Number.isNaN(flags.score) ? flags.score : undefined;
-  const usedScore = scoreOverride ?? computedScore;
-
-  const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
-
-  const edgeType = flags.type || 'manual';
-  const edge: EdgeRecord = {
-    id: edgeIdentifier(sourceId, targetId),
-    sourceId,
-    targetId,
-    score: usedScore,
-    semanticScore,
-    tagScore,
-    sharedTags,
-    status: 'accepted',
-    edgeType,
-    metadata: { components },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
-
-  await insertOrUpdateEdge(edge);
-  const typeLabel = edgeType !== 'manual' ? `  type=${edgeType}` : '';
-  console.log(
-    `✔ Linked ${formatId(sourceId)}::${formatId(targetId)}  score=${usedScore.toFixed(3)}${typeLabel}`,
-  );
-
-  if (flags.explain) {
-    console.log('scores:');
-    console.log(`  semantic: ${typeof semanticScore === 'number' ? semanticScore.toFixed(3) : '--'}`);
-    console.log(`  tags:     ${typeof tagScore === 'number' ? tagScore.toFixed(3) : '--'}`);
-    console.log('tag components:');
-    for (const [key, value] of Object.entries(components.tag)) {
-      if (typeof value === 'number') console.log(`  ${key}: ${value.toFixed(3)}`);
-      else console.log(`  ${key}: ${String(value)}`);
-    }
-  }
 }
 
 function resolveTags(tagsOption: string | undefined, combinedText: string, tokenCounts: NodeRecord['tokenCounts']) {
@@ -1385,15 +894,15 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
   }
 }
 
-async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
+export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
   if (!ids || ids.length < 2) {
     console.error('✖ Provide at least 2 node IDs to synthesize.');
     console.error('');
     console.error('Usage:');
-    console.error('  forest node synthesize <id1> <id2> [id3...]');
+    console.error('  forest synthesize <id1> <id2> [id3...]');
     console.error('');
     console.error('Example:');
-    console.error('  forest node synthesize abc123 def456 --preview');
+    console.error('  forest synthesize abc123 def456 --preview');
     console.error('');
     console.error('Options:');
     console.error('  --model=gpt-5|gpt-5-mini       Model to use (default: gpt-5)');
@@ -1499,7 +1008,7 @@ async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesiz
   console.log('');
 }
 
-async function runNodeImport(flags: NodeImportFlags) {
+export async function runNodeImport(flags: NodeImportFlags) {
   // Resolve document input
   const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
   const documentText = bodyResult.value;

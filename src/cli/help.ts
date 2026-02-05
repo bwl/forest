@@ -27,21 +27,19 @@ interface Renderers {
 const COMMAND_GROUPS: [string, string[]][] = [
   ['CAPTURE - Create content', ['capture', 'write']],
   ['EXPLORE - Find and navigate', ['search', 'explore']],
-  ['MANAGE - Core operations', ['node', 'edges', 'tags', 'documents']],
+  ['NOTES - Read, edit, manage', ['read', 'edit', 'update', 'delete', 'import', 'synthesize']],
+  ['GRAPH - Connections and tags', ['link', 'tag', 'edges']],
+  ['MANAGE - Groups', ['tags', 'documents']],
   ['ADMIN - System administration', ['admin', 'config', 'serve']],
   ['INFO - Reports and exports', ['stats', 'export', 'version']],
 ];
 
 // Subcommands hidden from main help (shown via `forest <family> --help`)
 const HIDE_IN_MAIN_HELP = new Set([
-  'node read',
-  'node edit',
-  'node update',
-  'node delete',
-  'node connect',
-  'node import',
-  'node synthesize',
   'edges explain',
+  'edges threshold',
+  'tags add',
+  'tags remove',
   'tags list',
   'tags rename',
   'tags stats',

@@ -41,15 +41,20 @@ const FOREST_SCENE_LINES = [
   ' `::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::.\'',
 ];
 
-// Read version dynamically from package.json
+// Read version from VERSION file (single source of truth)
 function readVersion(): string {
   try {
-    const packageJsonPath = path.join(__dirname, '../../../package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
-    return packageJson.version || '0.0.0';
+    const versionPath = path.join(__dirname, '../../../VERSION');
+    return fs.readFileSync(versionPath, 'utf-8').trim();
   } catch (error) {
-    // Fallback version if package.json can't be read
-    return '0.0.0';
+    // Fallback: try package.json
+    try {
+      const packageJsonPath = path.join(__dirname, '../../../package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      return packageJson.version || '0.0.0';
+    } catch {
+      return '0.0.0';
+    }
   }
 }
 
