@@ -328,6 +328,18 @@ export function escapeLabel(text: string): string {
 }
 
 export function handleError(error: unknown): void {
+  // Handle ForestClientError from remote mode
+  if (error && typeof error === 'object' && 'statusCode' in error && 'code' in error) {
+    const clientErr = error as { code: string; message: string; statusCode: number; details?: Record<string, unknown> };
+    if (clientErr.statusCode === 0) {
+      console.error(`✖ Cannot reach server: ${clientErr.message}`);
+    } else {
+      console.error(`✖ [${clientErr.code}] ${clientErr.message}`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+
   if (error instanceof Error) {
     console.error(`✖ ${error.message}`);
   } else {

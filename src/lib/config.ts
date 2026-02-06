@@ -28,6 +28,8 @@ export interface ForestConfig {
   writeModel?: WriteModelName;
   synthesizeModel?: SynthesizeModelName;
   markdown?: MarkdownOutputConfig;
+  serverUrl?: string;
+  apiKey?: string;
 }
 
 const CONFIG_FILE = path.join(os.homedir(), '.forestrc');
@@ -76,6 +78,8 @@ export function loadConfig(): ForestConfig {
     writeModel: writeModelFromFile || 'gpt-5',
     synthesizeModel: synthModelFromFile || 'gpt-5',
     markdown: normalizeMarkdownConfig((fileConfig as any).markdown),
+    serverUrl: fileConfig.serverUrl || process.env.FOREST_SERVER_URL || undefined,
+    apiKey: fileConfig.apiKey || process.env.FOREST_API_KEY || undefined,
   };
 
   // Apply defaults for markdown output
@@ -160,6 +164,15 @@ function isWriteModelName(value: unknown): value is WriteModelName {
 
 function isSynthesizeModelName(value: unknown): value is SynthesizeModelName {
   return value === 'gpt-5' || value === 'gpt-5-mini';
+}
+
+/**
+ * Returns true when a remote server URL is configured, meaning the CLI
+ * should dispatch commands over HTTP rather than using the local database.
+ */
+export function isRemoteMode(): boolean {
+  const config = loadConfig();
+  return typeof config.serverUrl === 'string' && config.serverUrl.trim().length > 0;
 }
 
 function normalizeMarkdownConfig(raw: unknown): MarkdownOutputConfig | undefined {
