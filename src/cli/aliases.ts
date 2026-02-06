@@ -40,6 +40,7 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
           json: { type: Boolean, description: 'Emit JSON output' },
           longIds: { type: Boolean, description: 'Display full ids in text output' },
           raw: { type: Boolean, description: 'Output only the raw markdown body (for piping)' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
           tldr: { type: String, description: 'Output command metadata for agent consumption' },
         },
       },
@@ -67,6 +68,7 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
         flags: {
           editor: { type: String, description: 'Override editor command' },
           noAutoLink: { type: Boolean, description: 'Skip rescoring edges after saving' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
           tldr: { type: String, description: 'Output command metadata for agent consumption' },
         },
       },
@@ -98,6 +100,7 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
           stdin: { type: Boolean, description: 'Read new body from standard input' },
           tags: { type: String, description: 'Comma-separated list of tags to set' },
           noAutoLink: { type: Boolean, description: 'Skip rescoring edges after update' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
           tldr: { type: String, description: 'Output command metadata for agent consumption' },
         },
       },
@@ -124,6 +127,7 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
         parameters: ['[id]'],
         flags: {
           force: { type: Boolean, description: 'Do not prompt for confirmation' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
           tldr: { type: String, description: 'Output command metadata for agent consumption' },
         },
       },

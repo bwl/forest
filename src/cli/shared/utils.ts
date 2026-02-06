@@ -89,11 +89,15 @@ export function isProgressiveEdgeId(term: string): boolean {
   return /^[0-9a-f]{4,}$/i.test(term);
 }
 
+export type ResolveOptions = {
+  select?: number;  // 1-based index to pick from ambiguous matches
+};
+
 export function isShortId(term: string): boolean {
   return /^[0-9a-f]{4,}$/i.test(term) && term.length <= SHORT_ID_LENGTH;
 }
 
-export async function resolveByIdPrefix(prefix: string): Promise<NodeRecord | null> {
+export async function resolveByIdPrefix(prefix: string, options: ResolveOptions = {}): Promise<NodeRecord | null> {
   const nodes = await listNodes();
   const normalizedPrefix = prefix.toLowerCase().replace(/-/g, '');
 
@@ -108,13 +112,20 @@ export async function resolveByIdPrefix(prefix: string): Promise<NodeRecord | nu
   }
 
   if (matches.length > 1) {
-    // Rich disambiguation UI (Git-style)
-    console.error(`✖ Ambiguous ID '${prefix}' matches ${matches.length} nodes:`);
+    // Sort by recency for consistent ordering
     const sortedMatches = matches
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 10); // Show max 10
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
-    for (const match of sortedMatches) {
+    // If --select is provided, pick the Nth match
+    if (typeof options.select === 'number' && options.select >= 1 && options.select <= sortedMatches.length) {
+      return sortedMatches[options.select - 1];
+    }
+
+    // Rich disambiguation UI (Git-style)
+    console.error(`✖ Ambiguous ID '${prefix}' matches ${matches.length} nodes. Use --select N or a more specific reference.`);
+    const displayMatches = sortedMatches.slice(0, 10); // Show max 10
+
+    for (const match of displayMatches) {
       const shortId = normalizeNodeId(match.id).slice(0, 8);
       const date = new Date(match.updatedAt).toISOString().split('T')[0];
       const title = match.title ? `"${match.title}"` : '(untitled)';
@@ -161,9 +172,10 @@ export async function resolveRecencyReference(ref: string): Promise<NodeRecord |
  * - Title search: '"API design"' (finds nodes with matching title)
  *
  * @param ref - Node reference string
+ * @param options - Resolution options (e.g., select index for ambiguous matches)
  * @returns Node record or null if not found/ambiguous
  */
-export async function resolveNodeReference(ref: string): Promise<NodeRecord | null> {
+export async function resolveNodeReference(ref: string, options: ResolveOptions = {}): Promise<NodeRecord | null> {
   if (!ref) return null;
 
   // Try recency reference first (@, @1, @2, etc.)
@@ -185,10 +197,17 @@ export async function resolveNodeReference(ref: string): Promise<NodeRecord | nu
       }
 
       if (matches.length > 1) {
-        console.error(`✖ Tag '#${tagName}' matches ${matches.length} nodes. Use a more specific reference.`);
-        const recent = matches
-          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-          .slice(0, 5);
+        // Sort by recency for consistent ordering
+        const sorted = matches
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+        // If --select is provided, pick the Nth match
+        if (typeof options.select === 'number' && options.select >= 1 && options.select <= sorted.length) {
+          return sorted[options.select - 1];
+        }
+
+        console.error(`✖ Tag '#${tagName}' matches ${matches.length} nodes. Use --select N or a more specific reference.`);
+        const recent = sorted.slice(0, 5);
 
         for (const match of recent) {
           const shortId = normalizeNodeId(match.id).slice(0, 8);
@@ -219,10 +238,17 @@ export async function resolveNodeReference(ref: string): Promise<NodeRecord | nu
       }
 
       if (matches.length > 1) {
-        console.error(`✖ Title search "${titleFragment}" matches ${matches.length} nodes. Use a more specific search.`);
-        const recent = matches
-          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-          .slice(0, 5);
+        // Sort by recency for consistent ordering
+        const sorted = matches
+          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+        // If --select is provided, pick the Nth match
+        if (typeof options.select === 'number' && options.select >= 1 && options.select <= sorted.length) {
+          return sorted[options.select - 1];
+        }
+
+        console.error(`✖ Title search "${titleFragment}" matches ${matches.length} nodes. Use --select N or a more specific search.`);
+        const recent = sorted.slice(0, 5);
 
         for (const match of recent) {
           const shortId = normalizeNodeId(match.id).slice(0, 8);
@@ -240,7 +266,7 @@ export async function resolveNodeReference(ref: string): Promise<NodeRecord | nu
 
   // Try short ID prefix (case-insensitive, works with/without dashes)
   if (isShortId(ref) || /^[0-9a-f-]{4,}$/i.test(ref)) {
-    const prefix = await resolveByIdPrefix(ref);
+    const prefix = await resolveByIdPrefix(ref, options);
     if (prefix) return prefix;
   }
 

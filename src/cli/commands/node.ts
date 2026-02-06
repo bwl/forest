@@ -47,6 +47,7 @@ export type NodeReadFlags = {
   json?: boolean;
   longIds?: boolean;
   raw?: boolean;
+  select?: number;
   tldr?: string;
 };
 
@@ -58,6 +59,7 @@ export type NodeRefreshFlags = {
   tags?: string;
   autoLink?: boolean;
   noAutoLink?: boolean;
+  select?: number;
   tldr?: string;
 };
 
@@ -65,11 +67,13 @@ export type NodeEditFlags = {
   editor?: string;
   autoLink?: boolean;
   noAutoLink?: boolean;
+  select?: number;
   tldr?: string;
 };
 
 export type NodeDeleteFlags = {
   force?: boolean;
+  select?: number;
   tldr?: string;
 };
 
@@ -105,7 +109,7 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
     return;
   }
 
-  const node = await resolveNodeReference(idRef.trim());
+  const node = await resolveNodeReference(idRef.trim(), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
     process.exitCode = 1;
@@ -216,7 +220,7 @@ export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefre
     return;
   }
 
-  const node = await resolveNodeReference(String(idRef));
+  const node = await resolveNodeReference(String(idRef), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
     process.exitCode = 1;
@@ -311,7 +315,7 @@ export async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlag
     return;
   }
 
-  const node = await resolveNodeReference(String(idRef));
+  const node = await resolveNodeReference(String(idRef), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
     process.exitCode = 1;
@@ -397,14 +401,14 @@ export async function runNodeEdit(idRef: string | undefined, flags: NodeEditFlag
   }
 }
 
-export async function runNodeDelete(idRef: string | undefined, _flags: NodeDeleteFlags) {
+export async function runNodeDelete(idRef: string | undefined, flags: NodeDeleteFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
     return;
   }
 
-  const node = await resolveNodeReference(String(idRef));
+  const node = await resolveNodeReference(String(idRef), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
     process.exitCode = 1;
