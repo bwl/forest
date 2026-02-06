@@ -14,12 +14,47 @@ import { websocketRoute } from './routes/websocket';
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOSTNAME = '::'; // Dual-stack: listens on both IPv4 and IPv6
 
+/** Routes that do not require authentication */
+const PUBLIC_PATHS = new Set(['/', '/api/v1/health']);
+
+function isPublicPath(path: string): boolean {
+  if (PUBLIC_PATHS.has(path)) return true;
+  if (path.startsWith('/swagger')) return true;
+  return false;
+}
+
 export function createServer(options: { port?: number; hostname?: string } = {}) {
   const port = options.port ?? DEFAULT_PORT;
   const hostname = options.hostname ?? DEFAULT_HOSTNAME;
+  const apiKey = process.env.FOREST_API_KEY;
 
   const app = new Elysia()
     .use(cors())
+    .onBeforeHandle(({ request, set }) => {
+      if (!apiKey) return;
+      const url = new URL(request.url);
+      if (isPublicPath(url.pathname)) return;
+
+      const authHeader = request.headers.get('authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        set.status = 401;
+        return {
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header', details: {} },
+          meta: { timestamp: new Date().toISOString(), version: '0.3.0' },
+        };
+      }
+
+      const token = authHeader.slice(7);
+      if (token !== apiKey) {
+        set.status = 401;
+        return {
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Invalid API key', details: {} },
+          meta: { timestamp: new Date().toISOString(), version: '0.3.0' },
+        };
+      }
+    })
     .use(
       swagger({
         documentation: {
@@ -65,6 +100,9 @@ export async function startServer(options: { port?: number; hostname?: string } 
   const displayHost = hostname === '::' || hostname === '0.0.0.0' ? 'localhost' : hostname;
   console.log(`🌲 Forest server running at http://${displayHost}:${port}`);
   console.log(`📚 API docs available at http://${displayHost}:${port}/swagger`);
+  if (process.env.FOREST_API_KEY) {
+    console.log(`🔒 Bearer token auth enabled`);
+  }
   if (hostname === '::') {
     console.log(`   (Dual-stack mode: IPv4 and IPv6 enabled)`);
   }
