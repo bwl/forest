@@ -34,11 +34,13 @@ export function createConfigCommand(clerc: ClercModule) {
           const safe = { ...config };
           if (safe.openaiApiKey) safe.openaiApiKey = `${safe.openaiApiKey.slice(0, 7)}...`;
           if (safe.openrouterApiKey) safe.openrouterApiKey = `${safe.openrouterApiKey.slice(0, 8)}...`;
+          if (safe.apiKey) safe.apiKey = `${safe.apiKey.slice(0, 4)}...`;
           console.log(JSON.stringify({ config: safe, configPath: getConfigPath() }, null, 2));
         } else {
           const safe = { ...config };
           if (safe.openaiApiKey) safe.openaiApiKey = `${safe.openaiApiKey.slice(0, 7)}...`;
           if (safe.openrouterApiKey) safe.openrouterApiKey = `${safe.openrouterApiKey.slice(0, 8)}...`;
+          if (safe.apiKey) safe.apiKey = `${safe.apiKey.slice(0, 4)}...`;
           console.log('Current configuration:');
           console.log(JSON.stringify(safe, null, 2));
           console.log(`\nConfig file: ${getConfigPath()}`);
@@ -135,6 +137,16 @@ async function runConfigWizard() {
           value: 'markdown',
           label: `Markdown Output (${formatMarkdownSummary(config)})`,
         },
+        {
+          value: 'serverUrl',
+          label: `Server URL (${config.serverUrl || 'not set — local mode'})`,
+          hint: 'Connect to a remote Forest server instead of local DB',
+        },
+        {
+          value: 'apiKey',
+          label: `API Key (${config.apiKey ? 'set' : 'not set'})`,
+          hint: 'Bearer token for remote server authentication',
+        },
         { value: 'save', label: 'Save and exit' },
         { value: 'cancel', label: 'Cancel without saving' },
       ],
@@ -150,6 +162,8 @@ async function runConfigWizard() {
       | 'synthesizeModel'
       | 'colorScheme'
       | 'markdown'
+      | 'serverUrl'
+      | 'apiKey'
       | 'save'
       | 'cancel';
 
@@ -494,6 +508,84 @@ async function runConfigWizard() {
 
         if (!clack.isCancel(colorScheme)) {
           config.colorScheme = colorScheme;
+        }
+        break;
+      }
+
+      case 'serverUrl': {
+        let shouldPrompt = true;
+        if (config.serverUrl) {
+          const nextAction = (await clack.select({
+            message: `Current server URL: ${config.serverUrl}`,
+            options: [
+              { value: 'update', label: 'Change URL' },
+              { value: 'clear', label: 'Clear (use local mode)' },
+              { value: 'back', label: 'Back' },
+            ],
+          })) as 'update' | 'clear' | 'back';
+
+          if (clack.isCancel(nextAction) || nextAction === 'back') {
+            shouldPrompt = false;
+          } else if (nextAction === 'clear') {
+            delete config.serverUrl;
+            shouldPrompt = false;
+          }
+        }
+
+        if (shouldPrompt) {
+          const urlInput = (await clack.text({
+            message: 'Remote server URL',
+            placeholder: 'https://forest.example.com',
+            initialValue: config.serverUrl || '',
+            validate: (value) => {
+              if (!value || value.trim().length === 0) return 'URL is required';
+              try {
+                new URL(value.trim());
+              } catch {
+                return 'Must be a valid URL (e.g. https://forest.example.com)';
+              }
+            },
+          })) as string;
+
+          if (!clack.isCancel(urlInput)) {
+            // Normalize: strip trailing slash
+            config.serverUrl = urlInput.trim().replace(/\/+$/, '');
+          }
+        }
+        break;
+      }
+
+      case 'apiKey': {
+        let shouldPrompt = true;
+        if (config.apiKey) {
+          const nextAction = (await clack.select({
+            message: 'API Key',
+            options: [
+              { value: 'update', label: 'Update key' },
+              { value: 'clear', label: 'Clear key' },
+              { value: 'back', label: 'Back' },
+            ],
+          })) as 'update' | 'clear' | 'back';
+
+          if (clack.isCancel(nextAction) || nextAction === 'back') {
+            shouldPrompt = false;
+          } else if (nextAction === 'clear') {
+            delete config.apiKey;
+            shouldPrompt = false;
+          }
+        }
+
+        if (shouldPrompt) {
+          const keyInput = (await clack.password({
+            message: 'API Key (Bearer token for remote server)',
+            validate: (value) => {
+              if (!value || value.length === 0) return 'API key is required';
+            },
+          })) as string;
+
+          if (!clack.isCancel(keyInput)) {
+            config.apiKey = keyInput;
+          }
         }
         break;
       }
