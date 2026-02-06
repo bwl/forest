@@ -19,6 +19,7 @@ export interface MarkdownOutputConfig {
 export interface ForestConfig {
   dbPath?: string;
   embedProvider?: 'openrouter' | 'openai' | 'mock' | 'none';
+  embedModel?: string;
   openaiApiKey?: string;
   openrouterApiKey?: string;
   taggingMethod?: 'lexical' | 'llm' | 'none';
@@ -66,6 +67,7 @@ export function loadConfig(): ForestConfig {
   const config: ForestConfig = {
     dbPath: fileConfig.dbPath, // Pass through as-is, expansion happens in getConfiguredDbPath()
     embedProvider: normalizeEmbedProvider(fileConfig.embedProvider) || getEmbedProviderFromEnv(),
+    embedModel: fileConfig.embedModel || undefined,
     openaiApiKey: fileConfig.openaiApiKey || process.env.OPENAI_API_KEY,
     openrouterApiKey: fileConfig.openrouterApiKey || process.env.FOREST_OR_KEY,
     taggingMethod: fileConfig.taggingMethod || 'lexical', // Default to lexical (backward compat)

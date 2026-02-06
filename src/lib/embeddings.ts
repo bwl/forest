@@ -36,8 +36,13 @@ export function getEmbeddingProvider(): EmbeddingProvider {
 
 export function getEmbeddingModel(): string {
   const provider = getEmbeddingProvider();
+
+  // Priority: env var > config file > provider default
   const envModel = process.env.FOREST_EMBED_MODEL;
   if (envModel) return envModel;
+
+  const config = loadConfig();
+  if (config.embedModel) return config.embedModel;
 
   // Provider defaults
   switch (provider) {
@@ -89,7 +94,7 @@ async function embedMock(text: string): Promise<number[]> {
 }
 
 // OpenRouter provider - unified API for multiple embedding models
-// Default: qwen/qwen3-embedding-8b (33K context, $0.01/M tokens)
+// Default: qwen/qwen3-embedding-8b (32K context, $0.01/M tokens)
 async function embedOpenRouter(text: string): Promise<number[]> {
   const config = loadConfig();
   const apiKey = config.openrouterApiKey || process.env.FOREST_OR_KEY;

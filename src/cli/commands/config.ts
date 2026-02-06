@@ -96,6 +96,11 @@ async function runConfigWizard() {
           label: `Embedding Provider (${config.embedProvider || 'openrouter'})`,
         },
         {
+          value: 'embedModel',
+          label: `Embedding Model (${config.embedModel || 'provider default'})`,
+          hint: 'Override the default model for your embedding provider',
+        },
+        {
           value: 'openrouterApiKey',
           label: `OpenRouter API Key (${config.openrouterApiKey ? 'set' : 'not set'})`,
           hint: 'Required when Embedding Provider = OpenRouter',
@@ -136,6 +141,7 @@ async function runConfigWizard() {
     })) as
       | 'dbPath'
       | 'embedProvider'
+      | 'embedModel'
       | 'openrouterApiKey'
       | 'openaiApiKey'
       | 'taggingMethod'
@@ -205,7 +211,7 @@ async function runConfigWizard() {
             {
               value: 'openrouter',
               label: 'OpenRouter (Recommended)',
-              hint: 'Qwen3 8B, 4096-dim, 33K context, $0.01/M tokens',
+              hint: 'Qwen3 8B — #1 MTEB, 4096-dim, 32K context, $0.01/M tokens',
             },
             {
               value: 'openai',
@@ -228,6 +234,61 @@ async function runConfigWizard() {
 
         if (!clack.isCancel(provider)) {
           config.embedProvider = provider;
+        }
+        break;
+      }
+
+      case 'embedModel': {
+        const provider = config.embedProvider || 'openrouter';
+
+        // Build model options based on provider
+        const modelOptions: { value: string; label: string; hint: string }[] = [];
+
+        if (provider === 'openrouter') {
+          modelOptions.push(
+            { value: '', label: 'Provider default (qwen/qwen3-embedding-8b)', hint: '#1 MTEB, 4096-dim, 32K context, $0.01/M' },
+            { value: 'qwen/qwen3-embedding-4b', label: 'qwen/qwen3-embedding-4b', hint: '~68 MTEB, 4096-dim, 33K context, $0.02/M' },
+            { value: 'openai/text-embedding-3-large', label: 'openai/text-embedding-3-large', hint: '~65 MTEB, 3072-dim, 8K context, $0.13/M' },
+            { value: 'openai/text-embedding-3-small', label: 'openai/text-embedding-3-small', hint: '~62 MTEB, 1536-dim, 8K context, $0.02/M' },
+          );
+        } else if (provider === 'openai') {
+          modelOptions.push(
+            { value: '', label: 'Provider default (text-embedding-3-small)', hint: '~62 MTEB, 1536-dim, 8K context, $0.02/M' },
+            { value: 'text-embedding-3-large', label: 'text-embedding-3-large', hint: '~65 MTEB, 3072-dim, 8K context, $0.13/M' },
+          );
+        } else {
+          console.log(`Embedding model selection is not available for provider '${provider}'.`);
+          break;
+        }
+
+        modelOptions.push(
+          { value: 'custom', label: 'Enter custom model ID', hint: 'Type a model identifier manually' },
+        );
+
+        const modelChoice = (await clack.select({
+          message: `Embedding model (provider: ${provider})`,
+          options: modelOptions,
+          initialValue: config.embedModel || '',
+        })) as string;
+
+        if (clack.isCancel(modelChoice)) break;
+
+        if (modelChoice === 'custom') {
+          const customModel = (await clack.text({
+            message: 'Enter model ID',
+            placeholder: provider === 'openrouter' ? 'vendor/model-name' : 'model-name',
+            validate: (value) => {
+              if (!value || value.trim().length === 0) return 'Model ID is required';
+            },
+          })) as string;
+
+          if (!clack.isCancel(customModel)) {
+            config.embedModel = customModel.trim();
+          }
+        } else if (modelChoice === '') {
+          delete config.embedModel;
+        } else {
+          config.embedModel = modelChoice;
         }
         break;
       }
