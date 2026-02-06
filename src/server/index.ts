@@ -9,6 +9,8 @@ import { tagsRoutes } from './routes/tags';
 import { edgesRoutes } from './routes/edges';
 import { searchRoutes } from './routes/search';
 import { documentsRoutes } from './routes/documents';
+import { graphRoutes } from './routes/graph';
+import { exportRoutes } from './routes/export';
 import { websocketRoute } from './routes/websocket';
 
 const DEFAULT_PORT = 3000;
@@ -70,6 +72,8 @@ export function createServer(options: { port?: number; hostname?: string } = {})
             { name: 'Edges', description: 'Edge management' },
             { name: 'Tags', description: 'Tag operations' },
             { name: 'Search', description: 'Semantic search operations' },
+            { name: 'Graph', description: 'Graph traversal operations' },
+            { name: 'Export', description: 'Data export operations' },
           ],
         },
       }),
@@ -86,6 +90,8 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     .use(edgesRoutes)
     .use(tagsRoutes)
     .use(searchRoutes)
+    .use(graphRoutes)
+    .use(exportRoutes)
     .use(websocketRoute);
 
   return { app, port, hostname };

@@ -4,6 +4,7 @@ import { loadConfig } from '../../lib/config';
 import { formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -70,6 +71,71 @@ export function createWriteCommand(clerc: ClercModule) {
   );
 }
 
+async function runWriteRemote(topic: string, flags: WriteFlags) {
+  const client = getClient();
+  const config = loadConfig();
+  const defaultModel = config.writeModel || 'gpt-5';
+
+  console.log('');
+  console.log('Writing configuration:');
+  console.log(`  Topic: ${topic}`);
+  console.log(`  Model: ${flags.model || defaultModel}`);
+  console.log('');
+  console.log('Calling LLM via remote server...');
+  console.log('');
+
+  const result = await client.write({
+    topic,
+    model: flags.model || defaultModel,
+    reasoning: flags.reasoning,
+    verbosity: flags.verbosity,
+    maxTokens: flags.maxTokens,
+    preview: flags.preview,
+    autoLink: typeof flags.autoLink === 'boolean' ? flags.autoLink : true,
+  });
+
+  console.log('='.repeat(80));
+  console.log('ARTICLE GENERATED');
+  console.log('='.repeat(80));
+  console.log('');
+  console.log(`Title: ${result.title}`);
+  console.log('');
+  console.log('Tags:', result.suggestedTags.join(', '));
+  console.log('');
+  console.log('Body Preview (first 500 chars):');
+  console.log('-'.repeat(80));
+  console.log(result.body.slice(0, 500) + (result.body.length > 500 ? '...' : ''));
+  console.log('-'.repeat(80));
+  console.log('');
+  console.log('Metadata:');
+  console.log(`  Model: ${result.model}`);
+  console.log(`  Reasoning effort: ${result.reasoningEffort}`);
+  console.log(`  Verbosity: ${result.verbosity}`);
+  console.log(`  Tokens used: ${result.tokensUsed.reasoning} reasoning + ${result.tokensUsed.output} output`);
+  console.log(`  Estimated cost: $${result.cost.toFixed(4)}`);
+  console.log('');
+
+  if (flags.preview) {
+    console.log('Preview mode - article not saved.');
+    console.log('');
+    console.log('Full article:');
+    console.log('='.repeat(80));
+    console.log(result.body);
+    console.log('='.repeat(80));
+    return;
+  }
+
+  if (result.node) {
+    console.log(`✔ Created article node: ${result.node.title}`);
+    console.log(`   id: ${result.node.shortId}`);
+    console.log(`   tags: ${result.node.tags.join(', ')}`);
+    if (result.linking) {
+      console.log(`   edges: ${result.linking.edgesCreated} accepted`);
+    }
+    console.log('');
+  }
+}
+
 async function runWrite(topic: string | undefined, flags: WriteFlags) {
   if (!topic || topic.trim().length === 0) {
     console.error('✖ Provide a topic to write about.');
@@ -77,6 +143,10 @@ async function runWrite(topic: string | undefined, flags: WriteFlags) {
     console.error('   Example: forest write "the role of mycorrhizal networks in forest ecology"');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runWriteRemote(topic.trim(), flags);
   }
 
   // Validate model and reasoning options

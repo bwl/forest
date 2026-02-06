@@ -229,11 +229,40 @@ async function runEdgesList(flags: EdgesListFlags) {
   console.log(formatAcceptedEdgesTable(edges, nodeMap, { longIds, allEdges }));
 }
 
+async function runEdgesExplainRemote(ref: string, flags: EdgesExplainFlags) {
+  const client = getClient();
+  const result = await client.explainEdge(ref);
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const e = result.edge;
+  console.log(
+    `${e.sourceId.slice(0, 8)}::${e.targetId.slice(0, 8)}  score=${e.score.toFixed(3)}  ` +
+      `S=${e.semanticScore === null ? '--' : e.semanticScore.toFixed(3)}  ` +
+      `T=${e.tagScore === null ? '--' : e.tagScore.toFixed(3)}`,
+  );
+  const c = result.classification;
+  console.log(`thresholds: semantic>=${c.semanticThreshold.toFixed(3)} OR tags>=${c.tagThreshold.toFixed(3)}`);
+  console.log(`shared tags: ${e.sharedTags.length > 0 ? e.sharedTags.join(', ') : 'none'}`);
+  console.log('tag components:');
+  for (const [key, value] of Object.entries(result.breakdown.tagComponents)) {
+    if (typeof value === 'number') console.log(`  ${key}: ${value.toFixed(3)}`);
+    else console.log(`  ${key}: ${String(value)}`);
+  }
+}
+
 async function runEdgesExplain(ref: string | undefined, flags: EdgesExplainFlags) {
   if (!ref) {
     console.error('✖ Missing required parameter "ref".');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runEdgesExplainRemote(ref.trim(), flags);
   }
 
   const edges = await listEdges('all');

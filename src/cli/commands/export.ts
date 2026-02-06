@@ -6,6 +6,7 @@ import { buildNeighborhoodPayload, selectNode } from '../shared/explore';
 import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -228,7 +229,28 @@ async function runExportGraphviz(flags: ExportGraphvizFlags) {
   }
 }
 
+async function runExportJsonRemote(flags: ExportJsonFlags) {
+  const client = getClient();
+  const includeBody = flags.body !== false;
+  const includeEdges = flags.edges !== false;
+
+  const result = await client.exportJson({ body: includeBody, edges: includeEdges });
+
+  const json = JSON.stringify(result, null, 2);
+
+  if (typeof flags.file === 'string' && flags.file.trim().length > 0) {
+    const filePath = path.resolve(flags.file);
+    fs.writeFileSync(filePath, json, 'utf-8');
+  } else {
+    console.log(json);
+  }
+}
+
 async function runExportJson(flags: ExportJsonFlags) {
+  if (isRemoteMode()) {
+    return runExportJsonRemote(flags);
+  }
+
   const nodes = await listNodes();
   const edges = await listEdges('all');
 

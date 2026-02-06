@@ -7,6 +7,7 @@ import { edgeIdentifier, formatId, handleError, resolveNodeReference } from '../
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -52,6 +53,29 @@ export function createLinkCommand(clerc: ClercModule) {
   );
 }
 
+async function runLinkRemote(aRef: string, bRef: string, flags: LinkFlags) {
+  const client = getClient();
+  const result = await client.linkNodes({
+    sourceId: aRef,
+    targetId: bRef,
+    name: flags.name,
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Added bridge tag ${colorize.tag(result.tag)}`);
+  console.log(`   ${colorize.label('A:')} ${result.nodes[0].shortId}  ${result.nodes[0].title}`);
+  console.log(`   ${colorize.label('B:')} ${result.nodes[1].shortId}  ${result.nodes[1].title}`);
+  console.log(
+    `   ${colorize.label('edge:')} ${result.edge.status}  ` +
+      `S=${result.edge.semanticScore === null ? '--' : result.edge.semanticScore.toFixed(3)}  ` +
+      `T=${result.edge.tagScore === null ? '--' : result.edge.tagScore.toFixed(3)}`,
+  );
+}
+
 async function runLink(aRef: string | undefined, bRef: string | undefined, flags: LinkFlags) {
   if (!aRef || !bRef) {
     console.error('✖ Provide two node references to link.');
@@ -60,6 +84,10 @@ async function runLink(aRef: string | undefined, bRef: string | undefined, flags
     console.error('  forest link <ref1> <ref2> [--name=chapter-1-arc]');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runLinkRemote(String(aRef), String(bRef), flags);
   }
 
   const a = await resolveNodeReference(String(aRef));

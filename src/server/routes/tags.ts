@@ -3,6 +3,7 @@ import {
   listTagsCore,
   getNodesByTagCore,
   renameTagCore,
+  getTagStatsCore,
 } from '../../core/tags';
 import {
   createSuccessResponse,
@@ -10,6 +11,7 @@ import {
   formatNodeForList,
   createPaginationInfo,
   validatePaginationParams,
+  parseQueryBoolean,
 } from '../utils/helpers';
 import { ForestError, ValidationError, TagNotFoundError, createErrorResponse } from '../utils/errors';
 
@@ -137,6 +139,40 @@ export const tagsRoutes = new Elysia({ prefix: '/api/v1' })
         tags: ['Tags'],
         summary: 'Rename tag',
         description: 'Rename a tag across all nodes',
+      },
+    },
+  )
+
+  // GET /tags/stats - Tag statistics
+  .get(
+    '/tags/stats',
+    async ({ query, set }) => {
+      try {
+        const focusTag = query.focusTag as string | undefined;
+        const minCount = query.minCount ? parseInt(query.minCount as string, 10) : undefined;
+        const top = query.top ? parseInt(query.top as string, 10) : undefined;
+
+        const result = await getTagStatsCore({
+          focusTag,
+          minCount,
+          top,
+        });
+
+        return createSuccessResponse(result);
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      detail: {
+        tags: ['Tags'],
+        summary: 'Tag statistics',
+        description: 'Get tag statistics including co-occurrence data',
       },
     },
   );

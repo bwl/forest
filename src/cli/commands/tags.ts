@@ -286,6 +286,37 @@ function parseTagList(value: string | undefined): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
+async function runTagsAddRemote(ref: string, tags: string[], flags: TagsModifyFlags) {
+  const client = getClient();
+  const result = await client.addTags(ref, tags);
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Added ${tags.length} tag(s) to ${result.nodeId.slice(0, 8)}`);
+  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ')}`);
+}
+
+async function runTagsRemoveRemote(ref: string, tags: string[], flags: TagsModifyFlags) {
+  const client = getClient();
+  const result = await client.removeTags(ref, tags);
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (result.removed.length === 0) {
+    console.log(`${colorize.info('ℹ')} No matching tags to remove on ${result.nodeId.slice(0, 8)}`);
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Removed ${result.removed.length} tag(s) from ${result.nodeId.slice(0, 8)}`);
+  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
+}
+
 export async function runTagsAdd(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
   if (!ref) {
     console.error('✖ Provide a node reference.');
@@ -298,6 +329,10 @@ export async function runTagsAdd(ref: string | undefined, tagsArg: string | unde
     console.error('✖ Provide one or more tags (comma-separated).');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runTagsAddRemote(ref, tags, flags);
   }
 
   const node = await resolveNodeReference(ref);
@@ -345,6 +380,10 @@ async function runTagsRemove(ref: string | undefined, tagsArg: string | undefine
     console.error('✖ Provide one or more tags (comma-separated).');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runTagsRemoveRemote(ref, tags, flags);
   }
 
   const node = await resolveNodeReference(ref);
@@ -469,11 +508,21 @@ async function runTagsList(flags: TagsListFlags) {
   });
 }
 
+async function runTagsRenameRemote(oldTag: string, nextTag: string) {
+  const client = getClient();
+  const result = await client.renameTag(oldTag, nextTag);
+  console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${result.renamed.nodesAffected} notes`);
+}
+
 async function runTagsRename(oldTag: string | undefined, nextTag: string | undefined) {
   if (!oldTag || !nextTag) {
     console.error('✖ Provide both the existing tag and the new tag.');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runTagsRenameRemote(oldTag, nextTag);
   }
 
   const nodes = await listNodes();
@@ -488,7 +537,50 @@ async function runTagsRename(oldTag: string | undefined, nextTag: string | undef
   console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${changed} notes`);
 }
 
+async function runTagsStatsRemote(flags: TagsStatsFlags) {
+  const client = getClient();
+  const trimmedTag = typeof flags.tag === 'string' ? flags.tag.trim() : '';
+  const result = await client.getTagStats({
+    focusTag: trimmedTag.length > 0 ? trimmedTag : undefined,
+    minCount: flags.minCount,
+    top: flags.top,
+  });
+
+  if (flags.json) {
+    if (trimmedTag.length > 0) {
+      console.log(JSON.stringify({ tag: trimmedTag, coTags: result.coOccurrences ?? [] }, null, 2));
+    } else {
+      console.log(JSON.stringify({ topTags: result.topTags, topPairs: [] }, null, 2));
+    }
+    return;
+  }
+
+  if (trimmedTag.length > 0 && result.coOccurrences) {
+    if (result.coOccurrences.length === 0) {
+      console.log(`No co-occurring tags for '${trimmedTag}'.`);
+      return;
+    }
+    console.log(`Top co-occurring tags with '${trimmedTag}':`);
+    result.coOccurrences.forEach((item) => console.log(`  ${String(item.count).padStart(3, ' ')}  ${item.tag}`));
+    return;
+  }
+
+  if (result.topTags.length > 0) {
+    console.log('Top tags:');
+    result.topTags.forEach((entry) => {
+      console.log(`  ${String(entry.count).padStart(3, ' ')}  ${entry.name}`);
+    });
+    console.log('');
+  } else {
+    console.log('No tag pairs found.');
+  }
+}
+
 async function runTagsStats(flags: TagsStatsFlags) {
+  if (isRemoteMode()) {
+    return runTagsStatsRemote(flags);
+  }
+
   const nodes = await listNodes();
   const min =
     typeof flags.minCount === 'number' && Number.isFinite(flags.minCount) ? Math.max(0, Math.floor(flags.minCount)) : 0;

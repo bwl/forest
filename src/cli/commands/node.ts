@@ -263,11 +263,39 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
   }
 }
 
+async function runNodeRefreshRemote(idRef: string, flags: NodeRefreshFlags) {
+  const client = getClient();
+  const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
+  const data: Record<string, unknown> = {};
+  if (typeof flags.title === 'string') data.title = flags.title;
+  if (bodyResult.provided) data.body = bodyResult.value;
+  if (typeof flags.tags === 'string') {
+    data.tags = flags.tags
+      .split(',')
+      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
+      .filter((t) => t.length > 0);
+  }
+  if (flags.noAutoLink) data.autoLink = false;
+  else if (flags.autoLink === false) data.autoLink = false;
+
+  const result = await client.updateNode(idRef, data as any);
+  const node = result.node;
+
+  console.log(`✔ Refreshed note: ${node.title}`);
+  console.log(`   id: ${node.id}`);
+  if (node.tags.length > 0) console.log(`   tags: ${node.tags.join(', ')}`);
+  console.log(`   edges after rescore: ${result.linking.edgesCreated}`);
+}
+
 export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runNodeRefreshRemote(idRef.trim(), flags);
   }
 
   const node = await resolveNodeReference(String(idRef), { select: flags.select });
@@ -955,6 +983,67 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
   }
 }
 
+async function runNodeSynthesizeRemote(ids: string[], flags: NodeSynthesizeFlags) {
+  const client = getClient();
+  const config = loadConfig();
+  const defaultModel = config.synthesizeModel || 'gpt-5';
+
+  console.log(`Synthesizing ${ids.length} nodes via remote server...`);
+
+  const result = await client.synthesize({
+    nodeIds: ids,
+    model: flags.model || defaultModel,
+    reasoning: flags.reasoning,
+    verbosity: flags.verbosity,
+    maxTokens: flags.maxTokens,
+    preview: flags.preview,
+    autoLink: typeof flags.autoLink === 'boolean' ? flags.autoLink : true,
+  });
+
+  console.log('');
+  console.log('='.repeat(80));
+  console.log('SYNTHESIS RESULT');
+  console.log('='.repeat(80));
+  console.log('');
+  console.log(`Title: ${result.title}`);
+  console.log('');
+  console.log('Tags:', result.suggestedTags.join(', '));
+  console.log('');
+  console.log('Body Preview (first 500 chars):');
+  console.log('-'.repeat(80));
+  console.log(result.body.slice(0, 500) + (result.body.length > 500 ? '...' : ''));
+  console.log('-'.repeat(80));
+  console.log('');
+  console.log('Metadata:');
+  console.log(`  Model: ${result.model}`);
+  console.log(`  Reasoning effort: ${result.reasoningEffort}`);
+  console.log(`  Verbosity: ${result.verbosity}`);
+  console.log(`  Tokens used: ${result.tokensUsed.reasoning} reasoning + ${result.tokensUsed.output} output`);
+  console.log(`  Estimated cost: $${result.cost.toFixed(4)}`);
+  console.log(`  Source nodes: ${result.sourceNodeIds.length}`);
+  console.log('');
+
+  if (flags.preview) {
+    console.log('Preview mode - synthesis not saved.');
+    console.log('');
+    console.log('Full body:');
+    console.log('='.repeat(80));
+    console.log(result.body);
+    console.log('='.repeat(80));
+    return;
+  }
+
+  if (result.node) {
+    console.log(`✔ Created synthesis node: ${result.node.title}`);
+    console.log(`   id: ${result.node.shortId}`);
+    console.log(`   tags: ${result.node.tags.join(', ')}`);
+    if (result.linking) {
+      console.log(`   edges: ${result.linking.edgesCreated} accepted`);
+    }
+    console.log('');
+  }
+}
+
 export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
   if (!ids || ids.length < 2) {
     console.error('✖ Provide at least 2 node IDs to synthesize.');
@@ -974,6 +1063,10 @@ export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSy
     console.error('');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runNodeSynthesizeRemote(ids, flags);
   }
 
   // Resolve all node IDs
@@ -1069,7 +1162,68 @@ export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSy
   console.log('');
 }
 
+async function runNodeImportRemote(flags: NodeImportFlags) {
+  const client = getClient();
+  const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
+  const documentText = bodyResult.value;
+
+  if (!documentText || documentText.trim().length === 0) {
+    console.error('✖ No document content provided. Use --file or --stdin.');
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Importing document (${documentText.length} characters) via remote server...`);
+
+  let tags: string[] | undefined;
+  if (flags.tags) {
+    tags = flags.tags
+      .split(',')
+      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
+      .filter((t) => t.length > 0);
+  }
+
+  const result = await client.importDocument({
+    body: documentText,
+    title: flags.title,
+    tags,
+    chunkStrategy: flags.chunkStrategy,
+    maxTokens: flags.maxTokens,
+    overlap: flags.overlap,
+    autoLink: !flags.noAutoLink,
+    createParent: !flags.noParent,
+    linkSequential: !flags.noSequential,
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log('');
+  console.log(`✔ Imported document: ${result.documentTitle}`);
+  console.log(`   Total chunks: ${result.totalChunks}`);
+  if (result.rootNode) {
+    console.log(`   Root node: ${result.rootNode.id.slice(0, 8)} - ${result.rootNode.title}`);
+  }
+  console.log('');
+  console.log('Chunks:');
+  for (const chunk of result.chunks) {
+    console.log(`  ${chunk.id.slice(0, 8)} - ${chunk.title} (~${chunk.estimatedTokens} tokens)`);
+  }
+  console.log('');
+  console.log('Linking:');
+  console.log(`  Parent-child edges: ${result.linking.parentChildEdges}`);
+  console.log(`  Sequential edges: ${result.linking.sequentialEdges}`);
+  console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted`);
+  console.log('');
+}
+
 export async function runNodeImport(flags: NodeImportFlags) {
+  if (isRemoteMode()) {
+    return runNodeImportRemote(flags);
+  }
+
   // Resolve document input
   const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
   const documentText = bodyResult.value;

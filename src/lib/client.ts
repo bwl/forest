@@ -142,6 +142,257 @@ export interface StatsResult {
   highDegreeNodes: Array<{ id: string; title: string; edgeCount: number }>;
 }
 
+// ── Update node types ─────────────────────────────────────────────────
+
+export interface UpdateNodeInput {
+  title?: string;
+  body?: string;
+  tags?: string[];
+  autoLink?: boolean;
+}
+
+export interface UpdateNodeResult {
+  node: NodeDetail;
+  linking: { edgesCreated: number };
+}
+
+// ── Edge mutation types ───────────────────────────────────────────────
+
+export interface CreateEdgeInput {
+  sourceId: string;
+  targetId: string;
+  score?: number;
+}
+
+export interface CreateEdgeResult {
+  edge: EdgeSummary;
+}
+
+export interface DeleteEdgeResult {
+  deleted: { edgeId: string; ref: string };
+}
+
+export interface ExplainEdgeResult {
+  edge: {
+    id: string;
+    sourceId: string;
+    targetId: string;
+    score: number;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+  };
+  breakdown: {
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+    tagComponents: Record<string, unknown>;
+  };
+  classification: {
+    status: string;
+    semanticThreshold: number;
+    tagThreshold: number;
+  };
+}
+
+// ── Tag mutation types ────────────────────────────────────────────────
+
+export interface RenameTagResult {
+  renamed: { from: string; to: string; nodesAffected: number };
+}
+
+export interface GetNodesByTagResult {
+  tag: string;
+  nodes: NodeSummary[];
+  pagination: PaginationInfo;
+}
+
+export interface TagStatsResult {
+  totalTags: number;
+  topTags: Array<{ name: string; count: number; lastUsed: string }>;
+  coOccurrences?: Array<{ tag: string; count: number }>;
+}
+
+export interface AddTagsResult {
+  nodeId: string;
+  added: string[];
+  tags: string[];
+}
+
+export interface RemoveTagsResult {
+  nodeId: string;
+  removed: string[];
+  tags: string[];
+}
+
+// ── Synthesize/Write types ────────────────────────────────────────────
+
+export interface SynthesizeInput {
+  nodeIds: string[];
+  model?: string;
+  reasoning?: string;
+  verbosity?: string;
+  maxTokens?: number;
+  preview?: boolean;
+  autoLink?: boolean;
+}
+
+export interface SynthesizeResult {
+  title: string;
+  body: string;
+  suggestedTags: string[];
+  sourceNodeIds: string[];
+  model: string;
+  reasoningEffort: string;
+  verbosity: string;
+  cost: number;
+  tokensUsed: { reasoning: number; output: number };
+  node?: NodeDetail;
+  linking?: { edgesCreated: number };
+}
+
+export interface WriteInput {
+  topic: string;
+  model?: string;
+  reasoning?: string;
+  verbosity?: string;
+  maxTokens?: number;
+  preview?: boolean;
+  autoLink?: boolean;
+}
+
+export interface WriteResult {
+  title: string;
+  body: string;
+  suggestedTags: string[];
+  model: string;
+  reasoningEffort: string;
+  verbosity: string;
+  cost: number;
+  tokensUsed: { reasoning: number; output: number };
+  node?: NodeDetail;
+  linking?: { edgesCreated: number };
+}
+
+// ── Import types ──────────────────────────────────────────────────────
+
+export interface ImportInput {
+  body: string;
+  title?: string;
+  tags?: string[];
+  chunkStrategy?: string;
+  maxTokens?: number;
+  overlap?: number;
+  autoLink?: boolean;
+  createParent?: boolean;
+  linkSequential?: boolean;
+}
+
+export interface ImportResult {
+  documentTitle: string;
+  rootNode: NodeSummary | null;
+  chunks: Array<{
+    id: string;
+    title: string;
+    tags: string[];
+    chunkIndex: number;
+    estimatedTokens: number;
+  }>;
+  totalChunks: number;
+  linking: {
+    parentChildEdges: number;
+    sequentialEdges: number;
+    semanticAccepted: number;
+  };
+}
+
+// ── Path types ────────────────────────────────────────────────────────
+
+export interface PathStep {
+  nodeId: string;
+  nodeTitle: string;
+  edgeId?: string;
+  edgeScore?: number;
+  edgeType?: string;
+}
+
+export interface PathResult {
+  found: boolean;
+  path: PathStep[];
+  totalScore: number;
+  hopCount: number;
+}
+
+// ── Link types ────────────────────────────────────────────────────────
+
+export interface LinkNodesInput {
+  sourceId: string;
+  targetId: string;
+  name?: string;
+}
+
+export interface LinkNodesResult {
+  tag: string;
+  nodes: Array<{ id: string; shortId: string; title: string }>;
+  edge: {
+    sourceId: string;
+    targetId: string;
+    status: string;
+    score: number;
+    semanticScore: number | null;
+    tagScore: number | null;
+    sharedTags: string[];
+  };
+}
+
+// ── Neighborhood types ────────────────────────────────────────────────
+
+export interface NeighborhoodNode {
+  id: string;
+  title: string;
+  tags: string[];
+  snippet: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NeighborhoodEdge {
+  id: string;
+  source: string;
+  target: string;
+  score: number;
+}
+
+export interface NeighborhoodResult {
+  center: string;
+  nodes: NeighborhoodNode[];
+  edges: NeighborhoodEdge[];
+}
+
+// ── Export types ───────────────────────────────────────────────────────
+
+export interface ExportJsonResult {
+  nodes: Array<{
+    id: string;
+    title: string;
+    tags: string[];
+    body?: string;
+    tokenCounts?: Record<string, number>;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  edges: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    status: string;
+    score: number;
+    metadata: unknown;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
+
 // ── Health types ───────────────────────────────────────────────────────
 
 export interface HealthResult {
@@ -292,6 +543,117 @@ export class ForestClient {
       query: {
         sort: opts?.sort,
         order: opts?.order,
+      },
+    });
+  }
+
+  async updateNode(id: string, data: UpdateNodeInput): Promise<UpdateNodeResult> {
+    return this.request<UpdateNodeResult>('PUT', `/api/v1/nodes/${encodeURIComponent(id)}`, { body: data });
+  }
+
+  // ── Edges ──────────────────────────────────────────────────────────
+
+  async createEdge(data: CreateEdgeInput): Promise<CreateEdgeResult> {
+    return this.request<CreateEdgeResult>('POST', '/api/v1/edges', { body: data });
+  }
+
+  async deleteEdge(ref: string): Promise<DeleteEdgeResult> {
+    return this.request<DeleteEdgeResult>('DELETE', `/api/v1/edges/${encodeURIComponent(ref)}`);
+  }
+
+  async explainEdge(ref: string): Promise<ExplainEdgeResult> {
+    return this.request<ExplainEdgeResult>('GET', `/api/v1/edges/${encodeURIComponent(ref)}/explain`);
+  }
+
+  // ── Tags ───────────────────────────────────────────────────────────
+
+  async renameTag(oldName: string, newName: string): Promise<RenameTagResult> {
+    return this.request<RenameTagResult>('PUT', `/api/v1/tags/${encodeURIComponent(oldName)}`, {
+      body: { newName },
+    });
+  }
+
+  async getNodesByTag(name: string, opts?: { limit?: number; offset?: number }): Promise<GetNodesByTagResult> {
+    return this.request<GetNodesByTagResult>('GET', `/api/v1/tags/${encodeURIComponent(name)}/nodes`, {
+      query: {
+        limit: opts?.limit,
+        offset: opts?.offset,
+      },
+    });
+  }
+
+  async getTagStats(opts?: { focusTag?: string; minCount?: number; top?: number }): Promise<TagStatsResult> {
+    return this.request<TagStatsResult>('GET', '/api/v1/tags/stats', {
+      query: {
+        focusTag: opts?.focusTag,
+        minCount: opts?.minCount,
+        top: opts?.top,
+      },
+    });
+  }
+
+  async addTags(nodeId: string, tags: string[]): Promise<AddTagsResult> {
+    return this.request<AddTagsResult>('POST', `/api/v1/nodes/${encodeURIComponent(nodeId)}/tags`, {
+      body: { tags },
+    });
+  }
+
+  async removeTags(nodeId: string, tags: string[]): Promise<RemoveTagsResult> {
+    return this.request<RemoveTagsResult>('DELETE', `/api/v1/nodes/${encodeURIComponent(nodeId)}/tags`, {
+      body: { tags },
+    });
+  }
+
+  // ── Synthesize ─────────────────────────────────────────────────────
+
+  async synthesize(data: SynthesizeInput): Promise<SynthesizeResult> {
+    return this.request<SynthesizeResult>('POST', '/api/v1/nodes/synthesize', { body: data });
+  }
+
+  // ── Write ──────────────────────────────────────────────────────────
+
+  async write(data: WriteInput): Promise<WriteResult> {
+    return this.request<WriteResult>('POST', '/api/v1/nodes/write', { body: data });
+  }
+
+  // ── Import ─────────────────────────────────────────────────────────
+
+  async importDocument(data: ImportInput): Promise<ImportResult> {
+    return this.request<ImportResult>('POST', '/api/v1/documents/import', { body: data });
+  }
+
+  // ── Path ───────────────────────────────────────────────────────────
+
+  async findPath(from: string, to: string): Promise<PathResult> {
+    return this.request<PathResult>('GET', '/api/v1/graph/path', {
+      query: { from, to },
+    });
+  }
+
+  // ── Link ───────────────────────────────────────────────────────────
+
+  async linkNodes(data: LinkNodesInput): Promise<LinkNodesResult> {
+    return this.request<LinkNodesResult>('POST', '/api/v1/nodes/link', { body: data });
+  }
+
+  // ── Neighborhood ───────────────────────────────────────────────────
+
+  async getNeighborhood(id: string, opts?: { depth?: number; limit?: number }): Promise<NeighborhoodResult> {
+    return this.request<NeighborhoodResult>('GET', `/api/v1/nodes/${encodeURIComponent(id)}/neighborhood`, {
+      query: {
+        depth: opts?.depth,
+        limit: opts?.limit,
+      },
+    });
+  }
+
+  // ── Export ─────────────────────────────────────────────────────────
+
+  async exportJson(opts?: { body?: boolean; edges?: boolean }): Promise<ExportJsonResult> {
+    return this.request<ExportJsonResult>('GET', '/api/v1/export/json', {
+      query: {
+        body: opts?.body !== false ? 'true' : 'false',
+        edges: opts?.edges !== false ? 'true' : 'false',
       },
     });
   }
