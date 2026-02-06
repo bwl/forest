@@ -22,7 +22,9 @@
       "Bash(wc:*)",
       "WebFetch(domain:openrouter.ai)",
       "Bash(~/.local/bin/forest edges:*)",
-      "Skill(lumberjack)"
+      "Skill(lumberjack)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)"
     ],
     "deny": [],
     "ask": []
