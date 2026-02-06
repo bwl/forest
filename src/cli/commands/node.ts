@@ -26,6 +26,8 @@ import {
   resolveNodeReference,
 } from '../shared/utils';
 import { rescoreNode } from '../shared/linking';
+import { isRemoteMode, getClient } from '../shared/remote';
+
 import {
   loadDocumentSessionForNode,
   buildDocumentEditorBuffer,
@@ -102,11 +104,59 @@ export type NodeImportFlags = {
   tldr?: string;
 };
 
+async function runNodeReadRemote(idRef: string, flags: NodeReadFlags) {
+  const client = getClient();
+  const result = await client.getNode(idRef);
+  const node = result.node;
+  const config = loadConfig();
+  const markdownOptions = {
+    width: config.markdown?.width ?? 90,
+    reflowText: config.markdown?.reflowText ?? true,
+  };
+
+  if (flags.raw) {
+    console.log(node.body ?? '');
+    return;
+  }
+
+  if (flags.json) {
+    console.log(JSON.stringify({
+      node: { id: node.id, title: node.title, tags: node.tags, createdAt: node.createdAt, updatedAt: node.updatedAt },
+      body: node.body,
+    }, null, 2));
+    return;
+  }
+
+  // Text output
+  console.log(`${node.shortId}  ${node.title}`);
+  if (node.tags.length > 0) {
+    console.log(`  tags: ${node.tags.join(', ')}`);
+  }
+  console.log(`  edges: ${result.edgesTotal}`);
+  console.log(`  created: ${node.createdAt}  updated: ${node.updatedAt}`);
+
+  if (!flags.meta && node.body) {
+    console.log('');
+    console.log(renderMarkdownToTerminal(node.body, markdownOptions));
+  }
+}
+
+async function runNodeDeleteRemote(idRef: string, flags: NodeDeleteFlags) {
+  const client = getClient();
+  const result = await client.deleteNode(idRef);
+  console.log(`✔ Deleted note ${result.deleted.nodeId.slice(0, 8)}`);
+  console.log(`   removed ${result.deleted.edgesRemoved} associated edges`);
+}
+
 export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
   if (!idRef || idRef.trim().length === 0) {
     console.error('✖ Provide a node id or unique short id (run `forest explore` to discover ids).');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runNodeReadRemote(idRef.trim(), flags);
   }
 
   const node = await resolveNodeReference(idRef.trim(), { select: flags.select });
@@ -406,6 +456,10 @@ export async function runNodeDelete(idRef: string | undefined, flags: NodeDelete
     console.error('✖ Missing required parameter "id".');
     process.exitCode = 1;
     return;
+  }
+
+  if (isRemoteMode()) {
+    return runNodeDeleteRemote(idRef.trim(), flags);
   }
 
   const node = await resolveNodeReference(String(idRef), { select: flags.select });

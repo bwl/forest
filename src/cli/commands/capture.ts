@@ -14,6 +14,7 @@ import { linkAgainstExisting } from '../shared/linking';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -102,10 +103,51 @@ export function createCaptureCommand(clerc: ClercModule) {
   );
 }
 
+async function runCaptureRemote(flags: CaptureFlags) {
+  const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
+  const body = bodyResult.value;
+
+  if (!body || body.trim().length === 0) {
+    console.error('✖ No content provided. Use --body, --file, or --stdin.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const client = getClient();
+  const tags = typeof flags.tags === 'string'
+    ? flags.tags.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter((t) => t.length > 0)
+    : undefined;
+
+  const result = await client.createNode({
+    title: flags.title,
+    body,
+    tags,
+    autoLink: computeAutoLinkIntent(flags),
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  const node = result.node;
+  console.log(`${colorize.success('✔')} Captured idea: ${node.title}`);
+  console.log(`   ${colorize.label('id:')} ${colorize.nodeId(node.shortId)}`);
+  if (node.tags.length > 0) {
+    const coloredTags = node.tags.map((tag: string) => colorize.tag(tag)).join(', ');
+    console.log(`   ${colorize.label('tags:')} ${coloredTags}`);
+  }
+  console.log(`   ${colorize.label('links:')} ${colorize.success(String(result.linking.edgesCreated))} edges`);
+}
+
 // TODO: Refactor to use createNodeCore() from src/core/nodes.ts
 // This function currently reimplements node creation logic that should be
 // in the core layer. See CLAUDE.md "3-Layer Architecture" section.
 async function runCapture(flags: CaptureFlags) {
+  if (isRemoteMode()) {
+    return runCaptureRemote(flags);
+  }
+
   const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
   const body = bodyResult.value;
 

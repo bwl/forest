@@ -13,6 +13,7 @@ import {
 import { edgeIdentifier, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
@@ -518,7 +519,32 @@ async function runAdminTags(flags: AdminTagsFlags) {
   console.log('\nRetagging complete');
 }
 
+async function runAdminHealthRemote(flags: AdminHealthFlags) {
+  const client = getClient();
+  const health = await client.getHealth();
+
+  if (flags.json) {
+    console.log(JSON.stringify(health, null, 2));
+    return;
+  }
+
+  console.log('forest health (remote)');
+  console.log('');
+  console.log(`Status: ${health.status}`);
+  console.log(`Database: ${health.database.connected ? 'connected' : 'disconnected'}${health.database.path ? ` (${health.database.path})` : ''}`);
+  if (typeof health.database.size === 'number') {
+    const sizeMB = (health.database.size / (1024 * 1024)).toFixed(2);
+    console.log(`  size: ${sizeMB} MB`);
+  }
+  console.log(`Embeddings: ${health.embeddings.provider} (${health.embeddings.available ? 'available' : 'unavailable'})`);
+  console.log(`Uptime: ${Math.floor(health.uptime)}s`);
+}
+
 async function runAdminHealth(flags: AdminHealthFlags) {
+  if (isRemoteMode()) {
+    return runAdminHealthRemote(flags);
+  }
+
   const report = await getHealthReport();
 
   if (flags.json) {

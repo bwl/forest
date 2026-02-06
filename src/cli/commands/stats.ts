@@ -3,6 +3,7 @@ import { formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -48,7 +49,50 @@ export function createStatsCommand(clerc: ClercModule) {
   );
 }
 
+async function runStatsRemote(flags: StatsFlags) {
+  const client = getClient();
+  const stats = await client.getStats();
+
+  if (flags.json) {
+    console.log(JSON.stringify(stats, null, 2));
+    return;
+  }
+
+  console.log('forest stats (remote)');
+  console.log(`Nodes: ${stats.nodes.total}`);
+  console.log(`Edges: ${stats.edges.total}`);
+  console.log('');
+
+  if (stats.nodes.recent.length > 0) {
+    console.log('Recent captures:');
+    for (const node of stats.nodes.recent) {
+      const coloredId = colorize.nodeId(node.id.slice(0, 8));
+      console.log(`  ${coloredId}  ${node.title}`);
+    }
+    console.log('');
+  }
+
+  if (stats.highDegreeNodes.length > 0) {
+    console.log('High-degree nodes:');
+    for (const entry of stats.highDegreeNodes) {
+      const coloredId = colorize.nodeId(entry.id.slice(0, 8));
+      console.log(`  ${coloredId}  ${entry.title}  (degree ${entry.edgeCount})`);
+    }
+    console.log('');
+  }
+
+  if (stats.tags.topTags.length > 0) {
+    console.log('Top tags:');
+    stats.tags.topTags.forEach((entry) => console.log(`  ${String(entry.count).padStart(3, ' ')}  ${entry.name}`));
+    console.log('');
+  }
+}
+
 async function runStats(flags: StatsFlags) {
+  if (isRemoteMode()) {
+    return runStatsRemote(flags);
+  }
+
   const top = typeof flags.top === 'number' && Number.isFinite(flags.top) && flags.top > 0
     ? Math.floor(flags.top)
     : 10;

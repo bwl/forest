@@ -16,6 +16,7 @@ import { formatId, handleError, getEdgePrefix } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { formatAcceptedEdgesTable } from '../formatters';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -151,7 +152,33 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
   cli.command(baseCommand);
 }
 
+async function runEdgesListRemote(flags: EdgesListFlags) {
+  const client = getClient();
+  const limit = typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
+  const result = await client.listEdges({ limit });
+
+  if (result.edges.length === 0) {
+    console.log('No edges found.');
+    return;
+  }
+
+  if (flags.json) {
+    console.log(JSON.stringify(result.edges, null, 2));
+    return;
+  }
+
+  for (const edge of result.edges) {
+    const src = edge.sourceNode ? `${edge.sourceNode.shortId} ${edge.sourceNode.title}` : edge.sourceId.slice(0, 8);
+    const tgt = edge.targetNode ? `${edge.targetNode.shortId} ${edge.targetNode.title}` : edge.targetId.slice(0, 8);
+    console.log(`[${edge.ref}] ${edge.score.toFixed(3)}  ${src} ↔ ${tgt}`);
+  }
+}
+
 async function runEdgesList(flags: EdgesListFlags) {
+  if (isRemoteMode()) {
+    return runEdgesListRemote(flags);
+  }
+
   const limit =
     typeof flags.limit === 'number' && !Number.isNaN(flags.limit) && flags.limit > 0 ? flags.limit : 10;
   const edges = await listEdges({ status: 'accepted', orderBy: 'updated_at', orderDirection: 'DESC', limit });

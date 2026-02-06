@@ -12,6 +12,7 @@ import { deduplicateChunks } from '../../lib/reconstruction';
 import { listNodes } from '../../lib/db';
 import { colorize } from '../formatters';
 import { selectNode, serializeMatch, type SelectionResult } from '../shared/explore';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -144,9 +145,60 @@ export function createSearchCommand(clerc: ClercModule) {
   );
 }
 
+async function runSearchRemote(query: string | undefined, flags: SearchFlags) {
+  if (!query || query.trim().length === 0) {
+    console.error('✖ Provide a search query. Remote mode only supports semantic search.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const client = getClient();
+  const limit = typeof flags.limit === 'number' ? flags.limit : 20;
+  const minScore = typeof flags.minScore === 'number' ? flags.minScore : 0.0;
+  const tags = parseCsvList(flags.tags);
+
+  const result = await client.searchSemantic(query, {
+    limit,
+    minScore,
+    tags: tags?.join(','),
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Semantic search: "${query}"`);
+  console.log(`\nFound ${result.nodes.length} ${result.nodes.length === 1 ? 'result' : 'results'}:\n`);
+
+  if (result.nodes.length === 0) {
+    console.log('  (no matches)');
+    return;
+  }
+
+  const maxTitleWidth = 50;
+  console.log(`${'SCORE'.padEnd(10)} ${'ID'.padEnd(10)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(30)}`);
+  console.log('─'.repeat(10 + 10 + maxTitleWidth + 30 + 3));
+
+  for (const item of result.nodes) {
+    const coloredScore = colorize.embeddingScore(item.similarity);
+    const score = coloredScore.padEnd(20);
+    const shortId = colorize.nodeId(item.shortId ?? item.id.slice(0, 8));
+    const idCol = shortId.padEnd(30);
+    const title = (item.title.length > maxTitleWidth ? item.title.slice(0, maxTitleWidth - 3) + '...' : item.title).padEnd(maxTitleWidth);
+    const tagsStr = (item.tags?.join(', ') ?? '').slice(0, 30);
+    console.log(`${score} ${idCol} ${title} ${tagsStr}`);
+  }
+  console.log();
+}
+
 async function runSearch(flags: SearchFlags, positionalQuery?: string) {
   // Resolve query from flag or positional argument
   const query = flags.query ?? positionalQuery;
+
+  if (isRemoteMode()) {
+    return runSearchRemote(query, flags);
+  }
 
   const requestedMode = normalizeMode(flags.mode);
   const tags = parseCsvList(flags.tags);

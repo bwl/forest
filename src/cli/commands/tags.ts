@@ -4,6 +4,7 @@ import { formatId, handleError, resolveNodeReference } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
+import { isRemoteMode, getClient } from '../shared/remote';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -403,7 +404,39 @@ async function runTagsRemove(ref: string | undefined, tagsArg: string | undefine
   console.log(`   ${colorize.label('tags:')} ${nextTags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
 }
 
+async function runTagsListRemote(flags: TagsListFlags) {
+  const client = getClient();
+  const result = await client.listTags({ sort: 'count', order: 'desc' });
+
+  let items = result.tags;
+  const limit = typeof flags.top === 'number' && Number.isFinite(flags.top) && flags.top > 0 ? Math.floor(flags.top) : undefined;
+  if (typeof limit === 'number') {
+    items = items.slice(0, limit);
+  }
+
+  if (flags.json) {
+    console.log(JSON.stringify(items.map((t) => ({ tag: t.name, count: t.count })), null, 2));
+    return;
+  }
+
+  if (items.length === 0) {
+    console.log('No tags found.');
+    return;
+  }
+
+  const maxCount = items.length > 0 ? items[0].count : 1;
+  items.forEach((item) => {
+    const coloredCount = colorize.count(item.count, maxCount);
+    const coloredTag = colorize.tag(item.name);
+    console.log(`${String(item.count).padStart(3, ' ')} ${coloredCount}  ${coloredTag}`);
+  });
+}
+
 async function runTagsList(flags: TagsListFlags) {
+  if (isRemoteMode()) {
+    return runTagsListRemote(flags);
+  }
+
   const nodes = await listNodes();
   const counts = new Map<string, number>();
   for (const node of nodes) {
