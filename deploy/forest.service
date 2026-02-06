@@ -1,0 +1,26 @@
+[Unit]
+Description=Forest Knowledge Base Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/developer/forest
+ExecStart=/usr/local/bin/bun run dist/index.js serve --port 3000 --host 127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=FOREST_DB_PATH=/var/lib/forest/forest.db
+Environment=FOREST_EMBED_PROVIDER=openrouter
+# Set these via systemctl edit forest or /etc/systemd/system/forest.service.d/override.conf:
+# Environment=FOREST_API_KEY=<your-api-key>
+# Environment=FOREST_OR_KEY=<your-openrouter-key>
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/forest
+
+[Install]
+WantedBy=multi-user.target
