@@ -3,7 +3,7 @@ import { normalizeEdgePair } from '../../lib/scoring';
 import { formatId, isShortId, resolveByIdPrefix, getEdgePrefix, isProgressiveEdgeId } from './utils';
 import { generateEdgeHash, resolvePrefix } from '../../lib/progressive-id';
 
-export type SuggestionDescription = {
+export type EdgeDescription = {
   edgeId: string;
   shortId: string;
   code: string;
@@ -13,11 +13,11 @@ export type SuggestionDescription = {
   targetTitle: string | null;
 };
 
-export function describeSuggestion(
+export function describeEdge(
   edge: EdgeRecord,
   nodeMap: Map<string, NodeRecord>,
   options: { longIds?: boolean; allEdges: EdgeRecord[] },
-): SuggestionDescription {
+): EdgeDescription {
   const longIds = Boolean(options.longIds);
   const sourceNode = nodeMap.get(edge.sourceId) ?? null;
   const targetNode = nodeMap.get(edge.targetId) ?? null;
@@ -41,38 +41,6 @@ export function describeSuggestion(
     sourceTitle: sourceNode?.title ?? null,
     targetTitle: targetNode?.title ?? null,
   };
-}
-
-export function resolveSuggestionReference(
-  ref: string,
-  suggestions: EdgeRecord[],
-): EdgeRecord | undefined {
-  const normalized = ref.trim();
-  if (normalized.length === 0) return undefined;
-
-  const lowered = normalized.toLowerCase();
-
-  // Try exact match on edge ID
-  const exactMatch = suggestions.find(edge => edge.id === normalized);
-  if (exactMatch) return exactMatch;
-
-  // Try short ID pair (e.g., "abcd1234::efgh5678")
-  const shortPairMatch = suggestions.find((edge) => {
-    const shortId = `${formatId(edge.sourceId)}::${formatId(edge.targetId)}`.toLowerCase();
-    return shortId === lowered;
-  });
-  if (shortPairMatch) return shortPairMatch;
-
-  // Try progressive ID prefix matching (Git-style)
-  if (isProgressiveEdgeId(normalized)) {
-    const allHashes = suggestions.map(e => generateEdgeHash(e.sourceId, e.targetId));
-    const resolvedHash = resolvePrefix(normalized, allHashes);
-    if (resolvedHash) {
-      return suggestions.find(e => generateEdgeHash(e.sourceId, e.targetId) === resolvedHash);
-    }
-  }
-
-  return undefined;
 }
 
 export function resolveEdgeReference(ref: string, edges: EdgeRecord[]): EdgeRecord | undefined {

@@ -124,7 +124,7 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
       detail: {
         tags: ['Nodes'],
         summary: 'Get node details',
-        description: 'Get full node details including edges and suggestions',
+        description: 'Get full node details including edges',
       },
     },
   )

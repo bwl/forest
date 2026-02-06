@@ -1,11 +1,10 @@
 import Graph from 'graphology';
-import { EdgeRecord, EdgeStatus, NodeRecord, listEdges, listNodes } from './db';
+import { EdgeRecord, NodeRecord, listEdges, listNodes } from './db';
 
-export async function buildGraph(options: { includeSuggestions?: boolean } = {}) {
-  const { includeSuggestions = false } = options;
+export async function buildGraph() {
   const nodes = await listNodes();
-  const edges = await listEdges(includeSuggestions ? 'all' : 'accepted');
-  return graphFromRecords(nodes, includeSuggestions ? edges : edges.filter((edge) => edge.status === 'accepted'));
+  const edges = await listEdges('accepted');
+  return graphFromRecords(nodes, edges);
 }
 
 export function graphFromRecords(nodes: NodeRecord[], edges: EdgeRecord[]): Graph {

@@ -36,9 +36,7 @@ export type ListNodesResult = {
 export type GetNodeOptions = {
   includeBody?: boolean;
   includeEdges?: boolean;
-  includeSuggestions?: boolean;
   edgesLimit?: number;
-  suggestionsLimit?: number;
 };
 
 export type GetNodeResult = {

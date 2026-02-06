@@ -50,7 +50,6 @@ export type ExploreRenderOptions = {
   limit: number;
   matchLimit?: number;
   depth: number;
-  includeSuggestions: boolean;
   longIds: boolean;
   json: boolean;
   showMatches: boolean;
@@ -276,11 +275,6 @@ export async function buildNeighborhoodPayload(
   return { payload, directEdges };
 }
 
-// Suggestions are no longer supported - edges are created automatically above threshold
-export async function fetchSuggestionsForNode(_nodeId: string) {
-  return [];
-}
-
 export function serializeMatch(match: SearchMatch) {
   return {
     id: match.node.id,
@@ -309,7 +303,6 @@ export async function printExplore(options: ExploreRenderOptions) {
     minSemantic: options.minSemantic,
     minTags: options.minTags,
   });
-  const suggestionData = await fetchSuggestionsForNode(match.node.id);
 
   if (options.json) {
     console.log(
@@ -318,7 +311,6 @@ export async function printExplore(options: ExploreRenderOptions) {
           search: matches.map((entry) => serializeMatch(entry)),
           selected: serializeMatch(match),
           neighborhood: neighborhoodData.payload,
-          suggestions: [],
         },
         null,
         2,
