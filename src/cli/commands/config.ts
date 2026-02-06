@@ -19,15 +19,30 @@ export function createConfigCommand(clerc: ClercModule) {
           type: Boolean,
           description: 'Show current config',
         },
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output (use with --show)',
+        },
       },
     },
-    async (flags: any, key?: string, value?: string) => {
+    async ({ flags, parameters }: any) => {
       // Handle --show flag
       if (flags.show) {
         const config = loadConfig();
-        console.log('Current configuration:');
-        console.log(JSON.stringify(config, null, 2));
-        console.log(`\nConfig file: ${getConfigPath()}`);
+        if (flags.json) {
+          // Pure JSON for programmatic consumption — redact secrets
+          const safe = { ...config };
+          if (safe.openaiApiKey) safe.openaiApiKey = `${safe.openaiApiKey.slice(0, 7)}...`;
+          if (safe.openrouterApiKey) safe.openrouterApiKey = `${safe.openrouterApiKey.slice(0, 8)}...`;
+          console.log(JSON.stringify({ config: safe, configPath: getConfigPath() }, null, 2));
+        } else {
+          const safe = { ...config };
+          if (safe.openaiApiKey) safe.openaiApiKey = `${safe.openaiApiKey.slice(0, 7)}...`;
+          if (safe.openrouterApiKey) safe.openrouterApiKey = `${safe.openrouterApiKey.slice(0, 8)}...`;
+          console.log('Current configuration:');
+          console.log(JSON.stringify(safe, null, 2));
+          console.log(`\nConfig file: ${getConfigPath()}`);
+        }
         return;
       }
 
@@ -46,6 +61,7 @@ export function createConfigCommand(clerc: ClercModule) {
       }
 
       // Handle direct set (forest config key value)
+      const [key, value] = parameters?._ ?? [];
       if (key && value) {
         const config = loadConfig();
         (config as any)[key] = value;

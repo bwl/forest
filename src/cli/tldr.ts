@@ -149,6 +149,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'serve',
       'config',
       'version',
+      'lint',
       'edges.explain',
       'edges.threshold',
       'edges',
@@ -319,6 +320,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fl: [
       { n: 'show', t: 'bool', d: false, desc: 'show current configuration' },
       { n: 'reset', t: 'bool', d: false, desc: 'reset config to defaults' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output (use with --show)' },
     ],
     ex: [
       'forest config',
@@ -739,5 +741,23 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest tag abc123 focus,ops',
     ],
     rel: ['tags.add', 'tags.remove', 'tags.list'],
+  },
+
+  lint: {
+    cmd: 'lint',
+    p: 'Check tag and note hygiene, report issues',
+    in: [],
+    out: ['lint_report'],
+    fx: 'none',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+      { n: 'type', t: 'str', desc: 'filter by issue type' },
+    ],
+    ex: [
+      'forest lint',
+      'forest lint --json',
+      'forest lint --type orphan_tag',
+    ],
+    rel: ['tags.list', 'tags.rename', 'tags.stats'],
   },
 };
