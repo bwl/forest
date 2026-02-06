@@ -230,7 +230,10 @@ export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefre
 
   const combinedText = `${nextTitle}\n${nextBody}`;
   const tokenCounts = tokenize(combinedText);
-  const tags = resolveTags(flags.tags, combinedText, tokenCounts);
+  // When --tags is not provided, preserve existing tags instead of re-extracting
+  const tags = typeof flags.tags === 'string'
+    ? resolveTags(flags.tags, combinedText, tokenCounts)
+    : node.tags;
 
   const embedding = await computeEmbeddingForNode({ title: nextTitle, body: nextBody });
 
@@ -423,7 +426,7 @@ function resolveTags(tagsOption: string | undefined, combinedText: string, token
   if (typeof tagsOption === 'string') {
     return tagsOption
       .split(',')
-      .map((t) => t.trim())
+      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
       .filter((t) => t.length > 0);
   }
   return extractTags(combinedText, tokenCounts);
@@ -1026,7 +1029,7 @@ export async function runNodeImport(flags: NodeImportFlags) {
   if (flags.tags) {
     tags = flags.tags
       .split(',')
-      .map((t) => t.trim())
+      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
       .filter((t) => t.length > 0);
   }
 

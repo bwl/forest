@@ -67,7 +67,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminMigrateV2Flags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['admin.migrate-v2'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.migrate-v2'], getVersion(), jsonMode);
         }
         await runAdminMigrateV2();
       } catch (error) {
@@ -96,7 +97,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminEmbeddingsFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['admin.embeddings'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.embeddings'], getVersion(), jsonMode);
         }
         await runAdminEmbeddings(flags);
       } catch (error) {
@@ -138,7 +140,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminTagsFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['admin.tags'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.tags'], getVersion(), jsonMode);
         }
         await runAdminTags(flags);
       } catch (error) {
@@ -167,7 +170,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminHealthFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['admin.health'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.health'], getVersion(), jsonMode);
         }
         await runAdminHealth(flags);
       } catch (error) {
@@ -192,7 +196,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminDoctorFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['admin.doctor'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.doctor'], getVersion(), jsonMode);
         }
         await runAdminDoctor();
       } catch (error) {
@@ -236,7 +241,8 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: AdminBaseFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR.admin, getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.admin, getVersion(), jsonMode);
         }
         // Show help summary when invoked without subcommand
         console.log('forest admin - System maintenance and diagnostics');

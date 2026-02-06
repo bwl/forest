@@ -60,7 +60,7 @@ export function createWriteCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.write, getVersion());
+          emitTldrAndExit(COMMAND_TLDR.write, getVersion(), jsonMode);
         }
         await runWrite(parameters.topic, flags);
       } catch (error) {

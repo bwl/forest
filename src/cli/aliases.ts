@@ -46,7 +46,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeReadFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR.read, getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.read, getVersion(), jsonMode);
           }
           await runNodeRead(parameters.id, flags);
         } catch (error) {
@@ -72,7 +73,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeEditFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR.edit, getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.edit, getVersion(), jsonMode);
           }
           await runNodeEdit(parameters.id, flags);
         } catch (error) {
@@ -102,7 +104,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeRefreshFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR.update, getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.update, getVersion(), jsonMode);
           }
           await runNodeRefresh(parameters.id, flags);
         } catch (error) {
@@ -127,7 +130,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeDeleteFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR['delete'], getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR['delete'], getVersion(), jsonMode);
           }
           await runNodeDelete(parameters.id, flags);
         } catch (error) {
@@ -161,7 +165,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ flags }: { flags: NodeImportFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR['import'], getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR['import'], getVersion(), jsonMode);
           }
           await runNodeImport(flags);
         } catch (error) {
@@ -191,7 +196,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { ids?: string[] }; flags: NodeSynthesizeFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR.synthesize, getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.synthesize, getVersion(), jsonMode);
           }
           await runNodeSynthesize(parameters.ids, flags);
         } catch (error) {
@@ -216,7 +222,8 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
       async ({ parameters, flags }: { parameters: { ref?: string; tags?: string }; flags: TagsModifyFlags }) => {
         try {
           if (flags.tldr !== undefined) {
-            emitTldrAndExit(COMMAND_TLDR.tag, getVersion());
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.tag, getVersion(), jsonMode);
           }
           await runTagsAdd(parameters.ref, parameters.tags, flags);
         } catch (error) {

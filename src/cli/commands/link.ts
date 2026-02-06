@@ -40,7 +40,8 @@ export function createLinkCommand(clerc: ClercModule) {
     async ({ parameters, flags }: { parameters: { a?: string; b?: string }; flags: LinkFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR.link, getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.link, getVersion(), jsonMode);
         }
 
         await runLink(parameters.a, parameters.b, flags);

@@ -9,7 +9,7 @@ import {
 import { buildTagIdfContext, computeEdgeScore, getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
 
 import {
-  describeSuggestion,
+  describeEdge,
   resolveEdgeReference,
 } from '../shared/edges';
 import { formatId, handleError, getEdgePrefix } from '../shared/utils';
@@ -59,7 +59,8 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['edges.explain'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.explain'], getVersion(), jsonMode);
         }
         await runEdgesExplain(parameters.ref, flags);
       } catch (error) {
@@ -83,7 +84,8 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ flags }: { flags: EdgesThresholdFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['edges.threshold'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['edges.threshold'], getVersion(), jsonMode);
         }
         await runEdgesThreshold();
       } catch (error) {
@@ -137,7 +139,8 @@ export function registerEdgesCommands(cli: ClercInstance, clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR.edges, getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.edges, getVersion(), jsonMode);
         }
         await runEdgesList(flags);
       } catch (error) {
@@ -169,7 +172,7 @@ async function runEdgesList(flags: EdgesListFlags) {
     console.log(
       JSON.stringify(
         edges.map((edge, index) => {
-          const desc = describeSuggestion(edge, nodeMap, { longIds, allEdges });
+          const desc = describeEdge(edge, nodeMap, { longIds, allEdges });
           return {
             index: index + 1,
             id: edge.id,

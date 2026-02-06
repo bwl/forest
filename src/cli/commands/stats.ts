@@ -38,7 +38,7 @@ export function createStatsCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.stats, getVersion());
+          emitTldrAndExit(COMMAND_TLDR.stats, getVersion(), jsonMode);
         }
         await runStats(flags as StatsFlags);
       } catch (error) {

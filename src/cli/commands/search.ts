@@ -133,7 +133,8 @@ export function createSearchCommand(clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR.search, getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.search, getVersion(), jsonMode);
         }
         await runSearch(flags as SearchFlags, parameters.query as string | undefined);
       } catch (error) {

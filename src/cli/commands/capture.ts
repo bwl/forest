@@ -24,9 +24,9 @@ type CaptureFlags = {
   stdin?: boolean;
   tags?: string;
   autoLink?: boolean;
+  noAutoLink?: boolean;
   preview?: boolean;
   noPreview?: boolean;
-  previewSuggestionsOnly?: boolean;
   json?: boolean;
   tldr?: string;
 };
@@ -65,6 +65,10 @@ export function createCaptureCommand(clerc: ClercModule) {
           description: 'Score/link against existing nodes',
           default: true,
         },
+        noAutoLink: {
+          type: Boolean,
+          description: 'Disable immediate link scoring',
+        },
         preview: {
           type: Boolean,
           description: 'Force an explore preview after capture',
@@ -72,10 +76,6 @@ export function createCaptureCommand(clerc: ClercModule) {
         noPreview: {
           type: Boolean,
           description: 'Skip the explore preview after capture',
-        },
-        previewSuggestionsOnly: {
-          type: Boolean,
-          description: 'In preview, only show suggestions (hide metadata and accepted edges)',
         },
         json: {
           type: Boolean,
@@ -92,7 +92,7 @@ export function createCaptureCommand(clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.capture, getVersion());
+          emitTldrAndExit(COMMAND_TLDR.capture, getVersion(), jsonMode);
         }
         await runCapture(flags as CaptureFlags);
       } catch (error) {
@@ -155,11 +155,12 @@ async function runCapture(flags: CaptureFlags) {
 
   const shouldPreview = computePreviewIntent(flags);
   if (shouldPreview) {
-    await runPreview(newNode, autoLink, Boolean(flags.previewSuggestionsOnly));
+    await runPreview(newNode);
   }
 }
 
 function computeAutoLinkIntent(flags: CaptureFlags) {
+  if (typeof flags.noAutoLink === 'boolean') return !flags.noAutoLink;
   if (typeof flags.autoLink === 'boolean') return flags.autoLink;
   return true;
 }
@@ -168,7 +169,7 @@ function resolveTags(tagsOption: string | undefined, combined: string, tokenCoun
   if (typeof tagsOption === 'string') {
     return tagsOption
       .split(',')
-      .map((tag) => tag.trim())
+      .map((tag) => tag.trim().replace(/^#/, '').toLowerCase())
       .filter((tag) => tag.length > 0);
   }
   return extractTags(combined, tokenCounts);
@@ -229,7 +230,7 @@ function computePreviewIntent(flags: CaptureFlags) {
   return shouldPreview;
 }
 
-async function runPreview(node: NodeRecord, includeSuggestions: boolean, suggestionsOnly: boolean) {
+async function runPreview(node: NodeRecord) {
   console.log('\nPreview:');
   const selection: SelectionResult = {
     selected: { node, score: 1 },
@@ -241,11 +242,9 @@ async function runPreview(node: NodeRecord, includeSuggestions: boolean, suggest
     limit: 15,
     matchLimit: 1,
     depth: 1,
-    includeSuggestions,
     longIds: false,
     json: false,
     showMatches: false,
     focusSelected: true,
-    suppressOverview: suggestionsOnly,
   });
 }

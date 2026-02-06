@@ -136,6 +136,14 @@ function tokenWeight(token: string): number {
   return GENERIC_TECH.has(token) ? 0.4 : 1;
 }
 
+/**
+ * Strip fenced code blocks and inline code before tag extraction
+ * so that hashtags inside code (e.g. #include, #tag/test) are ignored.
+ */
+function stripCodeBlocks(text: string): string {
+  return text.replace(/```[\s\S]*?```/g, '').replace(/`[^`]+`/g, '');
+}
+
 function tokenizeToList(text: string): string[] {
   const normalized = text.toLowerCase().replace(/[^a-z0-9#\s]/g, ' ');
   const raw = normalized.split(/\s+/).filter((t) => t.length >= 2 && !STOPWORDS.has(t));
@@ -151,8 +159,9 @@ export function extractTags(
   tokenCounts?: Record<string, number>,
   limit = 5
 ): string[] {
-  // Check for explicit hashtags first
-  const matches = text.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
+  // Check for explicit hashtags first (strip code blocks to avoid false positives)
+  const strippedText = stripCodeBlocks(text);
+  const matches = strippedText.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
   const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
   if (normalizedMatches.size > 0) {
     return [...normalizedMatches];
@@ -251,8 +260,9 @@ export async function extractTagsAsync(
   tokenCounts?: Record<string, number>,
   limit = 7
 ): Promise<string[]> {
-  // Check for explicit hashtags first
-  const matches = text.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
+  // Check for explicit hashtags first (strip code blocks to avoid false positives)
+  const strippedText = stripCodeBlocks(text);
+  const matches = strippedText.match(/#[a-zA-Z0-9_/-]+/g) ?? [];
   const normalizedMatches = new Set(matches.map((tag) => tag.replace(/^#/, '').toLowerCase()));
   if (normalizedMatches.size > 0) {
     return [...normalizedMatches];

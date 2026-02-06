@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { listEdges, listNodes } from '../../lib/db';
-import { buildNeighborhoodPayload, fetchSuggestionsForNode, selectNode } from '../shared/explore';
+import { buildNeighborhoodPayload, selectNode } from '../shared/explore';
 import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
@@ -16,7 +16,6 @@ type ExportGraphvizFlags = {
   id?: string;
   depth?: number;
   limit?: number;
-  includeSuggestions?: boolean;
   file?: string;
   tldr?: string;
 };
@@ -50,10 +49,6 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
           default: DEFAULT_NEIGHBORHOOD_LIMIT,
           alias: 'l',
         },
-        includeSuggestions: {
-          type: Boolean,
-          description: 'Include suggestion edges from the center node',
-        },
         file: {
           type: String,
           description: 'Write DOT output to a file instead of stdout',
@@ -69,7 +64,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['export.graphviz'], getVersion());
+          emitTldrAndExit(COMMAND_TLDR['export.graphviz'], getVersion(), jsonMode);
         }
         await runExportGraphviz(flags);
       } catch (error) {
@@ -109,7 +104,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['export.json'], getVersion());
+          emitTldrAndExit(COMMAND_TLDR['export.json'], getVersion(), jsonMode);
         }
         await runExportJson(flags);
       } catch (error) {
@@ -148,7 +143,7 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if ((ctx as any).flags?.tldr !== undefined) {
           const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.export, getVersion());
+          emitTldrAndExit(COMMAND_TLDR.export, getVersion(), jsonMode);
         }
         await runExportDashboard();
       } catch (error) {

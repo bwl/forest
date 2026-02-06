@@ -58,14 +58,17 @@ function formatKeymap(): string {
 
 /**
  * Format TLDR metadata as NDJSON v0.2
+ * When jsonMode is true, emit only the JSON object (no preamble lines).
  */
-export function formatTldrV02(data: GlobalTldr | CommandTldr, version: string): string {
+export function formatTldrV02(data: GlobalTldr | CommandTldr, version: string, jsonMode = false): string {
   const lines: string[] = [];
 
   if ('tool' in data) {
     // Global index
-    lines.push('--- tool: forest ---');
-    lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+    if (!jsonMode) {
+      lines.push('--- tool: forest ---');
+      lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+    }
 
     // Global metadata object
     lines.push(JSON.stringify({
@@ -76,8 +79,10 @@ export function formatTldrV02(data: GlobalTldr | CommandTldr, version: string): 
     }));
   } else {
     // Command-specific
-    lines.push('--- tool: forest ---');
-    lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+    if (!jsonMode) {
+      lines.push('--- tool: forest ---');
+      lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+    }
 
     // Command object with abbreviated keys
     lines.push(JSON.stringify(data));
@@ -89,13 +94,16 @@ export function formatTldrV02(data: GlobalTldr | CommandTldr, version: string): 
 /**
  * Format all commands as NDJSON v0.2
  * Outputs tool delimiter, metadata header, and all command objects
+ * When jsonMode is true, emit only the JSON objects (no preamble lines).
  */
-export function formatAllCommandsTldr(version: string): string {
+export function formatAllCommandsTldr(version: string, jsonMode = false): string {
   const lines: string[] = [];
 
   // Tool delimiter and metadata header (once)
-  lines.push('--- tool: forest ---');
-  lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+  if (!jsonMode) {
+    lines.push('--- tool: forest ---');
+    lines.push(`# meta: tool=forest, version=${version}, keymap=${formatKeymap()}`);
+  }
 
   // All command objects as NDJSON (one per line)
   for (const [_key, commandData] of Object.entries(COMMAND_TLDR)) {
@@ -108,8 +116,8 @@ export function formatAllCommandsTldr(version: string): string {
 /**
  * Emit TLDR and exit process
  */
-export function emitTldrAndExit(data: GlobalTldr | CommandTldr, version: string): never {
-  const output = formatTldrV02(data, version);
+export function emitTldrAndExit(data: GlobalTldr | CommandTldr, version: string, jsonMode = false): never {
+  const output = formatTldrV02(data, version, jsonMode);
   console.log(output);
   process.exit(0);
 }
@@ -159,6 +167,11 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'export.graphviz',
       'export.json',
       'export',
+      'documents.list',
+      'documents.show',
+      'documents.stats',
+      'documents',
+      'path',
     ],
   };
 }
@@ -181,7 +194,6 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'tags', t: 'list', desc: 'comma-separated tags' },
       { n: 'no-preview', t: 'bool', d: false, desc: 'skip post-capture explore' },
       { n: 'no-auto-link', t: 'bool', d: false, desc: 'disable immediate link scoring' },
-      { n: 'preview-suggestions-only', t: 'bool', d: false, desc: 'show suggestions only in preview' },
       { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
     ex: [
@@ -197,7 +209,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     cmd: 'explore',
     p: 'Graph navigation around a specific node',
     in: ['args'],
-    out: ['node_list', 'neighborhood_graph', 'suggestions'],
+    out: ['node_list', 'neighborhood_graph'],
     fx: 'none',
     fl: [
       { n: 'id', t: 'str', desc: 'node id or short id (positional or flag)' },
@@ -207,14 +219,13 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'min-semantic', t: 'float', desc: 'only include edges with semantic_score >= N' },
       { n: 'min-tags', t: 'float', desc: 'only include edges with tag_score >= N' },
       { n: 'limit', t: 'int', d: 25, desc: 'max neighbors to render' },
-      { n: 'include-suggestions', t: 'bool', d: false, desc: 'show suggested edges from the focus node' },
       { n: 'long-ids', t: 'bool', d: false, desc: 'show full UUIDs' },
       { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
     ex: [
       'forest explore 7fa7acb2',
       'forest explore --title "Graph architecture notes"',
-      'forest explore --include-suggestions --depth 2',
+      'forest explore --depth 2 --min-semantic 0.6',
     ],
     rel: ['search', 'read'],
   },
@@ -270,7 +281,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     cmd: 'stats',
     p: 'Show graph statistics and health metrics',
     in: [],
-    out: ['node_counts', 'edge_counts', 'recent_captures', 'top_suggestions'],
+    out: ['node_counts', 'edge_counts', 'recent_captures', 'high_degree_nodes'],
     fx: 'none',
     fl: [
       { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },

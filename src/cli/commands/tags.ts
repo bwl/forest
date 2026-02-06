@@ -49,7 +49,8 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ parameters, flags }: { parameters: { ref?: string; tags?: string }; flags: TagsModifyFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['tags.add'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['tags.add'], getVersion(), jsonMode);
         }
         await runTagsAdd(parameters.ref, parameters.tags, flags);
       } catch (error) {
@@ -78,7 +79,8 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
     async ({ parameters, flags }: { parameters: { ref?: string; tags?: string }; flags: TagsModifyFlags }) => {
       try {
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR['tags.remove'], getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['tags.remove'], getVersion(), jsonMode);
         }
         await runTagsRemove(parameters.ref, parameters.tags, flags);
       } catch (error) {
@@ -112,7 +114,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.list'], getVersion());
+          emitTldrAndExit(COMMAND_TLDR['tags.list'], getVersion(), jsonMode);
         }
         await runTagsList(flags);
       } catch (error) {
@@ -139,7 +141,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags?.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.rename'], getVersion());
+          emitTldrAndExit(COMMAND_TLDR['tags.rename'], getVersion(), jsonMode);
         }
         await runTagsRename(parameters.old, parameters.next);
       } catch (error) {
@@ -183,7 +185,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
           const jsonMode = flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR['tags.stats'], getVersion());
+          emitTldrAndExit(COMMAND_TLDR['tags.stats'], getVersion(), jsonMode);
         }
         await runTagsStats(flags);
       } catch (error) {
@@ -226,7 +228,7 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
         // Handle TLDR request first
         if ((ctx as any).flags?.tldr !== undefined) {
           const jsonMode = (ctx as any).flags.tldr === 'json';
-          emitTldrAndExit(COMMAND_TLDR.tags, getVersion());
+          emitTldrAndExit(COMMAND_TLDR.tags, getVersion(), jsonMode);
         }
         await runTagsDashboard();
       } catch (error) {

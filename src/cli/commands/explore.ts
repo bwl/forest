@@ -9,7 +9,7 @@ export function createExploreCommand(clerc: ClercModule) {
   return clerc.defineCommand(
     {
       name: 'explore',
-      description: 'Inspect a node\'s graph neighborhood and related suggestions',
+      description: 'Inspect a node\'s graph neighborhood',
       parameters: ['[id]'],
       flags: {
         id: {
@@ -43,10 +43,6 @@ export function createExploreCommand(clerc: ClercModule) {
           alias: 'l',
           description: 'Maximum number of nodes in neighborhood',
         },
-        includeSuggestions: {
-          type: Boolean,
-          description: 'Include suggested edges in the neighborhood output',
-        },
         longIds: {
           type: Boolean,
           description: 'Display full ids in human-readable output',
@@ -65,7 +61,8 @@ export function createExploreCommand(clerc: ClercModule) {
       try {
         // Handle TLDR request first
         if (flags.tldr !== undefined) {
-          emitTldrAndExit(COMMAND_TLDR.explore, getVersion());
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR.explore, getVersion(), jsonMode);
         }
 
         const limitFlag =
@@ -93,7 +90,6 @@ export function createExploreCommand(clerc: ClercModule) {
           limit: neighborhoodLimit,
           matchLimit: selection.limit,
           depth: typeof flags.depth === 'number' && !Number.isNaN(flags.depth) ? flags.depth : 1,
-          includeSuggestions: Boolean(flags.includeSuggestions),
           longIds: Boolean(flags.longIds),
           json: Boolean(flags.json),
           showMatches: !Boolean(flags.json),
