@@ -353,6 +353,24 @@ export async function printNodeOverview(
   }
   console.log(`${colorize.label('created:')} ${node.createdAt}`);
   console.log(`${colorize.label('updated:')} ${node.updatedAt}`);
+
+  // Provenance fields from metadata
+  if (node.metadata) {
+    if (node.metadata.origin) {
+      console.log(`${colorize.label('origin:')} ${node.metadata.origin}`);
+    }
+    if (node.metadata.createdBy) {
+      const modelSuffix = node.metadata.model ? ` (${node.metadata.model})` : '';
+      console.log(`${colorize.label('created by:')} ${node.metadata.createdBy}${modelSuffix}`);
+    }
+    if (node.metadata.sourceNodes && node.metadata.sourceNodes.length > 0) {
+      const shortSources = node.metadata.sourceNodes.map(id => formatId(id)).join(', ');
+      console.log(`${colorize.label('sources:')} ${shortSources}`);
+    }
+    if (node.metadata.sourceFile) {
+      console.log(`${colorize.label('source file:')} ${node.metadata.sourceFile}`);
+    }
+  }
   console.log('');
 
   if (directEdges.length > 0) {

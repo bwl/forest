@@ -223,11 +223,18 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
           throw new ValidationError('Body is required and must be a non-empty string');
         }
 
+        // Build metadata: default to API origin, merge any client-provided metadata
+        const apiMetadata = {
+          origin: 'api' as const,
+          ...(data.metadata ?? {}),
+        };
+
         const result = await createNodeCore({
           title: data.title,
           body: data.body,
           tags: data.tags,
           autoLink: data.autoLink !== false,
+          metadata: apiMetadata,
         });
 
         set.status = 201;
@@ -473,6 +480,12 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
             body: result.body,
             tags: result.suggestedTags,
             autoLink,
+            metadata: {
+              origin: 'synthesize',
+              createdBy: 'ai',
+              model: result.model,
+              sourceNodes: result.sourceNodeIds,
+            },
           });
           nodeData = formatNodeForDetail(nodeResult.node);
           linkingData = nodeResult.linking;
@@ -539,6 +552,11 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
             body: result.body,
             tags: result.suggestedTags,
             autoLink,
+            metadata: {
+              origin: 'write',
+              createdBy: 'ai',
+              model: result.model,
+            },
           });
           nodeData = formatNodeForDetail(nodeResult.node);
           linkingData = nodeResult.linking;

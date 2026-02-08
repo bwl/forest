@@ -121,7 +121,7 @@ async function runNodeReadRemote(idRef: string, flags: NodeReadFlags) {
 
   if (flags.json) {
     console.log(JSON.stringify({
-      node: { id: node.id, title: node.title, tags: node.tags, createdAt: node.createdAt, updatedAt: node.updatedAt },
+      node: { id: node.id, title: node.title, tags: node.tags, createdAt: node.createdAt, updatedAt: node.updatedAt, metadata: node.metadata ?? null },
       body: node.body,
     }, null, 2));
     return;
@@ -134,6 +134,23 @@ async function runNodeReadRemote(idRef: string, flags: NodeReadFlags) {
   }
   console.log(`  edges: ${result.edgesTotal}`);
   console.log(`  created: ${node.createdAt}  updated: ${node.updatedAt}`);
+
+  // Provenance from metadata
+  if (node.metadata) {
+    if (node.metadata.origin) {
+      console.log(`  origin: ${node.metadata.origin}`);
+    }
+    if (node.metadata.createdBy) {
+      const modelSuffix = node.metadata.model ? ` (${node.metadata.model})` : '';
+      console.log(`  created by: ${node.metadata.createdBy}${modelSuffix}`);
+    }
+    if (node.metadata.sourceNodes && node.metadata.sourceNodes.length > 0) {
+      console.log(`  sources: ${node.metadata.sourceNodes.map((id: string) => id.slice(0, 8)).join(', ')}`);
+    }
+    if (node.metadata.sourceFile) {
+      console.log(`  source file: ${node.metadata.sourceFile}`);
+    }
+  }
 
   if (!flags.meta && node.body) {
     console.log('');
@@ -197,6 +214,7 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
               tags: reconstructed.rootNode.tags,
               createdAt: reconstructed.rootNode.createdAt,
               updatedAt: reconstructed.rootNode.updatedAt,
+              metadata: reconstructed.rootNode.metadata ?? null,
             },
             body: reconstructed.fullBody,
             metadata: {
@@ -224,6 +242,7 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
               tags: node.tags,
               createdAt: node.createdAt,
               updatedAt: node.updatedAt,
+              metadata: node.metadata ?? null,
             },
             body: node.body,
           },
@@ -1150,6 +1169,12 @@ export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSy
     body: result.body,
     tags: result.suggestedTags,
     autoLink,
+    metadata: {
+      origin: 'synthesize',
+      createdBy: 'ai',
+      model: result.model,
+      sourceNodes: result.sourceNodeIds,
+    },
   });
 
   console.log('');
@@ -1255,6 +1280,7 @@ export async function runNodeImport(flags: NodeImportFlags) {
     autoLink: !flags.noAutoLink,
     createParent: !flags.noParent,
     linkSequential: !flags.noSequential,
+    sourceFile: flags.file,
   });
 
   // Emit output

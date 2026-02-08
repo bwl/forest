@@ -17,6 +17,7 @@ function makeNode(id: string, title: string, body: string): NodeRecord {
     isChunk: true,
     parentDocumentId: 'doc-1',
     chunkOrder: null,
+    metadata: null,
   };
 }
 

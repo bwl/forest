@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
   NodeRecord,
+  NodeMetadata,
   EdgeRecord,
   listNodes as dbListNodes,
   getNodeById,
@@ -14,6 +15,8 @@ import { computeEmbeddingForNode } from '../lib/embeddings';
 import { linkAgainstExisting, rescoreNode } from '../cli/shared/linking';
 import { formatId } from '../cli/shared/utils';
 import { eventBus } from '../server/events/eventBus';
+
+export type { NodeMetadata };
 
 export type ListNodesOptions = {
   search?: string;
@@ -60,6 +63,7 @@ export type CreateNodeData = {
   body: string;
   tags?: string[];
   autoLink?: boolean;
+  metadata?: NodeMetadata;
 };
 
 export type CreateNodeResult = {
@@ -74,6 +78,7 @@ export type UpdateNodeData = {
   body?: string;
   tags?: string[];
   autoLink?: boolean;
+  metadata?: NodeMetadata;
 };
 
 export type UpdateNodeResult = {
@@ -257,6 +262,7 @@ export async function createNodeCore(data: CreateNodeData): Promise<CreateNodeRe
     isChunk: false,
     parentDocumentId: null,
     chunkOrder: null,
+    metadata: data.metadata ?? null,
   };
 
   // Compute embedding
@@ -316,12 +322,16 @@ export async function updateNodeCore(
   const tokenCounts = tokenize(`${title}\n${body}`);
 
   // Update node
-  await dbUpdateNode(nodeId, {
+  const updateFields: Parameters<typeof dbUpdateNode>[1] = {
     title,
     body,
     tags,
     tokenCounts,
-  });
+  };
+  if (data.metadata !== undefined) {
+    updateFields.metadata = data.metadata;
+  }
+  await dbUpdateNode(nodeId, updateFields);
 
   // Recompute embedding if body or title changed
   if (data.title || data.body) {

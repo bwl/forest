@@ -172,6 +172,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'documents.show',
       'documents.stats',
       'documents',
+      'suggest',
       'path',
     ],
   };
@@ -268,6 +269,8 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       { n: 'until', t: 'str', desc: 'only include notes updated before this date (metadata)' },
       { n: 'sort', t: 'str', d: 'score', desc: 'metadata sort: score|recent|degree' },
       { n: 'show-chunks', t: 'bool', d: false, desc: 'include document chunks in metadata mode' },
+      { n: 'origin', t: 'str', desc: 'filter by origin: capture, write, synthesize, import, api (metadata)' },
+      { n: 'created-by', t: 'str', desc: 'filter by creator: user, ai, or agent name (metadata)' },
       { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
     ],
     ex: [
@@ -291,6 +294,26 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     rel: ['admin.health', 'edges'],
   },
 
+
+  suggest: {
+    cmd: 'suggest',
+    p: 'Suggest relevant nodes for the current project (auto-detects from cwd)',
+    in: ['cwd'],
+    out: ['ranked_node_list'],
+    fx: 'none',
+    fl: [
+      { n: 'project', t: 'str', desc: 'override project name (default: auto-detect)' },
+      { n: 'limit', t: 'int', d: 10, desc: 'max suggestions to show' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest suggest',
+      'forest suggest --project kingdom',
+      'forest suggest --json',
+      'forest suggest --limit 5',
+    ],
+    rel: ['search', 'explore', 'stats'],
+  },
 
   serve: {
     cmd: 'serve',
@@ -608,9 +631,9 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
 
   read: {
     cmd: 'read',
-    p: 'Show the full content of a note',
+    p: 'Show the full content of a note (includes provenance: origin, createdBy, model)',
     in: ['args'],
-    out: ['node_metadata', 'body_text', 'edge_summary'],
+    out: ['node_metadata', 'body_text', 'edge_summary', 'provenance'],
     fx: 'none',
     fl: [
       { n: 'meta', t: 'bool', d: false, desc: 'show metadata only (no body)' },

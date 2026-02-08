@@ -219,6 +219,11 @@ async function runWrite(topic: string | undefined, flags: WriteFlags) {
     body: result.body,
     tags: result.suggestedTags,
     autoLink,
+    metadata: {
+      origin: 'write',
+      createdBy: 'ai',
+      model: result.model,
+    },
   });
 
   console.log('');

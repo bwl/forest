@@ -5,6 +5,15 @@ import os from 'os';
 import { createHash } from 'crypto';
 import { getConfiguredDbPath } from './config';
 
+export type NodeMetadata = {
+  origin?: 'capture' | 'write' | 'synthesize' | 'import' | 'api';
+  createdBy?: string;         // "user", "ai", agent name, etc.
+  sourceNodes?: string[];     // for synthesize: IDs of source nodes
+  sourceFile?: string;        // for import: original filename
+  model?: string;             // for write/synthesize: model used
+  [key: string]: unknown;     // extensible
+};
+
 export type NodeRecord = {
   id: string;
   title: string;
@@ -19,6 +28,7 @@ export type NodeRecord = {
   isChunk: boolean;
   parentDocumentId: string | null;
   chunkOrder: number | null;
+  metadata: NodeMetadata | null;
 };
 
 export type EdgeStatus = 'accepted';
@@ -336,6 +346,12 @@ function runMigrations(db: Database) {
       db.exec(`ALTER TABLE nodes ADD COLUMN approximate_scored INTEGER NOT NULL DEFAULT 1;`);
       dirty = true;
     }
+
+    // Provenance tracking: node metadata JSON column
+    if (!columns.includes('metadata')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN metadata TEXT;`);
+      dirty = true;
+    }
   } catch (_) {
     // Best-effort; ignore if pragma not supported in this context
   }
@@ -608,6 +624,7 @@ function parseNodeRow(row: any): NodeRecord {
     isChunk: Number(row.is_chunk || 0) === 1,
     parentDocumentId: row.parent_document_id ? String(row.parent_document_id) : null,
     chunkOrder: row.chunk_order ? Number(row.chunk_order) : null,
+    metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
   };
 }
 
@@ -799,8 +816,8 @@ export async function listTagIdf(): Promise<TagIdfRecord[]> {
 export async function insertNode(record: NodeRecord): Promise<void> {
   const db = await ensureDatabase();
   const stmt = db.prepare(
-    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at, is_chunk, parent_document_id, chunk_order)
-     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder)`
+    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at, is_chunk, parent_document_id, chunk_order, metadata)
+     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder, :metadata)`
   );
   stmt.bind({
     ':id': record.id,
@@ -814,6 +831,7 @@ export async function insertNode(record: NodeRecord): Promise<void> {
     ':isChunk': record.isChunk ? 1 : 0,
     ':parentDocumentId': record.parentDocumentId,
     ':chunkOrder': record.chunkOrder,
+    ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
   });
   stmt.step();
   stmt.free();
@@ -838,7 +856,7 @@ export async function updateNodeTokens(id: string, tokenCounts: Record<string, n
 
 export async function updateNode(
   id: string,
-  fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts' | 'embedding'>>
+  fields: Partial<Pick<NodeRecord, 'title' | 'body' | 'tags' | 'tokenCounts' | 'embedding' | 'metadata'>>
 ): Promise<void> {
   const db = await ensureDatabase();
   const nextTags = Array.isArray(fields.tags) ? fields.tags : undefined;
@@ -863,6 +881,10 @@ export async function updateNode(
   if (Array.isArray(fields.embedding)) {
     sets.push('embedding = :embedding');
     params[':embedding'] = JSON.stringify(fields.embedding);
+  }
+  if (fields.metadata !== undefined) {
+    sets.push('metadata = :metadata');
+    params[':metadata'] = fields.metadata ? JSON.stringify(fields.metadata) : null;
   }
   sets.push('updated_at = :updatedAt');
   const sql = `UPDATE nodes SET ${sets.join(', ')} WHERE id = :id`;

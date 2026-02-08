@@ -150,6 +150,7 @@ export function formatNodeForDetail(
     hasEmbedding: Boolean(node.embedding),
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    metadata: node.metadata ?? null,
   };
 
   if (options.includeBody !== false) {

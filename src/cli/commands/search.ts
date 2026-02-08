@@ -36,6 +36,8 @@ type SearchFlags = {
   select?: number;
   interactive?: boolean;
   showChunks?: boolean;
+  origin?: string;
+  createdBy?: string;
 };
 
 type SearchMode = 'semantic' | 'metadata';
@@ -123,6 +125,14 @@ export function createSearchCommand(clerc: ClercModule) {
         showChunks: {
           type: Boolean,
           description: 'Include document chunks in metadata results',
+        },
+        origin: {
+          type: String,
+          description: 'Filter by origin: capture, write, synthesize, import, api (metadata search)',
+        },
+        createdBy: {
+          type: String,
+          description: 'Filter by creator: user, ai, or agent name (metadata search)',
         },
         tldr: {
           type: String,
@@ -216,6 +226,8 @@ async function runSearch(flags: SearchFlags, positionalQuery?: string) {
         flags.interactive ||
         flags.select ||
         flags.showChunks ||
+        flags.origin ||
+        flags.createdBy ||
         (tags && tags.length),
     );
   const hasQuery = typeof query === 'string' && query.trim().length > 0;
@@ -350,7 +362,7 @@ async function runMetadataSearch(
     typeof flags.term === 'string' && flags.term.trim().length > 0 ? flags.term : undefined;
   const inferredTerm = termCandidate ?? (flags.mode === 'metadata' ? query : undefined) ?? positionalQuery;
 
-  const selection = await selectNode({
+  let selection = await selectNode({
     id: flags.id,
     title: flags.title,
     term: inferredTerm,
@@ -364,6 +376,35 @@ async function runMetadataSearch(
     sort,
     showChunks,
   });
+
+  // Post-filter by provenance metadata
+  const originFilter = flags.origin?.trim().toLowerCase();
+  const createdByFilter = flags.createdBy?.trim().toLowerCase();
+
+  if (originFilter || createdByFilter) {
+    const filtered = selection.matches.filter((m) => {
+      const meta = m.node.metadata;
+      if (originFilter && meta?.origin !== originFilter) return false;
+      if (createdByFilter && meta?.createdBy?.toLowerCase() !== createdByFilter) return false;
+      return true;
+    });
+
+    if (filtered.length === 0) {
+      const filterDesc = [
+        originFilter ? `origin=${originFilter}` : '',
+        createdByFilter ? `createdBy=${createdByFilter}` : '',
+      ].filter(Boolean).join(', ');
+      console.error(`✖ No nodes matching provenance filters (${filterDesc}).`);
+      process.exitCode = 1;
+      return;
+    }
+
+    selection = {
+      selected: filtered[0],
+      matches: filtered,
+      limit: selection.limit,
+    };
+  }
 
   if (flags.json) {
     console.log(
@@ -379,6 +420,8 @@ async function runMetadataSearch(
             until: until ? until.toISOString() : null,
             sort: sort ?? 'score',
             showChunks,
+            origin: originFilter ?? null,
+            createdBy: createdByFilter ?? null,
           },
           selected: serializeMatch(selection.selected),
           results: selection.matches.map(serializeMatch),
@@ -399,6 +442,8 @@ async function runMetadataSearch(
     sort,
     showChunks,
     longIds: Boolean(flags.longIds),
+    origin: originFilter,
+    createdBy: createdByFilter,
   });
 }
 
@@ -482,6 +527,8 @@ async function printMetadataResults(
     sort?: 'score' | 'recent' | 'degree';
     showChunks: boolean;
     longIds: boolean;
+    origin?: string;
+    createdBy?: string;
   },
 ) {
   const { matches } = selection;
@@ -500,6 +547,8 @@ async function printMetadataResults(
   if (options.until) filterLines.push(`Before: ${options.until.toISOString().split('T')[0]}`);
   if (options.sort && options.sort !== 'score') filterLines.push(`Sort: ${options.sort}`);
   if (options.showChunks) filterLines.push('Including document chunks');
+  if (options.origin) filterLines.push(`Origin: ${options.origin}`);
+  if (options.createdBy) filterLines.push(`Created by: ${options.createdBy}`);
 
   if (filterLines.length > 0) {
     for (const line of filterLines) {

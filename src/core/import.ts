@@ -6,6 +6,7 @@
 import { randomUUID, createHash } from 'crypto';
 import {
   NodeRecord,
+  NodeMetadata,
   insertNode,
   listNodes,
   insertOrUpdateEdge,
@@ -31,6 +32,7 @@ export type ImportOptions = {
   autoLink?: boolean;         // Default: true
   createParent?: boolean;     // Create root/index node (default: true)
   linkSequential?: boolean;   // Link chunks in order (default: true)
+  sourceFile?: string;        // Original filename (for provenance)
 };
 
 export type ChunkNodeInfo = {
@@ -103,6 +105,12 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     const rootTags = options.tags || extractTags(`${documentTitle}\n${placeholderBody}`, rootTokenCounts);
     const rootEmbedding = await computeEmbeddingForNode({ title: documentTitle, body: placeholderBody });
 
+    const importMetadata: NodeMetadata = {
+      origin: 'import',
+      createdBy: 'user',
+      ...(options.sourceFile ? { sourceFile: options.sourceFile } : {}),
+    };
+
     rootNode = {
       id: rootId,
       title: documentTitle,
@@ -115,6 +123,7 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
       isChunk: false,
       parentDocumentId: null,
       chunkOrder: null,
+      metadata: importMetadata,
     };
 
     await insertNode(rootNode);
@@ -135,6 +144,12 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     // Compute embedding
     const embedding = await computeEmbeddingForNode({ title: chunk.title, body: chunk.body });
 
+    const chunkNodeMetadata: NodeMetadata = {
+      origin: 'import',
+      createdBy: 'user',
+      ...(options.sourceFile ? { sourceFile: options.sourceFile } : {}),
+    };
+
     const node: NodeRecord = {
       id: chunkId,
       title: chunk.title,
@@ -147,6 +162,7 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
       isChunk: true,
       parentDocumentId: rootId,
       chunkOrder: chunk.metadata.chunkIndex,
+      metadata: chunkNodeMetadata,
     };
 
     await insertNode(node);

@@ -64,6 +64,14 @@ export interface NodeSummary {
 export interface NodeDetail extends NodeSummary {
   body?: string;
   tokenCounts?: Record<string, number>;
+  metadata?: {
+    origin?: string;
+    createdBy?: string;
+    sourceNodes?: string[];
+    sourceFile?: string;
+    model?: string;
+    [key: string]: unknown;
+  } | null;
 }
 
 export interface CreateNodeInput {
@@ -71,6 +79,7 @@ export interface CreateNodeInput {
   body: string;
   tags?: string[];
   autoLink?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CreateNodeResult {

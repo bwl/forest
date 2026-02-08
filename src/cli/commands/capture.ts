@@ -1,16 +1,12 @@
-import { randomUUID } from 'crypto';
-
-import { NodeRecord, insertNode, listNodes } from '../../lib/db';
-import { pickTitle, tokenize, extractTags } from '../../lib/text';
-import { computeEmbeddingForNode } from '../../lib/embeddings';
+import { NodeRecord } from '../../lib/db';
 import { getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
+import { createNodeCore } from '../../core/nodes';
 
-import { handleError, resolveBodyInput } from '../shared/utils';
+import { handleError, resolveBodyInput, formatId } from '../shared/utils';
 import {
   SelectionResult,
   printExplore,
 } from '../shared/explore';
-import { linkAgainstExisting } from '../shared/linking';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
@@ -140,9 +136,6 @@ async function runCaptureRemote(flags: CaptureFlags) {
   console.log(`   ${colorize.label('links:')} ${colorize.success(String(result.linking.edgesCreated))} edges`);
 }
 
-// TODO: Refactor to use createNodeCore() from src/core/nodes.ts
-// This function currently reimplements node creation logic that should be
-// in the core layer. See CLAUDE.md "3-Layer Architecture" section.
 async function runCapture(flags: CaptureFlags) {
   if (isRemoteMode()) {
     return runCaptureRemote(flags);
@@ -157,43 +150,30 @@ async function runCapture(flags: CaptureFlags) {
     return;
   }
 
-  const title = pickTitle(body, flags.title);
-  const combinedText = `${title}\n${body}`;
-  const tokenCounts = tokenize(combinedText);
-  const tags = resolveTags(flags.tags, combinedText, tokenCounts);
-
-  const embedding = await computeEmbeddingForNode({ title, body });
-
-  const newNode: NodeRecord = {
-    id: randomUUID(),
-    title,
-    body,
-    tags,
-    tokenCounts,
-    embedding,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isChunk: false,
-    parentDocumentId: null,
-    chunkOrder: null,
-  };
-
-  const existingNodes = await listNodes();
-  await insertNode(newNode);
-
   const autoLink = computeAutoLinkIntent(flags);
 
-  let summary = { accepted: 0 };
-  if (autoLink) {
-    summary = await linkAgainstExisting(newNode, existingNodes);
-  }
+  // Parse explicit tags if provided
+  const tags = typeof flags.tags === 'string'
+    ? flags.tags.split(',').map((tag) => tag.trim().replace(/^#/, '').toLowerCase()).filter((tag) => tag.length > 0)
+    : undefined;
+
+  const result = await createNodeCore({
+    title: flags.title,
+    body,
+    tags,
+    autoLink,
+    metadata: { origin: 'capture', createdBy: 'user' },
+  });
+
+  const newNode = result.node;
+  const summary = { accepted: result.linking.edgesCreated };
 
   if (flags.json) {
     await emitJsonSummary(newNode, summary, autoLink);
     return;
   }
 
-  emitTextSummary(newNode, tags, summary, autoLink);
+  emitTextSummary(newNode, newNode.tags, summary, autoLink);
 
   const shouldPreview = computePreviewIntent(flags);
   if (shouldPreview) {
@@ -207,16 +187,6 @@ function computeAutoLinkIntent(flags: CaptureFlags) {
   return true;
 }
 
-function resolveTags(tagsOption: string | undefined, combined: string, tokenCounts: NodeRecord['tokenCounts']) {
-  if (typeof tagsOption === 'string') {
-    return tagsOption
-      .split(',')
-      .map((tag) => tag.trim().replace(/^#/, '').toLowerCase())
-      .filter((tag) => tag.length > 0);
-  }
-  return extractTags(combined, tokenCounts);
-}
-
 async function emitJsonSummary(node: NodeRecord, summary: { accepted: number }, autoLinked: boolean) {
   console.log(
     JSON.stringify(
@@ -227,6 +197,7 @@ async function emitJsonSummary(node: NodeRecord, summary: { accepted: number }, 
           tags: node.tags,
           createdAt: node.createdAt,
           updatedAt: node.updatedAt,
+          metadata: node.metadata ?? null,
         },
         body: node.body,
         links: {
@@ -251,7 +222,7 @@ function emitTextSummary(
   autoLinked: boolean,
 ) {
   console.log(`${colorize.success('✔')} Captured idea: ${node.title}`);
-  console.log(`   ${colorize.label('id:')} ${colorize.nodeId(node.id.slice(0, 8))}`);
+  console.log(`   ${colorize.label('id:')} ${colorize.nodeId(formatId(node.id))}`);
   if (tags.length > 0) {
     const coloredTags = tags.map(tag => colorize.tag(tag)).join(', ');
     console.log(`   ${colorize.label('tags:')} ${coloredTags}`);
