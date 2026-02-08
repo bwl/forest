@@ -110,6 +110,40 @@ export interface SearchResult {
   pagination: PaginationInfo;
 }
 
+// ── Metadata search types ──────────────────────────────────────────────
+
+export interface MetadataSearchOptions {
+  id?: string;
+  title?: string;
+  term?: string;
+  limit?: number;
+  tagsAll?: string[];
+  tagsAny?: string[];
+  since?: string;
+  until?: string;
+  sort?: 'score' | 'recent' | 'degree';
+  showChunks?: boolean;
+  origin?: string;
+  createdBy?: string;
+}
+
+export interface MetadataSearchMatch extends NodeSummary {
+  score: number;
+  metadata?: {
+    origin?: string;
+    createdBy?: string;
+    sourceNodes?: string[];
+    sourceFile?: string;
+    model?: string;
+    [key: string]: unknown;
+  } | null;
+}
+
+export interface MetadataSearchResult {
+  matches: MetadataSearchMatch[];
+  total: number;
+}
+
 // ── Edge types ─────────────────────────────────────────────────────────
 
 export interface EdgeSummary {
@@ -147,7 +181,9 @@ export interface ListTagsResult {
 export interface StatsResult {
   nodes: { total: number; recentCount: number; recent: Array<{ id: string; title: string; createdAt: string }> };
   edges: { total: number };
+  degree: { avg: number; median: number; p90: number; max: number };
   tags: { total: number; topTags: Array<{ name: string; count: number }> };
+  tagPairs: Array<{ pair: string; count: number }>;
   highDegreeNodes: Array<{ id: string; title: string; edgeCount: number }>;
 }
 
@@ -402,6 +438,75 @@ export interface ExportJsonResult {
   }>;
 }
 
+// ── Document types ────────────────────────────────────────────────────
+
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  version: number;
+  rootNodeId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListDocumentsResult {
+  documents: DocumentSummary[];
+  count: number;
+}
+
+export interface GetDocumentResult {
+  document: DocumentSummary & { body?: string };
+}
+
+export interface DocumentChunk {
+  documentId: string;
+  segmentId: string;
+  nodeId: string;
+  offset: number;
+  length: number;
+  chunkOrder: number;
+  checksum: string;
+}
+
+export interface GetDocumentChunksResult {
+  chunks: DocumentChunk[];
+  count: number;
+}
+
+export interface DocumentStatsResult {
+  totalDocuments: number;
+  totalChunks: number;
+  avgChunksPerDocument: number;
+  avgVersion: number;
+  bySource: Record<string, number>;
+  byStrategy: Record<string, number>;
+}
+
+// ── Edge threshold types ─────────────────────────────────────────────
+
+export interface EdgeThresholdsResult {
+  semanticThreshold: number;
+  tagThreshold: number;
+}
+
+// ── Suggest types ────────────────────────────────────────────────────
+
+export interface SuggestResultRemote {
+  project: string;
+  source: string;
+  suggestions: Array<{
+    id: string;
+    shortId: string;
+    title: string;
+    tags: string[];
+    excerpt: string;
+    matchType: string;
+    score: number | null;
+  }>;
+  total: number;
+}
+
 // ── Health types ───────────────────────────────────────────────────────
 
 export interface HealthResult {
@@ -413,7 +518,10 @@ export interface HealthResult {
 
 // ── Client ─────────────────────────────────────────────────────────────
 
-export class ForestClient {
+import type { IForestBackend } from './backend';
+
+export class ForestClient implements IForestBackend {
+  readonly isRemote = true;
   private baseUrl: string;
   private apiKey?: string;
 
@@ -529,6 +637,25 @@ export class ForestClient {
         offset: opts?.offset,
         minScore: opts?.minScore,
         tags: opts?.tags,
+      },
+    });
+  }
+
+  async searchMetadata(opts: MetadataSearchOptions): Promise<MetadataSearchResult> {
+    return this.request<MetadataSearchResult>('GET', '/api/v1/search/metadata', {
+      query: {
+        id: opts.id,
+        title: opts.title,
+        term: opts.term,
+        limit: opts.limit,
+        tags: opts.tagsAll?.join(','),
+        anyTag: opts.tagsAny?.join(','),
+        since: opts.since,
+        until: opts.until,
+        sort: opts.sort,
+        showChunks: opts.showChunks ? 'true' : undefined,
+        origin: opts.origin,
+        createdBy: opts.createdBy,
       },
     });
   }
@@ -667,10 +794,59 @@ export class ForestClient {
     });
   }
 
+  // ── Documents ────────────────────────────────────────────────────────
+
+  async listDocuments(): Promise<ListDocumentsResult> {
+    return this.request<ListDocumentsResult>('GET', '/api/v1/documents');
+  }
+
+  async getDocument(id: string): Promise<GetDocumentResult> {
+    return this.request<GetDocumentResult>('GET', `/api/v1/documents/${encodeURIComponent(id)}`);
+  }
+
+  async getDocumentChunks(id: string): Promise<GetDocumentChunksResult> {
+    return this.request<GetDocumentChunksResult>('GET', `/api/v1/documents/${encodeURIComponent(id)}/chunks`);
+  }
+
+  async getDocumentStats(): Promise<DocumentStatsResult> {
+    return this.request<DocumentStatsResult>('GET', '/api/v1/documents/stats');
+  }
+
+  // ── Edge Thresholds ─────────────────────────────────────────────────
+
+  async getEdgeThresholds(): Promise<EdgeThresholdsResult> {
+    return this.request<EdgeThresholdsResult>('GET', '/api/v1/edges/threshold');
+  }
+
+  // ── Suggest ─────────────────────────────────────────────────────────
+
+  async suggest(opts?: { project?: string; limit?: number }): Promise<SuggestResultRemote> {
+    return this.request<SuggestResultRemote>('GET', '/api/v1/suggest', {
+      query: {
+        project: opts?.project,
+        limit: opts?.limit,
+      },
+    });
+  }
+
+  // ── Export Graphviz ─────────────────────────────────────────────────
+
+  async exportGraphviz(opts: { id: string; depth?: number; limit?: number }): Promise<{ dot: string }> {
+    return this.request<{ dot: string }>('GET', '/api/v1/export/graphviz', {
+      query: {
+        id: opts.id,
+        depth: opts.depth,
+        limit: opts.limit,
+      },
+    });
+  }
+
   // ── Stats ──────────────────────────────────────────────────────────
 
-  async getStats(): Promise<StatsResult> {
-    return this.request<StatsResult>('GET', '/api/v1/stats');
+  async getStats(opts?: { top?: number }): Promise<StatsResult> {
+    return this.request<StatsResult>('GET', '/api/v1/stats', {
+      query: { top: opts?.top },
+    });
   }
 
   // ── Health ─────────────────────────────────────────────────────────
