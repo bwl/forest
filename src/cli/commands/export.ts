@@ -1,12 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 
-import { listEdges, listNodes } from '../../lib/db';
-import { buildNeighborhoodPayload, selectNode } from '../shared/explore';
-import { DEFAULT_NEIGHBORHOOD_LIMIT, escapeLabel, formatId, handleError } from '../shared/utils';
+import { DEFAULT_NEIGHBORHOOD_LIMIT, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { getBackend } from '../shared/remote';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -156,11 +154,11 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
 }
 
 async function runExportDashboard() {
-  const nodes = await listNodes();
-  const edges = await listEdges('all');
+  const backend = getBackend();
+  const stats = await backend.getStats();
 
   console.log('');
-  console.log(`Your graph: ${nodes.length} nodes, ${edges.length} edges`);
+  console.log(`Your graph: ${stats.nodes.total} nodes, ${stats.edges.total} edges`);
   console.log('');
   console.log('Available formats:');
   console.log('');
@@ -176,13 +174,12 @@ async function runExportDashboard() {
 
 async function runExportGraphviz(flags: ExportGraphvizFlags) {
   if (!flags.id || typeof flags.id !== 'string' || flags.id.trim().length === 0) {
-    console.error('✖ Provide --id with the node identifier to export.');
+    console.error('Provide --id with the node identifier to export.');
     process.exitCode = 1;
     return;
   }
 
-  const selection = await selectNode({ id: flags.id });
-  const center = selection.selected.node;
+  const backend = getBackend();
   const depth =
     typeof flags.depth === 'number' && Number.isFinite(flags.depth) && flags.depth > 0
       ? Math.floor(flags.depth)
@@ -192,96 +189,24 @@ async function runExportGraphviz(flags: ExportGraphvizFlags) {
       ? Math.floor(flags.limit)
       : DEFAULT_NEIGHBORHOOD_LIMIT;
 
-  const { payload } = await buildNeighborhoodPayload(center.id, depth, limit);
-  const nodes = await listNodes();
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-
-  const lines: string[] = [];
-  lines.push('graph forest {');
-  lines.push('  rankdir=LR;');
-  lines.push('  node [shape=box, fontname="Helvetica"];');
-
-  const defined = new Set<string>();
-  const ensureNodeDefined = (id: string) => {
-    if (defined.has(id)) return;
-    const title = nodeMap.get(id)?.title ?? id;
-    lines.push(`  "${id}" [label="${formatId(id)} ${escapeLabel(title)}"];`);
-    defined.add(id);
-  };
-
-  payload.nodes.forEach((node) => ensureNodeDefined(node.id));
-  payload.edges.forEach((edge) => {
-    ensureNodeDefined(edge.source);
-    ensureNodeDefined(edge.target);
-    lines.push(`  "${edge.source}" -- "${edge.target}" [label="${edge.score.toFixed(3)}"];`);
-  });
-
-  // Suggestions no longer exist - edges are auto-created above threshold
-
-  lines.push('}');
-
-  const dot = lines.join('\n');
-  if (typeof flags.file === 'string' && flags.file.trim().length > 0) {
-    const filePath = path.resolve(flags.file);
-    fs.writeFileSync(filePath, dot, 'utf-8');
-  } else {
-    console.log(dot);
-  }
-}
-
-async function runExportJsonRemote(flags: ExportJsonFlags) {
-  const client = getClient();
-  const includeBody = flags.body !== false;
-  const includeEdges = flags.edges !== false;
-
-  const result = await client.exportJson({ body: includeBody, edges: includeEdges });
-
-  const json = JSON.stringify(result, null, 2);
+  const result = await backend.exportGraphviz({ id: flags.id, depth, limit });
 
   if (typeof flags.file === 'string' && flags.file.trim().length > 0) {
     const filePath = path.resolve(flags.file);
-    fs.writeFileSync(filePath, json, 'utf-8');
+    fs.writeFileSync(filePath, result.dot, 'utf-8');
   } else {
-    console.log(json);
+    console.log(result.dot);
   }
 }
 
 async function runExportJson(flags: ExportJsonFlags) {
-  if (isRemoteMode()) {
-    return runExportJsonRemote(flags);
-  }
-
-  const nodes = await listNodes();
-  const edges = await listEdges('all');
-
+  const backend = getBackend();
   const includeBody = flags.body !== false;
   const includeEdges = flags.edges !== false;
 
-  const payload = {
-    nodes: nodes.map((node) => ({
-      id: node.id,
-      title: node.title,
-      tags: node.tags,
-      body: includeBody ? node.body : undefined,
-      tokenCounts: node.tokenCounts,
-      createdAt: node.createdAt,
-      updatedAt: node.updatedAt,
-    })),
-    edges: includeEdges
-      ? edges.map((edge) => ({
-          id: edge.id,
-          sourceId: edge.sourceId,
-          targetId: edge.targetId,
-          status: edge.status,
-          score: edge.score,
-          metadata: edge.metadata,
-          createdAt: edge.createdAt,
-          updatedAt: edge.updatedAt,
-        }))
-      : [],
-  };
+  const result = await backend.exportJson({ body: includeBody, edges: includeEdges });
 
-  const json = JSON.stringify(payload, null, 2);
+  const json = JSON.stringify(result, null, 2);
 
   if (typeof flags.file === 'string' && flags.file.trim().length > 0) {
     const filePath = path.resolve(flags.file);

@@ -1,5 +1,5 @@
-import { listDocuments, getDocumentById, getDocumentChunks, DocumentRecord } from '../../lib/db';
-import { formatId } from '../shared/utils';
+import { formatId, handleError } from '../shared/utils';
+import { getBackend } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
@@ -14,22 +14,23 @@ type DocumentsShowFlags = {
 };
 
 async function runDocumentsList(flags: DocumentsListFlags) {
-  const documents = await listDocuments();
+  const backend = getBackend();
+  const result = await backend.listDocuments();
 
   if (flags.json) {
-    console.log(JSON.stringify(documents, null, 2));
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  if (documents.length === 0) {
+  if (result.documents.length === 0) {
     console.log('No documents found.');
     return;
   }
 
-  console.log(`\nFound ${documents.length} document(s):\n`);
+  console.log(`\nFound ${result.documents.length} document(s):\n`);
 
-  for (const doc of documents) {
-    const metadata = doc.metadata;
+  for (const doc of result.documents) {
+    const metadata = doc.metadata as any;
     const chunkCount = metadata?.chunkCount ?? 0;
     const version = doc.version;
 
@@ -47,24 +48,21 @@ async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowF
     return;
   }
 
-  const document = await getDocumentById(idRef);
-  if (!document) {
-    console.error(`✖ Document with ID '${idRef}' not found`);
-    process.exitCode = 1;
-    return;
-  }
+  const backend = getBackend();
+  const result = await backend.getDocument(idRef);
+  const document = result.document;
 
   if (flags.json) {
     const output: any = { document };
     if (flags.chunks) {
-      const chunks = await getDocumentChunks(document.id);
-      output.chunks = chunks;
+      const chunksResult = await backend.getDocumentChunks(document.id);
+      output.chunks = chunksResult.chunks;
     }
     console.log(JSON.stringify(output, null, 2));
     return;
   }
 
-  const metadata = document.metadata;
+  const metadata = document.metadata as any;
 
   console.log(`\nDocument: ${document.title}`);
   console.log(`  ID: ${document.id}`);
@@ -85,9 +83,9 @@ async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowF
   }
 
   if (flags.chunks) {
-    const chunks = await getDocumentChunks(document.id);
-    console.log(`\n  Chunks (${chunks.length}):`);
-    for (const chunk of chunks) {
+    const chunksResult = await backend.getDocumentChunks(document.id);
+    console.log(`\n  Chunks (${chunksResult.chunks.length}):`);
+    for (const chunk of chunksResult.chunks) {
       console.log(`    [${chunk.chunkOrder}] ${formatId(chunk.segmentId)}`);
       console.log(`        offset: ${chunk.offset}, length: ${chunk.length}, checksum: ${chunk.checksum.substring(0, 8)}`);
     }
@@ -97,59 +95,30 @@ async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowF
 }
 
 async function runDocumentsStats(flags: { json?: boolean }) {
-  const documents = await listDocuments();
-
-  let totalChunks = 0;
-  let totalVersions = 0;
-  const sources = new Map<string, number>();
-  const strategies = new Map<string, number>();
-
-  for (const doc of documents) {
-    const metadata = doc.metadata;
-    totalVersions += doc.version;
-
-    if (metadata) {
-      if (metadata.chunkCount) totalChunks += metadata.chunkCount;
-      if (metadata.source) {
-        sources.set(metadata.source, (sources.get(metadata.source) ?? 0) + 1);
-      }
-      if (metadata.chunkStrategy) {
-        strategies.set(metadata.chunkStrategy, (strategies.get(metadata.chunkStrategy) ?? 0) + 1);
-      }
-    }
-  }
-
-  const avgVersion = documents.length > 0 ? (totalVersions / documents.length).toFixed(1) : '0';
-  const avgChunks = documents.length > 0 ? (totalChunks / documents.length).toFixed(1) : '0';
+  const backend = getBackend();
+  const stats = await backend.getDocumentStats();
 
   if (flags.json) {
-    console.log(JSON.stringify({
-      totalDocuments: documents.length,
-      totalChunks,
-      avgChunksPerDocument: parseFloat(avgChunks),
-      avgVersion: parseFloat(avgVersion),
-      bySource: Object.fromEntries(sources),
-      byStrategy: Object.fromEntries(strategies),
-    }, null, 2));
+    console.log(JSON.stringify(stats, null, 2));
     return;
   }
 
   console.log(`\nDocument Statistics:\n`);
-  console.log(`  Total Documents: ${documents.length}`);
-  console.log(`  Total Chunks: ${totalChunks}`);
-  console.log(`  Avg Chunks/Doc: ${avgChunks}`);
-  console.log(`  Avg Version: ${avgVersion}`);
+  console.log(`  Total Documents: ${stats.totalDocuments}`);
+  console.log(`  Total Chunks: ${stats.totalChunks}`);
+  console.log(`  Avg Chunks/Doc: ${stats.avgChunksPerDocument}`);
+  console.log(`  Avg Version: ${stats.avgVersion}`);
 
-  if (sources.size > 0) {
+  if (Object.keys(stats.bySource).length > 0) {
     console.log(`\n  By Source:`);
-    for (const [source, count] of sources) {
+    for (const [source, count] of Object.entries(stats.bySource)) {
       console.log(`    ${source}: ${count}`);
     }
   }
 
-  if (strategies.size > 0) {
+  if (Object.keys(stats.byStrategy).length > 0) {
     console.log(`\n  By Strategy:`);
-    for (const [strategy, count] of strategies) {
+    for (const [strategy, count] of Object.entries(stats.byStrategy)) {
       console.log(`    ${strategy}: ${count}`);
     }
   }

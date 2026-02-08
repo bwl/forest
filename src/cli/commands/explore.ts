@@ -1,7 +1,8 @@
-import { DEFAULT_NEIGHBORHOOD_LIMIT, handleError } from '../shared/utils';
-import { printExplore, selectNode } from '../shared/explore';
+import { DEFAULT_NEIGHBORHOOD_LIMIT, formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
+import { getBackend } from '../shared/remote';
+import { colorize } from '../formatters';
 
 type ClercModule = typeof import('clerc');
 
@@ -25,18 +26,6 @@ export function createExploreCommand(clerc: ClercModule) {
           alias: 'd',
           description: 'Neighborhood depth',
           default: 1,
-        },
-        by: {
-          type: String,
-          description: 'Filter edges by score layer: semantic or tags',
-        },
-        minSemantic: {
-          type: Number,
-          description: 'Only include edges with semantic_score >= this value',
-        },
-        minTags: {
-          type: Number,
-          description: 'Only include edges with tag_score >= this value',
         },
         limit: {
           type: Number,
@@ -74,34 +63,89 @@ export function createExploreCommand(clerc: ClercModule) {
         const title = flags.title;
 
         if (!id && !title) {
-          console.error('✖ Provide a node id (or short id) or an exact title to explore.');
+          console.error('Provide a node id (or short id) or an exact title to explore.');
           process.exitCode = 1;
           return;
         }
 
-        const selection = await selectNode({
-          id: id,
-          title: title,
-          limit: 1,
-        });
+        const depth = typeof flags.depth === 'number' && !Number.isNaN(flags.depth) ? flags.depth : 1;
+        const longIds = Boolean(flags.longIds);
+        const json = Boolean(flags.json);
 
-        await printExplore({
-          selection,
-          limit: neighborhoodLimit,
-          matchLimit: selection.limit,
-          depth: typeof flags.depth === 'number' && !Number.isNaN(flags.depth) ? flags.depth : 1,
-          longIds: Boolean(flags.longIds),
-          json: Boolean(flags.json),
-          showMatches: !Boolean(flags.json),
-          focusSelected: true,
-          by: flags.by === 'semantic' || flags.by === 'tags' ? flags.by : undefined,
-          minSemantic:
-            typeof flags.minSemantic === 'number' && Number.isFinite(flags.minSemantic) ? flags.minSemantic : undefined,
-          minTags: typeof flags.minTags === 'number' && Number.isFinite(flags.minTags) ? flags.minTags : undefined,
-        });
+        await runExplore({ id, title, depth, limit: neighborhoodLimit, longIds, json });
       } catch (error) {
         handleError(error);
       }
     },
   );
+}
+
+type ExploreOptions = {
+  id?: string;
+  title?: string;
+  depth: number;
+  limit: number;
+  longIds: boolean;
+  json: boolean;
+};
+
+async function runExplore(opts: ExploreOptions) {
+  const backend = getBackend();
+
+  // Step 1: Resolve the node via metadata search
+  const searchResult = await backend.searchMetadata({
+    id: opts.id,
+    title: opts.title,
+    limit: 1,
+  });
+
+  if (searchResult.matches.length === 0) {
+    const term = opts.title ?? opts.id ?? '';
+    throw new Error(`No node matching "${term}".`);
+  }
+
+  const node = searchResult.matches[0];
+
+  // Step 2: Get neighborhood
+  const neighborhood = await backend.getNeighborhood(node.id, {
+    depth: opts.depth,
+    limit: opts.limit,
+  });
+
+  if (opts.json) {
+    console.log(JSON.stringify({
+      selected: { id: node.id, title: node.title, tags: node.tags },
+      neighborhood,
+    }, null, 2));
+    return;
+  }
+
+  // Display node overview
+  const fmtId = opts.longIds ? node.id : formatId(node.id);
+  console.log(`${colorize.nodeId(fmtId)} ${node.title}`);
+  if (node.tags.length > 0) {
+    const tagLabels = node.tags.map((tag: string) => colorize.tag(tag)).join(', ');
+    console.log(`${colorize.label('tags:')} ${tagLabels}`);
+  }
+  console.log('');
+
+  // Display edges
+  const directEdges = neighborhood.edges.filter(
+    (e) => e.source === node.id || e.target === node.id,
+  );
+
+  if (directEdges.length > 0) {
+    console.log(`${colorize.label('accepted edges:')}`);
+    const nodeMap = new Map(neighborhood.nodes.map((n) => [n.id, n]));
+    for (const edge of directEdges) {
+      const otherId = edge.source === node.id ? edge.target : edge.source;
+      const otherNode = nodeMap.get(otherId);
+      const otherTitle = otherNode ? otherNode.title : otherId;
+      const otherFmtId = opts.longIds ? otherId : formatId(otherId);
+      const coloredScore = colorize.embeddingScore(edge.score);
+      console.log(`  ${coloredScore}  ${colorize.nodeId(otherFmtId)}  ${otherTitle}`);
+    }
+  } else {
+    console.log(`${colorize.label('accepted edges:')} none`);
+  }
 }

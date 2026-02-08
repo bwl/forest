@@ -6,7 +6,6 @@ import { createHash } from 'crypto';
 
 import {
   NodeRecord,
-  deleteNode,
   updateNode,
   DocumentRecord,
   DocumentChunkRecord,
@@ -26,7 +25,7 @@ import {
   resolveNodeReference,
 } from '../shared/utils';
 import { rescoreNode } from '../shared/linking';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { getBackend } from '../shared/remote';
 
 import {
   loadDocumentSessionForNode,
@@ -36,9 +35,7 @@ import {
   type DocumentSegment,
   type ParsedDocumentEdit,
 } from '../shared/document-session';
-import { synthesizeNodesCore, SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
-import { createNodeCore } from '../../core/nodes';
-import { importDocumentCore } from '../../core/import';
+import { SynthesisModel, ReasoningEffort, TextVerbosity } from '../../core/synthesize';
 import { reconstructDocument } from '../../lib/reconstruction';
 import { loadConfig } from '../../lib/config';
 import { renderMarkdownToTerminal } from '../formatters';
@@ -104,67 +101,6 @@ export type NodeImportFlags = {
   tldr?: string;
 };
 
-async function runNodeReadRemote(idRef: string, flags: NodeReadFlags) {
-  const client = getClient();
-  const result = await client.getNode(idRef);
-  const node = result.node;
-  const config = loadConfig();
-  const markdownOptions = {
-    width: config.markdown?.width ?? 90,
-    reflowText: config.markdown?.reflowText ?? true,
-  };
-
-  if (flags.raw) {
-    console.log(node.body ?? '');
-    return;
-  }
-
-  if (flags.json) {
-    console.log(JSON.stringify({
-      node: { id: node.id, title: node.title, tags: node.tags, createdAt: node.createdAt, updatedAt: node.updatedAt, metadata: node.metadata ?? null },
-      body: node.body,
-    }, null, 2));
-    return;
-  }
-
-  // Text output
-  console.log(`${node.shortId}  ${node.title}`);
-  if (node.tags.length > 0) {
-    console.log(`  tags: ${node.tags.join(', ')}`);
-  }
-  console.log(`  edges: ${result.edgesTotal}`);
-  console.log(`  created: ${node.createdAt}  updated: ${node.updatedAt}`);
-
-  // Provenance from metadata
-  if (node.metadata) {
-    if (node.metadata.origin) {
-      console.log(`  origin: ${node.metadata.origin}`);
-    }
-    if (node.metadata.createdBy) {
-      const modelSuffix = node.metadata.model ? ` (${node.metadata.model})` : '';
-      console.log(`  created by: ${node.metadata.createdBy}${modelSuffix}`);
-    }
-    if (node.metadata.sourceNodes && node.metadata.sourceNodes.length > 0) {
-      console.log(`  sources: ${node.metadata.sourceNodes.map((id: string) => id.slice(0, 8)).join(', ')}`);
-    }
-    if (node.metadata.sourceFile) {
-      console.log(`  source file: ${node.metadata.sourceFile}`);
-    }
-  }
-
-  if (!flags.meta && node.body) {
-    console.log('');
-    console.log(renderMarkdownToTerminal(node.body, markdownOptions));
-  }
-}
-
-async function runNodeDeleteRemote(idRef: string, flags: NodeDeleteFlags) {
-  const client = getClient();
-  const result = await client.deleteNode(idRef);
-  console.log(`✔ Deleted note ${result.deleted.nodeId.slice(0, 8)}`);
-  console.log(`   removed ${result.deleted.edgesRemoved} associated edges`);
-}
-
 export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlags) {
   if (!idRef || idRef.trim().length === 0) {
     console.error('✖ Provide a node id or unique short id (run `forest explore` to discover ids).');
@@ -172,10 +108,62 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
     return;
   }
 
-  if (isRemoteMode()) {
-    return runNodeReadRemote(idRef.trim(), flags);
+  const backend = getBackend();
+  const config = loadConfig();
+  const markdownOptions = {
+    width: config.markdown?.width ?? 90,
+    reflowText: config.markdown?.reflowText ?? true,
+  };
+
+  if (backend.isRemote) {
+    // Remote mode: use backend directly, no reconstruction
+    const result = await backend.getNode(idRef.trim());
+    const node = result.node;
+
+    if (flags.raw) {
+      console.log(node.body ?? '');
+      return;
+    }
+
+    if (flags.json) {
+      console.log(JSON.stringify({
+        node: { id: node.id, title: node.title, tags: node.tags, createdAt: node.createdAt, updatedAt: node.updatedAt, metadata: node.metadata ?? null },
+        body: node.body,
+      }, null, 2));
+      return;
+    }
+
+    console.log(`${node.shortId}  ${node.title}`);
+    if (node.tags.length > 0) {
+      console.log(`  tags: ${node.tags.join(', ')}`);
+    }
+    console.log(`  edges: ${result.edgesTotal}`);
+    console.log(`  created: ${node.createdAt}  updated: ${node.updatedAt}`);
+
+    if (node.metadata) {
+      if (node.metadata.origin) {
+        console.log(`  origin: ${node.metadata.origin}`);
+      }
+      if (node.metadata.createdBy) {
+        const modelSuffix = node.metadata.model ? ` (${node.metadata.model})` : '';
+        console.log(`  created by: ${node.metadata.createdBy}${modelSuffix}`);
+      }
+      if (node.metadata.sourceNodes && node.metadata.sourceNodes.length > 0) {
+        console.log(`  sources: ${node.metadata.sourceNodes.map((id: string) => id.slice(0, 8)).join(', ')}`);
+      }
+      if (node.metadata.sourceFile) {
+        console.log(`  source file: ${node.metadata.sourceFile}`);
+      }
+    }
+
+    if (!flags.meta && node.body) {
+      console.log('');
+      console.log(renderMarkdownToTerminal(node.body, markdownOptions));
+    }
+    return;
   }
 
+  // Local mode: resolve node with optional select, handle reconstruction
   const node = await resolveNodeReference(idRef.trim(), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
@@ -183,16 +171,8 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
     return;
   }
 
-  const config = loadConfig();
-  const markdownOptions = {
-    width: config.markdown?.width ?? 90,
-    reflowText: config.markdown?.reflowText ?? true,
-  };
-
-  // Check if this node is part of a chunked document
   const reconstructed = await reconstructDocument(node);
 
-  // Raw mode: output only the markdown body (for piping to glow, bat, etc.)
   if (flags.raw) {
     if (reconstructed) {
       console.log(reconstructed.fullBody);
@@ -204,7 +184,6 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
 
   if (flags.json) {
     if (reconstructed) {
-      // For reconstructed documents, return full document in JSON
       console.log(
         JSON.stringify(
           {
@@ -232,7 +211,6 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
         ),
       );
     } else {
-      // Regular node output
       console.log(
         JSON.stringify(
           {
@@ -254,9 +232,7 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
     return;
   }
 
-  // Text output
   if (reconstructed) {
-    // Use the root node for overview
     const displayNode = reconstructed.rootNode;
     const { directEdges } = await buildNeighborhoodPayload(displayNode.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
     printNodeOverview(displayNode, directEdges, { longIds: Boolean(flags.longIds) });
@@ -271,7 +247,6 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
       console.log(`Chunks: ${reconstructed.chunks.map((c) => formatId(c.id)).join(', ')}`);
     }
   } else {
-    // Regular node output
     const { directEdges } = await buildNeighborhoodPayload(node.id, 1, DEFAULT_NEIGHBORHOOD_LIMIT);
     printNodeOverview(node, directEdges, { longIds: Boolean(flags.longIds) });
 
@@ -282,30 +257,6 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
   }
 }
 
-async function runNodeRefreshRemote(idRef: string, flags: NodeRefreshFlags) {
-  const client = getClient();
-  const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
-  const data: Record<string, unknown> = {};
-  if (typeof flags.title === 'string') data.title = flags.title;
-  if (bodyResult.provided) data.body = bodyResult.value;
-  if (typeof flags.tags === 'string') {
-    data.tags = flags.tags
-      .split(',')
-      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
-      .filter((t) => t.length > 0);
-  }
-  if (flags.noAutoLink) data.autoLink = false;
-  else if (flags.autoLink === false) data.autoLink = false;
-
-  const result = await client.updateNode(idRef, data as any);
-  const node = result.node;
-
-  console.log(`✔ Refreshed note: ${node.title}`);
-  console.log(`   id: ${node.id}`);
-  if (node.tags.length > 0) console.log(`   tags: ${node.tags.join(', ')}`);
-  console.log(`   edges after rescore: ${result.linking.edgesCreated}`);
-}
-
 export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefreshFlags) {
   if (!idRef) {
     console.error('✖ Missing required parameter "id".');
@@ -313,10 +264,33 @@ export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefre
     return;
   }
 
-  if (isRemoteMode()) {
-    return runNodeRefreshRemote(idRef.trim(), flags);
+  const backend = getBackend();
+
+  if (backend.isRemote) {
+    const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
+    const data: Record<string, unknown> = {};
+    if (typeof flags.title === 'string') data.title = flags.title;
+    if (bodyResult.provided) data.body = bodyResult.value;
+    if (typeof flags.tags === 'string') {
+      data.tags = flags.tags
+        .split(',')
+        .map((t) => t.trim().replace(/^#/, '').toLowerCase())
+        .filter((t) => t.length > 0);
+    }
+    if (flags.noAutoLink) data.autoLink = false;
+    else if (flags.autoLink === false) data.autoLink = false;
+
+    const result = await backend.updateNode(idRef, data as any);
+    const node = result.node;
+
+    console.log(`✔ Refreshed note: ${node.title}`);
+    console.log(`   id: ${node.id}`);
+    if (node.tags.length > 0) console.log(`   tags: ${node.tags.join(', ')}`);
+    console.log(`   edges after rescore: ${result.linking.edgesCreated}`);
+    return;
   }
 
+  // Local mode: full embedding computation + rescoring
   const node = await resolveNodeReference(String(idRef), { select: flags.select });
   if (!node) {
     console.error('✖ No node found. Provide a full id or unique short id.');
@@ -331,7 +305,6 @@ export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefre
 
   const combinedText = `${nextTitle}\n${nextBody}`;
   const tokenCounts = tokenize(combinedText);
-  // When --tags is not provided, preserve existing tags instead of re-extracting
   const tags = typeof flags.tags === 'string'
     ? resolveTags(flags.tags, combinedText, tokenCounts)
     : node.tags;
@@ -357,15 +330,6 @@ export async function runNodeRefresh(idRef: string | undefined, flags: NodeRefre
     embedding,
     updatedAt,
   };
-
-  // Persist updated node to database
-  await updateNode(node.id, {
-    title: nextTitle,
-    body: nextBody,
-    tags,
-    tokenCounts,
-    embedding,
-  });
 
   let accepted = 0;
   if (autoLink) {
@@ -505,26 +469,10 @@ export async function runNodeDelete(idRef: string | undefined, flags: NodeDelete
     return;
   }
 
-  if (isRemoteMode()) {
-    return runNodeDeleteRemote(idRef.trim(), flags);
-  }
-
-  const node = await resolveNodeReference(String(idRef), { select: flags.select });
-  if (!node) {
-    console.error('✖ No node found. Provide a full id or unique short id.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const result = await deleteNode(node.id);
-  if (!result.nodeRemoved) {
-    console.error('✖ Node could not be removed.');
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`✔ Deleted note ${formatId(node.id)} (${node.title})`);
-  console.log(`   removed ${result.edgesRemoved} associated edges`);
+  const backend = getBackend();
+  const result = await backend.deleteNode(idRef.trim());
+  console.log(`✔ Deleted note ${result.deleted.nodeId.slice(0, 8)}`);
+  console.log(`   removed ${result.deleted.edgesRemoved} associated edges`);
 }
 
 function resolveTags(tagsOption: string | undefined, combinedText: string, tokenCounts: NodeRecord['tokenCounts']) {
@@ -625,7 +573,6 @@ function splitEditorArgs(command: string): string[] {
   }
 
   if (quote) {
-    // Unclosed quote -- treat remaining buffer as literal
     if (current.length > 0) result.push(current);
   } else if (current.length > 0) {
     result.push(current);
@@ -907,7 +854,6 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
     for (const { segment, content, newOrder } of contentChanges) {
       const combinedText = `${segment.node.title}\n${content}`;
       const tokenCounts = tokenize(combinedText);
-      // Preserve existing tags - only auto-extract if node had no tags
       const tags = segment.node.tags.length > 0 ? segment.node.tags : extractTags(combinedText, tokenCounts);
       const embedding = await computeEmbeddingForNode({ title: segment.node.title, body: content });
 
@@ -1002,18 +948,42 @@ async function applyDocumentEditSession(context: DocumentEditContext): Promise<E
   }
 }
 
-async function runNodeSynthesizeRemote(ids: string[], flags: NodeSynthesizeFlags) {
-  const client = getClient();
+export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
+  if (!ids || ids.length < 2) {
+    console.error('✖ Provide at least 2 node IDs to synthesize.');
+    console.error('');
+    console.error('Usage:');
+    console.error('  forest synthesize <id1> <id2> [id3...]');
+    console.error('');
+    console.error('Example:');
+    console.error('  forest synthesize abc123 def456 --preview');
+    console.error('');
+    console.error('Options:');
+    console.error('  --model=gpt-5|gpt-5-mini       Model to use (default: gpt-5)');
+    console.error('  --reasoning=minimal|low|medium|high  Reasoning effort (default: high)');
+    console.error('  --verbosity=low|medium|high    Output detail (default: high)');
+    console.error('  --preview                      Preview without saving');
+    console.error('  --max-tokens=N                 Max output tokens (default: auto)');
+    console.error('');
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend = getBackend();
   const config = loadConfig();
   const defaultModel = config.synthesizeModel || 'gpt-5';
 
-  console.log(`Synthesizing ${ids.length} nodes via remote server...`);
+  const model = validateModel(flags.model, defaultModel);
+  const reasoning = validateReasoning(flags.reasoning);
+  const verbosity = validateVerbosity(flags.verbosity);
 
-  const result = await client.synthesize({
+  console.log(`Synthesizing ${ids.length} nodes...`);
+
+  const result = await backend.synthesize({
     nodeIds: ids,
-    model: flags.model || defaultModel,
-    reasoning: flags.reasoning,
-    verbosity: flags.verbosity,
+    model,
+    reasoning,
+    verbosity,
     maxTokens: flags.maxTokens,
     preview: flags.preview,
     autoLink: typeof flags.autoLink === 'boolean' ? flags.autoLink : true,
@@ -1063,132 +1033,7 @@ async function runNodeSynthesizeRemote(ids: string[], flags: NodeSynthesizeFlags
   }
 }
 
-export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSynthesizeFlags) {
-  if (!ids || ids.length < 2) {
-    console.error('✖ Provide at least 2 node IDs to synthesize.');
-    console.error('');
-    console.error('Usage:');
-    console.error('  forest synthesize <id1> <id2> [id3...]');
-    console.error('');
-    console.error('Example:');
-    console.error('  forest synthesize abc123 def456 --preview');
-    console.error('');
-    console.error('Options:');
-    console.error('  --model=gpt-5|gpt-5-mini       Model to use (default: gpt-5)');
-    console.error('  --reasoning=minimal|low|medium|high  Reasoning effort (default: high)');
-    console.error('  --verbosity=low|medium|high    Output detail (default: high)');
-    console.error('  --preview                      Preview without saving');
-    console.error('  --max-tokens=N                 Max output tokens (default: auto)');
-    console.error('');
-    process.exitCode = 1;
-    return;
-  }
-
-  if (isRemoteMode()) {
-    return runNodeSynthesizeRemote(ids, flags);
-  }
-
-  // Resolve all node IDs
-  const resolvedIds: string[] = [];
-  console.log(`Resolving ${ids.length} source nodes...`);
-  for (const idRef of ids) {
-    const node = await resolveNodeReference(idRef.trim());
-    if (!node) {
-      console.error(`✖ Node not found: ${idRef}`);
-      process.exitCode = 1;
-      return;
-    }
-    resolvedIds.push(node.id);
-    console.log(`  ✓ ${formatId(node.id)} - ${node.title}`);
-  }
-
-  // Validate model and reasoning options
-  const config = loadConfig();
-  const defaultModel = config.synthesizeModel || 'gpt-5';
-  const model = validateModel(flags.model, defaultModel);
-  const reasoning = validateReasoning(flags.reasoning);
-  const verbosity = validateVerbosity(flags.verbosity);
-
-  console.log('');
-  console.log('Synthesis configuration:');
-  console.log(`  Model: ${model}`);
-  console.log(`  Reasoning: ${reasoning}`);
-  console.log(`  Verbosity: ${verbosity}`);
-  console.log('');
-  console.log('Calling OpenAI API...');
-
-  // Call synthesis core
-  const result = await synthesizeNodesCore(resolvedIds, {
-    model,
-    reasoning,
-    verbosity,
-    maxTokens: flags.maxTokens,
-  });
-
-  // Display results
-  console.log('');
-  console.log('='.repeat(80));
-  console.log(`SYNTHESIS RESULT`);
-  console.log('='.repeat(80));
-  console.log('');
-  console.log(`Title: ${result.title}`);
-  console.log('');
-  console.log('Tags:', result.suggestedTags.join(', '));
-  console.log('');
-  console.log('Body Preview (first 500 chars):');
-  console.log('-'.repeat(80));
-  console.log(result.body.slice(0, 500) + (result.body.length > 500 ? '...' : ''));
-  console.log('-'.repeat(80));
-  console.log('');
-  console.log('Metadata:');
-  console.log(`  Model: ${result.model}`);
-  console.log(`  Reasoning effort: ${result.reasoningEffort}`);
-  console.log(`  Verbosity: ${result.verbosity}`);
-  console.log(`  Tokens used: ${result.tokensUsed.reasoning} reasoning + ${result.tokensUsed.output} output`);
-  console.log(`  Estimated cost: $${result.cost.toFixed(4)}`);
-  console.log(`  Source nodes: ${result.sourceNodeIds.length}`);
-  console.log('');
-
-  // If preview mode, stop here
-  if (flags.preview) {
-    console.log('Preview mode - synthesis not saved.');
-    console.log('');
-    console.log('Full body:');
-    console.log('='.repeat(80));
-    console.log(result.body);
-    console.log('='.repeat(80));
-    return;
-  }
-
-  // Save as new node
-  console.log('Saving synthesis as new node...');
-  const autoLink = typeof flags.autoLink === 'boolean' ? flags.autoLink : true;
-
-  const nodeResult = await createNodeCore({
-    title: result.title,
-    body: result.body,
-    tags: result.suggestedTags,
-    autoLink,
-    metadata: {
-      origin: 'synthesize',
-      createdBy: 'ai',
-      model: result.model,
-      sourceNodes: result.sourceNodeIds,
-    },
-  });
-
-  console.log('');
-  console.log(`✔ Created synthesis node: ${nodeResult.node.title}`);
-  console.log(`   id: ${formatId(nodeResult.node.id)}`);
-  console.log(`   tags: ${nodeResult.node.tags.join(', ')}`);
-  if (autoLink) {
-    console.log(`   edges: ${nodeResult.linking.edgesCreated} accepted`);
-  }
-  console.log('');
-}
-
-async function runNodeImportRemote(flags: NodeImportFlags) {
-  const client = getClient();
+export async function runNodeImport(flags: NodeImportFlags) {
   const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
   const documentText = bodyResult.value;
 
@@ -1198,7 +1043,7 @@ async function runNodeImportRemote(flags: NodeImportFlags) {
     return;
   }
 
-  console.log(`Importing document (${documentText.length} characters) via remote server...`);
+  console.log(`Importing document (${documentText.length} characters)...`);
 
   let tags: string[] | undefined;
   if (flags.tags) {
@@ -1208,7 +1053,8 @@ async function runNodeImportRemote(flags: NodeImportFlags) {
       .filter((t) => t.length > 0);
   }
 
-  const result = await client.importDocument({
+  const backend = getBackend();
+  const result = await backend.importDocument({
     body: documentText,
     title: flags.title,
     tags,
@@ -1242,108 +1088,6 @@ async function runNodeImportRemote(flags: NodeImportFlags) {
   console.log(`  Sequential edges: ${result.linking.sequentialEdges}`);
   console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted`);
   console.log('');
-}
-
-export async function runNodeImport(flags: NodeImportFlags) {
-  if (isRemoteMode()) {
-    return runNodeImportRemote(flags);
-  }
-
-  // Resolve document input
-  const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
-  const documentText = bodyResult.value;
-
-  if (!documentText || documentText.trim().length === 0) {
-    console.error('✖ No document content provided. Use --file or --stdin.');
-    process.exitCode = 1;
-    return;
-  }
-
-  console.log(`Importing document (${documentText.length} characters)...`);
-
-  // Parse tags if provided
-  let tags: string[] | undefined;
-  if (flags.tags) {
-    tags = flags.tags
-      .split(',')
-      .map((t) => t.trim().replace(/^#/, '').toLowerCase())
-      .filter((t) => t.length > 0);
-  }
-
-  // Call core import function
-  const result = await importDocumentCore(documentText, {
-    documentTitle: flags.title,
-    tags,
-    chunkStrategy: validateChunkStrategy(flags.chunkStrategy),
-    maxTokens: flags.maxTokens,
-    overlap: flags.overlap,
-    autoLink: !flags.noAutoLink,
-    createParent: !flags.noParent,
-    linkSequential: !flags.noSequential,
-    sourceFile: flags.file,
-  });
-
-  // Emit output
-  if (flags.json) {
-    console.log(
-      JSON.stringify(
-        {
-          documentTitle: result.documentTitle,
-          rootNode: result.rootNode
-            ? {
-                id: result.rootNode.id,
-                title: result.rootNode.title,
-                tags: result.rootNode.tags,
-              }
-            : null,
-          chunks: result.chunks.map((c) => ({
-            id: c.node.id,
-            title: c.node.title,
-            tags: c.node.tags,
-            chunkIndex: c.chunk.metadata.chunkIndex,
-            estimatedTokens: c.chunk.metadata.estimatedTokens,
-          })),
-          totalChunks: result.totalChunks,
-          linking: result.linking,
-        },
-        null,
-        2
-      )
-    );
-    return;
-  }
-
-  // Text output
-  console.log('');
-  console.log(`✔ Imported document: ${result.documentTitle}`);
-  console.log(`   Total chunks: ${result.totalChunks}`);
-
-  if (result.rootNode) {
-    console.log(`   Root node: ${formatId(result.rootNode.id)} - ${result.rootNode.title}`);
-  }
-
-  console.log('');
-  console.log('Chunks:');
-  for (const { node, chunk } of result.chunks) {
-    console.log(`  ${formatId(node.id)} - ${node.title} (~${chunk.metadata.estimatedTokens} tokens)`);
-  }
-
-  console.log('');
-  console.log('Linking:');
-  console.log(`  Parent-child edges: ${result.linking.parentChildEdges}`);
-  console.log(`  Sequential edges: ${result.linking.sequentialEdges}`);
-  console.log(`  Semantic edges: ${result.linking.semanticAccepted} accepted`);
-  console.log('');
-}
-
-function validateChunkStrategy(strategyFlag: string | undefined): 'headers' | 'size' | 'hybrid' {
-  if (!strategyFlag) return 'headers';
-  const normalized = strategyFlag.toLowerCase();
-  if (normalized === 'headers' || normalized === 'size' || normalized === 'hybrid') {
-    return normalized;
-  }
-  console.error(`⚠ Invalid chunk strategy "${strategyFlag}", using default: headers`);
-  return 'headers';
 }
 
 function validateModel(modelFlag: string | undefined, defaultModel: SynthesisModel): SynthesisModel {

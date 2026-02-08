@@ -1,18 +1,13 @@
-import { semanticSearchCore } from '../../core/search';
 import {
   handleError,
-  formatNodeIdProgressive,
   parseCsvList,
   parseDate,
   normalizeSort,
 } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
-import { deduplicateChunks } from '../../lib/reconstruction';
-import { listNodes } from '../../lib/db';
 import { colorize } from '../formatters';
-import { selectNode, serializeMatch, type SelectionResult } from '../shared/explore';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { getBackend } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -33,8 +28,6 @@ type SearchFlags = {
   before?: string;
   until?: string;
   sort?: string;
-  select?: number;
-  interactive?: boolean;
   showChunks?: boolean;
   origin?: string;
   createdBy?: string;
@@ -114,14 +107,6 @@ export function createSearchCommand(clerc: ClercModule) {
           type: String,
           description: 'Sort metadata matches: score|recent|degree',
         },
-        select: {
-          type: Number,
-          description: '1-based index of the metadata match to focus',
-        },
-        interactive: {
-          type: Boolean,
-          description: 'Prompt to choose a metadata match when multiple exist',
-        },
         showChunks: {
           type: Boolean,
           description: 'Include document chunks in metadata results',
@@ -155,22 +140,81 @@ export function createSearchCommand(clerc: ClercModule) {
   );
 }
 
-async function runSearchRemote(query: string | undefined, flags: SearchFlags) {
-  if (!query || query.trim().length === 0) {
-    console.error('✖ Provide a search query. Remote mode only supports semantic search.');
+function detectSearchMode(flags: SearchFlags, query: string | undefined): { mode: SearchMode | null; tags: string[] } {
+  const requestedMode = normalizeMode(flags.mode);
+  const tags = parseCsvList(flags.tags) ?? [];
+  const metadataSignals =
+    requestedMode === 'metadata' ||
+    Boolean(
+      flags.term ||
+        flags.id ||
+        flags.title ||
+        flags.anyTag ||
+        flags.since ||
+        flags.before ||
+        flags.until ||
+        flags.sort ||
+        flags.showChunks ||
+        flags.origin ||
+        flags.createdBy ||
+        tags.length,
+    );
+  const hasQuery = typeof query === 'string' && query.trim().length > 0;
+
+  let mode: SearchMode | null = null;
+  if (requestedMode) {
+    mode = requestedMode;
+  } else if (hasQuery) {
+    mode = 'semantic';
+  } else if (metadataSignals) {
+    mode = 'metadata';
+  }
+
+  return { mode, tags };
+}
+
+async function runSearch(flags: SearchFlags, positionalQuery?: string) {
+  const query = flags.query ?? positionalQuery;
+  const { mode, tags } = detectSearchMode(flags, query);
+  const hasQuery = typeof query === 'string' && query.trim().length > 0;
+
+  if (mode === 'semantic' && !hasQuery) {
+    console.error('✖ Provide a --query or positional query for semantic search.');
     process.exitCode = 1;
     return;
   }
 
-  const client = getClient();
+  if (mode === null) {
+    console.error(
+      '✖ Provide a search query or metadata filters. Use --mode metadata to search by tags, ids, or recency.',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (mode === 'semantic') {
+    await runSemanticSearch(query!, flags, tags);
+    return;
+  }
+
+  await runMetadataSearch(flags, tags, query, positionalQuery);
+}
+
+async function runSemanticSearch(query: string, flags: SearchFlags, tags: string[]) {
   const limit = typeof flags.limit === 'number' ? flags.limit : 20;
   const minScore = typeof flags.minScore === 'number' ? flags.minScore : 0.0;
-  const tags = parseCsvList(flags.tags);
 
-  const result = await client.searchSemantic(query, {
+  if (minScore < 0 || minScore > 1) {
+    console.error('✖ minScore must be between 0.0 and 1.0');
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend = getBackend();
+  const result = await backend.searchSemantic(query, {
     limit,
     minScore,
-    tags: tags?.join(','),
+    tags: tags.length > 0 ? tags.join(',') : undefined,
   });
 
   if (flags.json) {
@@ -195,154 +239,11 @@ async function runSearchRemote(query: string | undefined, flags: SearchFlags) {
     const score = coloredScore.padEnd(20);
     const shortId = colorize.nodeId(item.shortId ?? item.id.slice(0, 8));
     const idCol = shortId.padEnd(30);
-    const title = (item.title.length > maxTitleWidth ? item.title.slice(0, maxTitleWidth - 3) + '...' : item.title).padEnd(maxTitleWidth);
-    const tagsStr = (item.tags?.join(', ') ?? '').slice(0, 30);
+    const title = truncate(item.title, maxTitleWidth).padEnd(maxTitleWidth);
+    const tagsStr = truncate((item.tags?.join(', ') ?? ''), 30);
     console.log(`${score} ${idCol} ${title} ${tagsStr}`);
   }
   console.log();
-}
-
-async function runSearch(flags: SearchFlags, positionalQuery?: string) {
-  // Resolve query from flag or positional argument
-  const query = flags.query ?? positionalQuery;
-
-  if (isRemoteMode()) {
-    return runSearchRemote(query, flags);
-  }
-
-  const requestedMode = normalizeMode(flags.mode);
-  const tags = parseCsvList(flags.tags);
-  const metadataSignals =
-    requestedMode === 'metadata' ||
-    Boolean(
-      flags.term ||
-        flags.id ||
-        flags.title ||
-        flags.anyTag ||
-        flags.since ||
-        flags.before ||
-        flags.until ||
-        flags.sort ||
-        flags.interactive ||
-        flags.select ||
-        flags.showChunks ||
-        flags.origin ||
-        flags.createdBy ||
-        (tags && tags.length),
-    );
-  const hasQuery = typeof query === 'string' && query.trim().length > 0;
-
-  let mode: SearchMode | null = null;
-  if (requestedMode) {
-    mode = requestedMode;
-  } else if (hasQuery) {
-    mode = 'semantic';
-  } else if (metadataSignals) {
-    mode = 'metadata';
-  }
-
-  if (mode === 'semantic' && !hasQuery) {
-    console.error('✖ Provide a --query or positional query for semantic search.');
-    process.exitCode = 1;
-    return;
-  }
-
-  if (mode === null) {
-    console.error(
-      '✖ Provide a search query or metadata filters. Use --mode metadata to search by tags, ids, or recency.',
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (mode === 'semantic') {
-    await runSemanticSearch(flags, query!, tags ?? []);
-    return;
-  }
-
-  await runMetadataSearch(flags, tags ?? [], query, positionalQuery);
-}
-
-async function runSemanticSearch(flags: SearchFlags, query: string, tags: string[]) {
-  // Parse flags
-  const limit = typeof flags.limit === 'number' ? flags.limit : 20;
-  const minScore = typeof flags.minScore === 'number' ? flags.minScore : 0.0;
-
-  // Validate minScore
-  if (minScore < 0 || minScore > 1) {
-    console.error('✖ minScore must be between 0.0 and 1.0');
-    process.exitCode = 1;
-    return;
-  }
-
-  // Call core search function
-  const result = await semanticSearchCore(query, {
-    limit,
-    offset: 0,
-    minScore,
-    tags: tags && tags.length > 0 ? tags : undefined,
-  });
-
-  // Deduplicate chunks - replace chunks with their parent documents
-  const deduplicatedNodes = await deduplicateChunks(result.nodes.map(item => item.node));
-
-  // Map back to include similarity scores
-  // For each deduplicated node, find the best matching similarity score from the original results
-  const deduplicatedResults = deduplicatedNodes.map(node => {
-    // Find all original results that match this node (either directly or as a parent)
-    const matchingScores = result.nodes
-      .filter(item => {
-        // Direct match
-        if (item.node.id === node.id) return true;
-        // This was a chunk whose parent is now the deduplicated node
-        if (item.node.isChunk && item.node.parentDocumentId === node.id) return true;
-        return false;
-      })
-      .map(item => item.similarity);
-
-    // Use the highest similarity score among matches
-    const similarity = matchingScores.length > 0 ? Math.max(...matchingScores) : 0;
-
-    return { node, similarity };
-  });
-
-  // Sort by similarity (highest first)
-  deduplicatedResults.sort((a, b) => b.similarity - a.similarity);
-
-  // Output results
-  if (flags.json) {
-    console.log(
-      JSON.stringify(
-        {
-          mode: 'semantic',
-          query,
-          total: deduplicatedResults.length,
-          limit,
-          minScore,
-          tags: tags && tags.length > 0 ? tags : null,
-          results: deduplicatedResults.map(item => ({
-            id: item.node.id,
-            title: item.node.title,
-            tags: item.node.tags,
-            similarity: item.similarity,
-            bodyPreview: item.node.body.slice(0, 100),
-            createdAt: item.node.createdAt,
-            updatedAt: item.node.updatedAt,
-          })),
-        },
-        null,
-        2,
-      ),
-    );
-  } else {
-    await printSemanticResults(
-      query,
-      { nodes: deduplicatedResults, total: deduplicatedResults.length },
-      tags || [],
-      minScore,
-      flags.longIds || false,
-    );
-  }
 }
 
 async function runMetadataSearch(
@@ -351,60 +252,32 @@ async function runMetadataSearch(
   query: string | undefined,
   positionalQuery?: string,
 ) {
-  const limit = typeof flags.limit === 'number' && !Number.isNaN(flags.limit) ? flags.limit : undefined;
+  const limit = typeof flags.limit === 'number' && !Number.isNaN(flags.limit) ? flags.limit : 20;
   const tagsAny = parseCsvList(flags.anyTag);
-  const since = parseDate(flags.since);
-  const until = parseDate(flags.before ?? flags.until);
   const sort = normalizeSort(flags.sort);
   const showChunks = Boolean(flags.showChunks);
+  const originFilter = flags.origin?.trim().toLowerCase();
+  const createdByFilter = flags.createdBy?.trim().toLowerCase();
 
   const termCandidate =
     typeof flags.term === 'string' && flags.term.trim().length > 0 ? flags.term : undefined;
   const inferredTerm = termCandidate ?? (flags.mode === 'metadata' ? query : undefined) ?? positionalQuery;
 
-  let selection = await selectNode({
+  const backend = getBackend();
+  const result = await backend.searchMetadata({
     id: flags.id,
     title: flags.title,
     term: inferredTerm,
     limit,
-    select: typeof flags.select === 'number' ? flags.select : undefined,
-    interactive: Boolean(flags.interactive),
-    tagsAll,
-    tagsAny,
-    since,
-    until,
+    tagsAll: tagsAll.length > 0 ? tagsAll : undefined,
+    tagsAny: tagsAny ?? undefined,
+    since: flags.since,
+    until: flags.before ?? flags.until,
     sort,
     showChunks,
+    origin: originFilter,
+    createdBy: createdByFilter,
   });
-
-  // Post-filter by provenance metadata
-  const originFilter = flags.origin?.trim().toLowerCase();
-  const createdByFilter = flags.createdBy?.trim().toLowerCase();
-
-  if (originFilter || createdByFilter) {
-    const filtered = selection.matches.filter((m) => {
-      const meta = m.node.metadata;
-      if (originFilter && meta?.origin !== originFilter) return false;
-      if (createdByFilter && meta?.createdBy?.toLowerCase() !== createdByFilter) return false;
-      return true;
-    });
-
-    if (filtered.length === 0) {
-      const filterDesc = [
-        originFilter ? `origin=${originFilter}` : '',
-        createdByFilter ? `createdBy=${createdByFilter}` : '',
-      ].filter(Boolean).join(', ');
-      console.error(`✖ No nodes matching provenance filters (${filterDesc}).`);
-      process.exitCode = 1;
-      return;
-    }
-
-    selection = {
-      selected: filtered[0],
-      matches: filtered,
-      limit: selection.limit,
-    };
-  }
 
   if (flags.json) {
     console.log(
@@ -412,19 +285,19 @@ async function runMetadataSearch(
         {
           mode: 'metadata',
           term: inferredTerm ?? null,
-          limit: selection.limit,
+          limit,
           filters: {
             tagsAll: tagsAll.length > 0 ? tagsAll : null,
             tagsAny: tagsAny && tagsAny.length > 0 ? tagsAny : null,
-            since: since ? since.toISOString() : null,
-            until: until ? until.toISOString() : null,
+            since: flags.since ?? null,
+            until: (flags.before ?? flags.until) ?? null,
             sort: sort ?? 'score',
             showChunks,
             origin: originFilter ?? null,
             createdBy: createdByFilter ?? null,
           },
-          selected: serializeMatch(selection.selected),
-          results: selection.matches.map(serializeMatch),
+          results: result.matches,
+          total: result.total,
         },
         null,
         2,
@@ -433,12 +306,12 @@ async function runMetadataSearch(
     return;
   }
 
-  await printMetadataResults(selection, {
+  printMetadataResults(result.matches, {
     term: inferredTerm,
     tagsAll,
     tagsAny: tagsAny ?? [],
-    since,
-    until,
+    since: parseDate(flags.since),
+    until: parseDate(flags.before ?? flags.until),
     sort,
     showChunks,
     longIds: Boolean(flags.longIds),
@@ -447,77 +320,8 @@ async function runMetadataSearch(
   });
 }
 
-async function printSemanticResults(
-  query: string,
-  result: { nodes: Array<{ node: any; similarity: number }>; total: number },
-  tags: string[],
-  minScore: number,
-  longIds: boolean,
-) {
-  console.log(`Semantic search: "${query}"`);
-
-  if (tags && tags.length > 0) {
-    console.log(`Filtered by tags: ${tags.join(', ')}`);
-  }
-
-  if (minScore > 0) {
-    console.log(`Minimum similarity: ${minScore.toFixed(2)}`);
-  }
-
-  console.log(`\nFound ${result.total} ${result.total === 1 ? 'result' : 'results'}:\n`);
-
-  if (result.nodes.length === 0) {
-    console.log('  (no matches)');
-    return;
-  }
-
-  // Calculate column widths
-  const maxTitleWidth = 50;
-  const scoreWidth = 10;
-  const idWidth = 10;
-  const tagsWidth = 30;
-
-  // Print header
-  console.log(
-    `${'SCORE'.padEnd(scoreWidth)} ${'ID'.padEnd(idWidth)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(tagsWidth)}`,
-  );
-  console.log('─'.repeat(scoreWidth + idWidth + maxTitleWidth + tagsWidth + 3));
-
-  // Use progressive IDs unless --long is specified
-  const allNodes = await listNodes();
-  const formatNodeId = (id: string) => (longIds ? id : formatNodeIdProgressive(id, allNodes));
-
-  // Print results
-  for (const item of result.nodes) {
-    const coloredScore = colorize.embeddingScore(item.similarity);
-    const score = coloredScore.padEnd(scoreWidth + 10); // Add extra padding for ANSI codes
-    const coloredId = colorize.nodeId(formatNodeId(item.node.id));
-    const shortId = coloredId.padEnd(idWidth + 20); // Add extra padding for ANSI codes
-    const title = truncate(item.node.title, maxTitleWidth).padEnd(maxTitleWidth);
-    const tags = truncate(item.node.tags.join(', '), tagsWidth);
-
-    console.log(`${score} ${shortId} ${title} ${tags}`);
-  }
-
-  console.log();
-}
-
-function truncate(str: string, maxLength: number): string {
-  if (str.length <= maxLength) return str;
-  return str.slice(0, maxLength - 3) + '...';
-}
-
-function normalizeMode(value?: string): SearchMode | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'semantic' || normalized === 'metadata') {
-    return normalized;
-  }
-  return undefined;
-}
-
-async function printMetadataResults(
-  selection: SelectionResult,
+function printMetadataResults(
+  matches: Array<{ id: string; shortId?: string; title: string; tags: string[]; score: number; [key: string]: any }>,
   options: {
     term?: string;
     tagsAll: string[];
@@ -531,7 +335,6 @@ async function printMetadataResults(
     createdBy?: string;
   },
 ) {
-  const { matches } = selection;
   const termLabel = options.term && options.term.trim().length > 0 ? options.term.trim() : undefined;
 
   if (termLabel) {
@@ -568,35 +371,35 @@ async function printMetadataResults(
   const idWidth = 10;
   const tagsWidth = 30;
 
-  const allNodes = matches.map((match) => match.node);
-  const formatNodeId = (id: string) => (options.longIds ? id : formatNodeIdProgressive(id, allNodes));
-  const selectedId = selection.selected.node.id;
-
-  const orderedMatches = matches.slice();
-  const selectedIndex = orderedMatches.findIndex((m) => m.node.id === selectedId);
-  if (selectedIndex > 0) {
-    const [selectedMatch] = orderedMatches.splice(selectedIndex, 1);
-    orderedMatches.unshift(selectedMatch);
-  }
-
   console.log(
-    `${'SEL'.padEnd(4)}${'SCORE'.padEnd(scoreWidth)} ${'ID'.padEnd(idWidth)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(
-      tagsWidth,
-    )}`,
+    `${'SCORE'.padEnd(scoreWidth)} ${'ID'.padEnd(idWidth)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(tagsWidth)}`,
   );
-  console.log('─'.repeat(scoreWidth + idWidth + tagsWidth + maxTitleWidth + 7));
+  console.log('─'.repeat(scoreWidth + idWidth + tagsWidth + maxTitleWidth + 3));
 
-  for (const item of orderedMatches) {
+  for (const item of matches) {
     const coloredScore = colorize.embeddingScore(item.score);
     const score = coloredScore.padEnd(scoreWidth + 10);
-    const coloredId = colorize.nodeId(formatNodeId(item.node.id));
+    const displayId = options.longIds ? item.id : (item.shortId ?? item.id.slice(0, 8));
+    const coloredId = colorize.nodeId(displayId);
     const shortId = coloredId.padEnd(idWidth + 20);
-    const title = truncate(item.node.title, maxTitleWidth).padEnd(maxTitleWidth);
-    const tags = truncate(item.node.tags.join(', '), tagsWidth);
-    const marker = item.node.id === selectedId ? colorize.label('*') : ' ';
-
-    console.log(`${marker.padEnd(4)}${score} ${shortId} ${title} ${tags}`);
+    const title = truncate(item.title, maxTitleWidth).padEnd(maxTitleWidth);
+    const tags = truncate(item.tags.join(', '), tagsWidth);
+    console.log(`${score} ${shortId} ${title} ${tags}`);
   }
 
   console.log('');
+}
+
+function truncate(str: string, maxLength: number): string {
+  if (str.length <= maxLength) return str;
+  return str.slice(0, maxLength - 3) + '...';
+}
+
+function normalizeMode(value?: string): SearchMode | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'semantic' || normalized === 'metadata') {
+    return normalized;
+  }
+  return undefined;
 }

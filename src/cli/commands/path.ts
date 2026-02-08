@@ -2,9 +2,8 @@
  * forest path - Find paths between nodes in the graph
  */
 
-import { findPath, PathResult } from '../../core/graph';
-import { resolveNodeReference, formatId } from '../shared/utils';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { formatId } from '../shared/utils';
+import { getBackend } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -41,39 +40,6 @@ export function createPathCommand(clerc: ClercModule) {
   );
 }
 
-async function runPathRemote(fromRef: string, toRef: string, flags: PathFlags) {
-  const client = getClient();
-  const result = await client.findPath(fromRef, toRef);
-
-  if (flags.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-
-  if (!result.found) {
-    console.log(`No path found between "${fromRef}" and "${toRef}"`);
-    return;
-  }
-
-  console.log(`Path found (${result.hopCount} hops, total score: ${result.totalScore.toFixed(3)}):`);
-  console.log('');
-
-  for (let i = 0; i < result.path.length; i++) {
-    const step = result.path[i];
-    const id = flags.longIds ? step.nodeId : formatId(step.nodeId);
-
-    if (i === 0) {
-      console.log(`  ${id}  ${step.nodeTitle}`);
-    } else {
-      const arrow = step.edgeType && step.edgeType !== 'semantic'
-        ? `  ↓ [${step.edgeType}] (${step.edgeScore?.toFixed(3)})`
-        : `  ↓ (${step.edgeScore?.toFixed(3)})`;
-      console.log(arrow);
-      console.log(`  ${id}  ${step.nodeTitle}`);
-    }
-  }
-}
-
 async function runPath(fromRef: string | undefined, toRef: string | undefined, flags: PathFlags) {
   if (!fromRef || !toRef) {
     console.error('Usage: forest path <from> <to>');
@@ -86,26 +52,8 @@ async function runPath(fromRef: string | undefined, toRef: string | undefined, f
     return;
   }
 
-  if (isRemoteMode()) {
-    return runPathRemote(fromRef, toRef, flags);
-  }
-
-  const fromNode = await resolveNodeReference(fromRef);
-  const toNode = await resolveNodeReference(toRef);
-
-  if (!fromNode) {
-    console.error(`✖ Could not find node: ${fromRef}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!toNode) {
-    console.error(`✖ Could not find node: ${toRef}`);
-    process.exitCode = 1;
-    return;
-  }
-
-  const result = await findPath(fromNode.id, toNode.id);
+  const backend = getBackend();
+  const result = await backend.findPath(fromRef, toRef);
 
   if (flags.json) {
     console.log(JSON.stringify(result, null, 2));
@@ -113,7 +61,7 @@ async function runPath(fromRef: string | undefined, toRef: string | undefined, f
   }
 
   if (!result.found) {
-    console.log(`No path found between "${fromNode.title}" and "${toNode.title}"`);
+    console.log(`No path found between "${fromRef}" and "${toRef}"`);
     return;
   }
 

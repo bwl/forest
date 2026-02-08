@@ -1,10 +1,8 @@
-import { listNodes, updateNodeIndexData } from '../../lib/db';
-
-import { formatId, handleError, resolveNodeReference } from '../shared/utils';
+import { formatId, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { getBackend } from '../shared/remote';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -241,14 +239,11 @@ export function registerTagsCommands(cli: ClercInstance, clerc: ClercModule) {
 }
 
 async function runTagsDashboard() {
-  const nodes = await listNodes();
-  const counts = new Map<string, number>();
-  for (const node of nodes) {
-    for (const tag of node.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-  }
+  const backend = getBackend();
+  const result = await backend.listTags({ sort: 'count', order: 'desc' });
 
-  const totalTags = counts.size;
-  const topTags = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const totalTags = result.total;
+  const topTags = result.tags.slice(0, 10);
 
   console.log('');
   console.log(`Total unique tags: ${totalTags}`);
@@ -257,8 +252,8 @@ async function runTagsDashboard() {
   if (topTags.length > 0) {
     console.log('Top 10 tags:');
     console.log('');
-    topTags.forEach(([tag, count]) => {
-      console.log(`  ${String(count).padStart(3, ' ')}  ${tag}`);
+    topTags.forEach((item) => {
+      console.log(`  ${String(item.count).padStart(3, ' ')}  ${item.name}`);
     });
     console.log('');
   }
@@ -286,37 +281,6 @@ function parseTagList(value: string | undefined): string[] {
   ).sort((a, b) => a.localeCompare(b));
 }
 
-async function runTagsAddRemote(ref: string, tags: string[], flags: TagsModifyFlags) {
-  const client = getClient();
-  const result = await client.addTags(ref, tags);
-
-  if (flags.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-
-  console.log(`${colorize.success('✔')} Added ${tags.length} tag(s) to ${result.nodeId.slice(0, 8)}`);
-  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ')}`);
-}
-
-async function runTagsRemoveRemote(ref: string, tags: string[], flags: TagsModifyFlags) {
-  const client = getClient();
-  const result = await client.removeTags(ref, tags);
-
-  if (flags.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return;
-  }
-
-  if (result.removed.length === 0) {
-    console.log(`${colorize.info('ℹ')} No matching tags to remove on ${result.nodeId.slice(0, 8)}`);
-    return;
-  }
-
-  console.log(`${colorize.success('✔')} Removed ${result.removed.length} tag(s) from ${result.nodeId.slice(0, 8)}`);
-  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
-}
-
 export async function runTagsAdd(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
   if (!ref) {
     console.error('✖ Provide a node reference.');
@@ -331,41 +295,16 @@ export async function runTagsAdd(ref: string | undefined, tagsArg: string | unde
     return;
   }
 
-  if (isRemoteMode()) {
-    return runTagsAddRemote(ref, tags, flags);
-  }
-
-  const node = await resolveNodeReference(ref);
-  if (!node) {
-    console.error('✖ No node found. Provide a full id, unique short id, @ref, or "title".');
-    process.exitCode = 1;
-    return;
-  }
-
-  const nextTags = Array.from(new Set([...node.tags, ...tags].map((tag) => tag.toLowerCase()))).sort((a, b) =>
-    a.localeCompare(b),
-  );
-  await updateNodeIndexData(node.id, nextTags, node.tokenCounts);
+  const backend = getBackend();
+  const result = await backend.addTags(ref, tags);
 
   if (flags.json) {
-    console.log(
-      JSON.stringify(
-        {
-          id: node.id,
-          shortId: formatId(node.id),
-          title: node.title,
-          added: tags,
-          tags: nextTags,
-        },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  console.log(`${colorize.success('✔')} Added ${tags.length} tag(s) to ${formatId(node.id)} (${node.title})`);
-  console.log(`   ${colorize.label('tags:')} ${nextTags.map((t) => colorize.tag(t)).join(', ')}`);
+  console.log(`${colorize.success('✔')} Added ${tags.length} tag(s) to ${result.nodeId.slice(0, 8)}`);
+  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ')}`);
 }
 
 async function runTagsRemove(ref: string | undefined, tagsArg: string | undefined, flags: TagsModifyFlags) {
@@ -382,70 +321,26 @@ async function runTagsRemove(ref: string | undefined, tagsArg: string | undefine
     return;
   }
 
-  if (isRemoteMode()) {
-    return runTagsRemoveRemote(ref, tags, flags);
-  }
-
-  const node = await resolveNodeReference(ref);
-  if (!node) {
-    console.error('✖ No node found. Provide a full id, unique short id, @ref, or "title".');
-    process.exitCode = 1;
-    return;
-  }
-
-  const removeSet = new Set(tags.map((tag) => tag.toLowerCase()));
-  const before = node.tags.map((tag) => tag.toLowerCase());
-  const nextTags = before.filter((tag) => !removeSet.has(tag)).sort((a, b) => a.localeCompare(b));
-  const removed = before.filter((tag) => removeSet.has(tag));
-
-  if (removed.length === 0) {
-    if (flags.json) {
-      console.log(
-        JSON.stringify(
-          {
-            id: node.id,
-            shortId: formatId(node.id),
-            title: node.title,
-            removed: [],
-            tags: node.tags,
-          },
-          null,
-          2,
-        ),
-      );
-      return;
-    }
-
-    console.log(`${colorize.info('ℹ')} No matching tags to remove on ${formatId(node.id)} (${node.title})`);
-    return;
-  }
-
-  await updateNodeIndexData(node.id, nextTags, node.tokenCounts);
+  const backend = getBackend();
+  const result = await backend.removeTags(ref, tags);
 
   if (flags.json) {
-    console.log(
-      JSON.stringify(
-        {
-          id: node.id,
-          shortId: formatId(node.id),
-          title: node.title,
-          removed,
-          tags: nextTags,
-        },
-        null,
-        2,
-      ),
-    );
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
-  console.log(`${colorize.success('✔')} Removed ${removed.length} tag(s) from ${formatId(node.id)} (${node.title})`);
-  console.log(`   ${colorize.label('tags:')} ${nextTags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
+  if (result.removed.length === 0) {
+    console.log(`${colorize.info('ℹ')} No matching tags to remove on ${result.nodeId.slice(0, 8)}`);
+    return;
+  }
+
+  console.log(`${colorize.success('✔')} Removed ${result.removed.length} tag(s) from ${result.nodeId.slice(0, 8)}`);
+  console.log(`   ${colorize.label('tags:')} ${result.tags.map((t) => colorize.tag(t)).join(', ') || '(none)'}`);
 }
 
-async function runTagsListRemote(flags: TagsListFlags) {
-  const client = getClient();
-  const result = await client.listTags({ sort: 'count', order: 'desc' });
+async function runTagsList(flags: TagsListFlags) {
+  const backend = getBackend();
+  const result = await backend.listTags({ sort: 'count', order: 'desc' });
 
   let items = result.tags;
   const limit = typeof flags.top === 'number' && Number.isFinite(flags.top) && flags.top > 0 ? Math.floor(flags.top) : undefined;
@@ -471,49 +366,6 @@ async function runTagsListRemote(flags: TagsListFlags) {
   });
 }
 
-async function runTagsList(flags: TagsListFlags) {
-  if (isRemoteMode()) {
-    return runTagsListRemote(flags);
-  }
-
-  const nodes = await listNodes();
-  const counts = new Map<string, number>();
-  for (const node of nodes) {
-    for (const tag of node.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
-  }
-  let items = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  const limit =
-    typeof flags.top === 'number' && Number.isFinite(flags.top) && flags.top > 0 ? Math.floor(flags.top) : undefined;
-  if (typeof limit === 'number') {
-    items = items.slice(0, limit);
-  }
-
-  if (flags.json) {
-    console.log(JSON.stringify(items.map(([tag, count]) => ({ tag, count })), null, 2));
-    return;
-  }
-
-  if (items.length === 0) {
-    console.log('No tags found.');
-    return;
-  }
-
-  // Find max count for gradient calculation
-  const maxCount = items.length > 0 ? items[0][1] : 1;
-
-  items.forEach(([tag, count]) => {
-    const coloredCount = colorize.count(count, maxCount);
-    const coloredTag = colorize.tag(tag);
-    console.log(`${String(count).padStart(3, ' ')} ${coloredCount}  ${coloredTag}`);
-  });
-}
-
-async function runTagsRenameRemote(oldTag: string, nextTag: string) {
-  const client = getClient();
-  const result = await client.renameTag(oldTag, nextTag);
-  console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${result.renamed.nodesAffected} notes`);
-}
-
 async function runTagsRename(oldTag: string | undefined, nextTag: string | undefined) {
   if (!oldTag || !nextTag) {
     console.error('✖ Provide both the existing tag and the new tag.');
@@ -521,26 +373,15 @@ async function runTagsRename(oldTag: string | undefined, nextTag: string | undef
     return;
   }
 
-  if (isRemoteMode()) {
-    return runTagsRenameRemote(oldTag, nextTag);
-  }
-
-  const nodes = await listNodes();
-  let changed = 0;
-  for (const node of nodes) {
-    if (!node.tags.includes(oldTag)) continue;
-    const next = Array.from(new Set(node.tags.map((tag) => (tag === oldTag ? nextTag : tag))));
-    await updateNodeIndexData(node.id, next, node.tokenCounts);
-    changed += 1;
-  }
-
-  console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${changed} notes`);
+  const backend = getBackend();
+  const result = await backend.renameTag(oldTag, nextTag);
+  console.log(`${colorize.success('✔')} Renamed tag '${colorize.tag(oldTag)}' to '${colorize.tag(nextTag)}' on ${result.renamed.nodesAffected} notes`);
 }
 
-async function runTagsStatsRemote(flags: TagsStatsFlags) {
-  const client = getClient();
+async function runTagsStats(flags: TagsStatsFlags) {
+  const backend = getBackend();
   const trimmedTag = typeof flags.tag === 'string' ? flags.tag.trim() : '';
-  const result = await client.getTagStats({
+  const result = await backend.getTagStats({
     focusTag: trimmedTag.length > 0 ? trimmedTag : undefined,
     minCount: flags.minCount,
     top: flags.top,
@@ -572,90 +413,6 @@ async function runTagsStatsRemote(flags: TagsStatsFlags) {
     });
     console.log('');
   } else {
-    console.log('No tag pairs found.');
-  }
-}
-
-async function runTagsStats(flags: TagsStatsFlags) {
-  if (isRemoteMode()) {
-    return runTagsStatsRemote(flags);
-  }
-
-  const nodes = await listNodes();
-  const min =
-    typeof flags.minCount === 'number' && Number.isFinite(flags.minCount) ? Math.max(0, Math.floor(flags.minCount)) : 0;
-  const top =
-    typeof flags.top === 'number' && Number.isFinite(flags.top) && flags.top > 0 ? Math.floor(flags.top) : 10;
-  const tagCounts = new Map<string, number>();
-  const pairCounts = new Map<string, number>();
-
-  for (const node of nodes) {
-    const uniqueTags = Array.from(new Set(node.tags));
-    for (const tag of uniqueTags) {
-      tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
-    }
-    for (let i = 0; i < uniqueTags.length; i += 1) {
-      for (let j = i + 1; j < uniqueTags.length; j += 1) {
-        const a = uniqueTags[i];
-        const b = uniqueTags[j];
-        const key = a < b ? `${a}::${b}` : `${b}::${a}`;
-        pairCounts.set(key, (pairCounts.get(key) ?? 0) + 1);
-      }
-    }
-  }
-
-  const trimmedTag = typeof flags.tag === 'string' ? flags.tag.trim() : '';
-  if (trimmedTag.length > 0) {
-    const items: Array<{ tag: string; count: number }> = [];
-    for (const [pair, count] of pairCounts.entries()) {
-      const [a, b] = pair.split('::');
-      if (a === trimmedTag) items.push({ tag: b, count });
-      else if (b === trimmedTag) items.push({ tag: a, count });
-    }
-    const filtered = items.filter((item) => item.count >= min);
-    const ranked = filtered.sort((a, b) => b.count - a.count).slice(0, top);
-    if (flags.json) {
-      console.log(JSON.stringify({ tag: trimmedTag, coTags: ranked }, null, 2));
-      return;
-    }
-    if (ranked.length === 0) {
-      console.log(`No co-occurring tags for '${trimmedTag}'.`);
-      return;
-    }
-    console.log(`Top co-occurring tags with '${trimmedTag}':`);
-    ranked.forEach((item) => console.log(`  ${String(item.count).padStart(3, ' ')}  ${item.tag}`));
-    return;
-  }
-
-  const topTags = [...tagCounts.entries()]
-    .filter(([, count]) => count >= min)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, top)
-    .map(([tag, count]) => ({ tag, count }));
-  const topPairs = [...pairCounts.entries()]
-    .filter(([, count]) => count >= min)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, top)
-    .map(([pair, count]) => ({ pair, count }));
-
-  if (flags.json) {
-    console.log(JSON.stringify({ topTags, topPairs }, null, 2));
-    return;
-  }
-
-  if (topTags.length > 0) {
-    console.log('Top tags:');
-    topTags.forEach((entry) => {
-      console.log(`  ${String(entry.count).padStart(3, ' ')}  ${entry.tag}`);
-    });
-    console.log('');
-  }
-  if (topPairs.length > 0) {
-    console.log('Top tag pairs:');
-    topPairs.forEach((entry) => {
-      console.log(`  ${String(entry.count).padStart(3, ' ')}  ${entry.pair.replace('::', ' + ')}`);
-    });
-  } else if (topTags.length === 0) {
     console.log('No tag pairs found.');
   }
 }

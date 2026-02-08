@@ -1,16 +1,8 @@
-import { NodeRecord } from '../../lib/db';
-import { getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
-import { createNodeCore } from '../../core/nodes';
-
 import { handleError, resolveBodyInput, formatId } from '../shared/utils';
-import {
-  SelectionResult,
-  printExplore,
-} from '../shared/explore';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
-import { isRemoteMode, getClient } from '../shared/remote';
+import { getBackend } from '../shared/remote';
 
 type ClercModule = typeof import('clerc');
 
@@ -99,7 +91,7 @@ export function createCaptureCommand(clerc: ClercModule) {
   );
 }
 
-async function runCaptureRemote(flags: CaptureFlags) {
+async function runCapture(flags: CaptureFlags) {
   const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
   const body = bodyResult.value;
 
@@ -109,16 +101,17 @@ async function runCaptureRemote(flags: CaptureFlags) {
     return;
   }
 
-  const client = getClient();
+  const autoLink = computeAutoLinkIntent(flags);
   const tags = typeof flags.tags === 'string'
     ? flags.tags.split(',').map((t) => t.trim().replace(/^#/, '').toLowerCase()).filter((t) => t.length > 0)
     : undefined;
 
-  const result = await client.createNode({
+  const backend = getBackend();
+  const result = await backend.createNode({
     title: flags.title,
     body,
     tags,
-    autoLink: computeAutoLinkIntent(flags),
+    autoLink,
   });
 
   if (flags.json) {
@@ -134,50 +127,31 @@ async function runCaptureRemote(flags: CaptureFlags) {
     console.log(`   ${colorize.label('tags:')} ${coloredTags}`);
   }
   console.log(`   ${colorize.label('links:')} ${colorize.success(String(result.linking.edgesCreated))} edges`);
-}
 
-async function runCapture(flags: CaptureFlags) {
-  if (isRemoteMode()) {
-    return runCaptureRemote(flags);
-  }
-
-  const bodyResult = await resolveBodyInput(flags.body, flags.file, flags.stdin);
-  const body = bodyResult.value;
-
-  if (!body || body.trim().length === 0) {
-    console.error('✖ No content provided. Use --body, --file, or --stdin.');
-    process.exitCode = 1;
-    return;
-  }
-
-  const autoLink = computeAutoLinkIntent(flags);
-
-  // Parse explicit tags if provided
-  const tags = typeof flags.tags === 'string'
-    ? flags.tags.split(',').map((tag) => tag.trim().replace(/^#/, '').toLowerCase()).filter((tag) => tag.length > 0)
-    : undefined;
-
-  const result = await createNodeCore({
-    title: flags.title,
-    body,
-    tags,
-    autoLink,
-    metadata: { origin: 'capture', createdBy: 'user' },
-  });
-
-  const newNode = result.node;
-  const summary = { accepted: result.linking.edgesCreated };
-
-  if (flags.json) {
-    await emitJsonSummary(newNode, summary, autoLink);
-    return;
-  }
-
-  emitTextSummary(newNode, newNode.tags, summary, autoLink);
-
+  // Preview: show neighborhood after capture
   const shouldPreview = computePreviewIntent(flags);
   if (shouldPreview) {
-    await runPreview(newNode);
+    console.log('');
+    try {
+      const neighborhood = await backend.getNeighborhood(node.id, { depth: 1, limit: 15 });
+      const directEdges = neighborhood.edges.filter(
+        (e) => e.source === node.id || e.target === node.id,
+      );
+      if (directEdges.length > 0) {
+        console.log(`${colorize.label('nearby:')}`);
+        const nodeMap = new Map(neighborhood.nodes.map((n) => [n.id, n]));
+        for (const edge of directEdges) {
+          const otherId = edge.source === node.id ? edge.target : edge.source;
+          const otherNode = nodeMap.get(otherId);
+          const otherTitle = otherNode ? otherNode.title : otherId;
+          const otherFmtId = formatId(otherId);
+          const coloredScore = colorize.embeddingScore(edge.score);
+          console.log(`  ${coloredScore}  ${colorize.nodeId(otherFmtId)}  ${otherTitle}`);
+        }
+      }
+    } catch {
+      // Preview is best-effort
+    }
   }
 }
 
@@ -187,77 +161,9 @@ function computeAutoLinkIntent(flags: CaptureFlags) {
   return true;
 }
 
-async function emitJsonSummary(node: NodeRecord, summary: { accepted: number }, autoLinked: boolean) {
-  console.log(
-    JSON.stringify(
-      {
-        node: {
-          id: node.id,
-          title: node.title,
-          tags: node.tags,
-          createdAt: node.createdAt,
-          updatedAt: node.updatedAt,
-          metadata: node.metadata ?? null,
-        },
-        body: node.body,
-        links: {
-          autoLinked,
-          accepted: summary.accepted,
-          thresholds: {
-            semantic: getSemanticThreshold(),
-            tags: getTagThreshold(),
-          },
-        },
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-function emitTextSummary(
-  node: NodeRecord,
-  tags: string[],
-  summary: { accepted: number },
-  autoLinked: boolean,
-) {
-  console.log(`${colorize.success('✔')} Captured idea: ${node.title}`);
-  console.log(`   ${colorize.label('id:')} ${colorize.nodeId(formatId(node.id))}`);
-  if (tags.length > 0) {
-    const coloredTags = tags.map(tag => colorize.tag(tag)).join(', ');
-    console.log(`   ${colorize.label('tags:')} ${coloredTags}`);
-  }
-  if (autoLinked) {
-    console.log(
-      `   ${colorize.label('links:')} ${colorize.success(String(summary.accepted))} edges (semantic>=${getSemanticThreshold().toFixed(3)}, tags>=${getTagThreshold().toFixed(3)})`,
-    );
-  } else {
-    console.log(`   ${colorize.label('links:')} auto-linking skipped (--no-auto-link)`);
-  }
-}
-
 function computePreviewIntent(flags: CaptureFlags) {
   let shouldPreview = true;
   if (flags.noPreview) shouldPreview = false;
   if (flags.preview) shouldPreview = true;
   return shouldPreview;
-}
-
-async function runPreview(node: NodeRecord) {
-  console.log('\nPreview:');
-  const selection: SelectionResult = {
-    selected: { node, score: 1 },
-    matches: [{ node, score: 1 }],
-    limit: 1,
-  };
-  await printExplore({
-    selection,
-    limit: 15,
-    matchLimit: 1,
-    depth: 1,
-    longIds: false,
-    json: false,
-    showMatches: false,
-    focusSelected: true,
-  });
 }
