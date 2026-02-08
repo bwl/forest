@@ -30,7 +30,37 @@ async function resolveEdgeByRef(ref: string): Promise<EdgeRecord> {
   return edge;
 }
 
+// Import scoring thresholds
+import { getSemanticThreshold, getTagThreshold } from '../../lib/scoring';
+
 export const edgesRoutes = new Elysia({ prefix: '/api/v1' })
+  // GET /edges/threshold - Get edge acceptance thresholds
+  .get(
+    '/edges/threshold',
+    async ({ set }) => {
+      try {
+        return createSuccessResponse({
+          semanticThreshold: getSemanticThreshold(),
+          tagThreshold: getTagThreshold(),
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      detail: {
+        tags: ['Edges'],
+        summary: 'Get edge thresholds',
+        description: 'Returns the current semantic and tag score thresholds for edge acceptance',
+      },
+    },
+  )
+
   // GET /edges - List edges
   .get(
     '/edges',

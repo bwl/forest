@@ -119,6 +119,7 @@ export function formatNodeForList(node: NodeRecord) {
     hasEmbedding: Boolean(node.embedding),
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    metadata: node.metadata ?? null,
   };
 }
 

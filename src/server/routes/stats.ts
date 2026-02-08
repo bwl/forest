@@ -1,45 +1,46 @@
 import { Elysia, t } from 'elysia';
 import { getStats } from '../../core/stats';
+import { createSuccessResponse } from '../utils/helpers';
+import { parseQueryInt } from '../utils/helpers';
 
 export const statsRoutes = new Elysia({ prefix: '/api/v1' })
   .get(
     '/stats',
-    async () => {
-      const stats = await getStats({ top: 10 });
+    async ({ query }) => {
+      const top = parseQueryInt(query.top as string | undefined, 10, 1, 100);
+      const stats = await getStats({ top });
 
-      return {
-        success: true,
-        data: {
-          nodes: {
-            total: stats.counts.nodes,
-            recentCount: stats.recent.length,
-            recent: stats.recent.map((node) => ({
-              id: node.id,
-              title: node.title,
-              createdAt: node.updatedAt, // Using updatedAt as it's sorted by that
-            })),
-          },
-          edges: {
-            total: stats.counts.edges,
-          },
-          tags: {
-            total: stats.tags.reduce((sum, tag) => sum + tag.count, 0),
-            topTags: stats.tags.map((tag) => ({
-              name: tag.tag,
-              count: tag.count,
-            })),
-          },
-          highDegreeNodes: stats.highDegree.map((node) => ({
+      return createSuccessResponse({
+        nodes: {
+          total: stats.counts.nodes,
+          recentCount: stats.recent.length,
+          recent: stats.recent.map((node) => ({
             id: node.id,
             title: node.title,
-            edgeCount: node.degree,
+            createdAt: node.updatedAt,
           })),
         },
-        meta: {
-          timestamp: new Date().toISOString(),
-          version: '0.4.0',
+        edges: {
+          total: stats.counts.edges,
         },
-      };
+        degree: stats.degree,
+        tags: {
+          total: stats.tags.reduce((sum, tag) => sum + tag.count, 0),
+          topTags: stats.tags.map((tag) => ({
+            name: tag.tag,
+            count: tag.count,
+          })),
+        },
+        tagPairs: stats.tagPairs.map((pair) => ({
+          pair: pair.pair,
+          count: pair.count,
+        })),
+        highDegreeNodes: stats.highDegree.map((node) => ({
+          id: node.id,
+          title: node.title,
+          edgeCount: node.degree,
+        })),
+      });
     },
     {
       detail: {

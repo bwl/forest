@@ -7,7 +7,7 @@ import {
   DocumentChunkRecord,
 } from '../../lib/db';
 import { importDocumentCore } from '../../core/import';
-import { ForestError, ValidationError, createErrorResponse } from '../utils/errors';
+import { ForestError, ValidationError, NodeNotFoundError, createErrorResponse } from '../utils/errors';
 import { createSuccessResponse } from '../utils/helpers';
 import { formatId } from '../../cli/shared/utils';
 
@@ -17,10 +17,10 @@ export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
     async ({ set }) => {
       try {
         const documents = await listDocuments();
-        return {
-          data: documents,
+        return createSuccessResponse({
+          documents,
           count: documents.length,
-        };
+        });
       } catch (error) {
         if (error instanceof ForestError) {
           set.status = error.getStatusCode();
@@ -39,15 +39,68 @@ export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
     }
   )
   .get(
+    '/documents/stats',
+    async ({ set }) => {
+      try {
+        const documents = await listDocuments();
+
+        let totalChunks = 0;
+        let totalVersions = 0;
+        const sources = new Map<string, number>();
+        const strategies = new Map<string, number>();
+
+        for (const doc of documents) {
+          const metadata = doc.metadata as any;
+          totalVersions += doc.version;
+
+          if (metadata) {
+            if (metadata.chunkCount) totalChunks += metadata.chunkCount;
+            if (metadata.source) {
+              sources.set(metadata.source, (sources.get(metadata.source) ?? 0) + 1);
+            }
+            if (metadata.chunkStrategy) {
+              strategies.set(metadata.chunkStrategy, (strategies.get(metadata.chunkStrategy) ?? 0) + 1);
+            }
+          }
+        }
+
+        const avgVersion = documents.length > 0 ? totalVersions / documents.length : 0;
+        const avgChunks = documents.length > 0 ? totalChunks / documents.length : 0;
+
+        return createSuccessResponse({
+          totalDocuments: documents.length,
+          totalChunks,
+          avgChunksPerDocument: Math.round(avgChunks * 10) / 10,
+          avgVersion: Math.round(avgVersion * 10) / 10,
+          bySource: Object.fromEntries(sources),
+          byStrategy: Object.fromEntries(strategies),
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      detail: {
+        summary: 'Document statistics',
+        description: 'Returns aggregate statistics about documents',
+        tags: ['Documents'],
+      },
+    }
+  )
+  .get(
     '/documents/:id',
     async ({ params, set }) => {
       try {
         const document = await getDocumentById(params.id);
         if (!document) {
-          set.status = 404;
-          return { error: 'Document not found', code: 'DOCUMENT_NOT_FOUND' };
+          throw new NodeNotFoundError(params.id);
         }
-        return { data: document };
+        return createSuccessResponse({ document });
       } catch (error) {
         if (error instanceof ForestError) {
           set.status = error.getStatusCode();
@@ -75,15 +128,14 @@ export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
         // Verify document exists
         const document = await getDocumentById(params.id);
         if (!document) {
-          set.status = 404;
-          return { error: 'Document not found', code: 'DOCUMENT_NOT_FOUND' };
+          throw new NodeNotFoundError(params.id);
         }
 
         const chunks = await getDocumentChunks(params.id);
-        return {
-          data: chunks,
+        return createSuccessResponse({
+          chunks,
           count: chunks.length,
-        };
+        });
       } catch (error) {
         if (error instanceof ForestError) {
           set.status = error.getStatusCode();
