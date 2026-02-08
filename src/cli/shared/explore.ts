@@ -1,15 +1,12 @@
 import {
   listEdges,
   listNodes,
-  findNodeByTitle,
-  getNodeById,
-  searchNodes,
   NodeRecord,
   SearchMatch,
   EdgeRecord,
 } from '../../lib/db';
-import { collectNeighborhood, buildGraph, graphFromRecords } from '../../lib/graph';
-import { filterOutChunks } from '../../lib/reconstruction';
+import { collectNeighborhood, graphFromRecords } from '../../lib/graph';
+import { metadataSearchCore } from '../../core/search';
 
 import {
   DEFAULT_MATCH_DISPLAY_LIMIT,
@@ -19,11 +16,6 @@ import {
   formatNodeIdProgressive,
   formatScore,
   getEdgePrefix,
-  isShortId,
-  normalizeSort,
-  parseCsvList,
-  parseDate,
-  resolveByIdPrefix,
 } from './utils';
 import { colorize } from '../formatters';
 
@@ -42,6 +34,8 @@ export type SelectionInput = {
   until?: Date | null;
   sort?: 'score' | 'recent' | 'degree';
   showChunks?: boolean;
+  origin?: string;
+  createdBy?: string;
 };
 
 export type ExploreRenderOptions = {
@@ -63,118 +57,30 @@ export type ExploreRenderOptions = {
 export async function selectNode(input: SelectionInput): Promise<SelectionResult> {
   const searchLimit = input.limit ?? DEFAULT_SEARCH_LIMIT;
 
-  if (input.id) {
-    let node = await getNodeById(input.id);
-    if (!node && isShortId(input.id)) {
-      const byPrefix = await resolveByIdPrefix(input.id);
-      if (byPrefix) node = byPrefix;
-    }
-    if (!node) {
-      throw new Error(`Node with id ${input.id} not found.`);
-    }
-    return { selected: { node, score: 1 }, matches: [{ node, score: 1 }], limit: 1 };
-  }
+  // Delegate filtering/scoring to the shared core function
+  const result = await metadataSearchCore({
+    id: input.id,
+    title: input.title,
+    term: input.term,
+    limit: searchLimit,
+    tagsAll: input.tagsAll,
+    tagsAny: input.tagsAny,
+    since: input.since ? input.since.toISOString() : undefined,
+    until: input.until ? input.until.toISOString() : undefined,
+    sort: input.sort,
+    showChunks: input.showChunks,
+    origin: input.origin,
+    createdBy: input.createdBy,
+  });
 
-  if (input.term && isShortId(input.term)) {
-    const prefixMatch = await resolveByIdPrefix(input.term);
-    if (prefixMatch) {
-      return { selected: { node: prefixMatch, score: 1 }, matches: [{ node: prefixMatch, score: 1 }], limit: 1 };
-    }
-  }
-
-  if (input.title) {
-    const titleMatch = await findNodeByTitle(input.title);
-    if (titleMatch) {
-      return { selected: { node: titleMatch, score: 1 }, matches: [{ node: titleMatch, score: 1 }], limit: 1 };
-    }
-  }
-
-  const term = input.title ?? input.term ?? '';
-  const hasFilters = Boolean(
-    (input.tagsAll && input.tagsAll.length) ||
-      (input.tagsAny && input.tagsAny.length) ||
-      input.since ||
-      input.until ||
-      (input.sort && input.sort !== 'score'),
-  );
-
-  let matches: SearchMatch[] = [];
-  if (!hasFilters && term) {
-    matches = await searchNodes(term, searchLimit);
-    // Filter out chunks unless explicitly requested
-    if (!input.showChunks) {
-      matches = matches.filter((m) => !m.node.isChunk);
-    }
-  } else {
-    const allNodes = await listNodes();
-    // Filter out chunks unless explicitly requested
-    const all = input.showChunks ? allNodes : filterOutChunks(allNodes);
-    const filtered = all.filter((node) => {
-      if (input.tagsAll && input.tagsAll.length) {
-        for (const t of input.tagsAll) if (!node.tags.includes(t)) return false;
-      }
-      if (input.tagsAny && input.tagsAny.length) {
-        let ok = false;
-        for (const t of input.tagsAny) if (node.tags.includes(t)) ok = true;
-        if (!ok) return false;
-      }
-      if (input.since) {
-        const ts = new Date(node.updatedAt).getTime();
-        if (Number.isFinite(ts) && ts < input.since.getTime()) return false;
-      }
-      if (input.until) {
-        const ts = new Date(node.updatedAt).getTime();
-        if (Number.isFinite(ts) && ts >= input.until.getTime()) return false;
-      }
-      return true;
-    });
-
-    let scored: SearchMatch[];
-    if (term) {
-      const normalized = term.trim().toLowerCase();
-      scored = filtered
-        .map((node) => {
-          const titleMatch = node.title.toLowerCase().includes(normalized);
-          const tagMatch = node.tags.some((tag) => tag.toLowerCase().includes(normalized));
-          const bodyMatch = node.body.toLowerCase().includes(normalized);
-          const score = (titleMatch ? 3 : 0) + (tagMatch ? 2 : 0) + (bodyMatch ? 1 : 0);
-          return { node, score } as SearchMatch;
-        })
-        .filter((e) => e.score > 0)
-        .map((e) => ({ node: e.node, score: Math.min(1, e.score / 6) }));
-    } else {
-      scored = filtered
-        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-        .map((node, index) => ({ node, score: Math.max(0.2, 1 - index / Math.max(1, filtered.length)) }));
-    }
-
-    let sorted = scored;
-    if (input.sort === 'recent') {
-      sorted = [...scored].sort(
-        (a, b) => new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime(),
-      );
-    } else if (input.sort === 'degree') {
-      const graph = await buildGraph();
-      sorted = [...scored].sort((a, b) => {
-        const da = graph.hasNode(a.node.id) ? graph.degree(a.node.id) : 0;
-        const db = graph.hasNode(b.node.id) ? graph.degree(b.node.id) : 0;
-        if (db !== da) return db - da;
-        return new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime();
-      });
-    } else {
-      sorted = [...scored].sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return new Date(b.node.updatedAt).getTime() - new Date(a.node.updatedAt).getTime();
-      });
-    }
-
-    matches = sorted.slice(0, searchLimit);
-  }
+  const matches = result.matches;
   if (matches.length === 0) {
+    const term = input.title ?? input.term ?? '';
     const why = term ? `"${term}"` : 'filters';
     throw new Error(`No node matching ${why}.`);
   }
 
+  // CLI-only: select by index
   let index = 0;
   if (typeof input.select === 'number') {
     index = input.select - 1;
@@ -183,6 +89,7 @@ export async function selectNode(input: SelectionInput): Promise<SelectionResult
     }
   }
 
+  // CLI-only: interactive prompt
   if (input.interactive && matches.length > 1) {
     console.log('Matches:');
     matches.forEach((entry, i) => {
