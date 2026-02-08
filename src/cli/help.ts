@@ -26,7 +26,7 @@ interface Renderers {
 // Command-to-category mapping (order preserved)
 const COMMAND_GROUPS: [string, string[]][] = [
   ['CAPTURE - Create content', ['capture', 'write']],
-  ['EXPLORE - Find and navigate', ['search', 'explore']],
+  ['EXPLORE - Find and navigate', ['search', 'explore', 'suggest']],
   ['NOTES - Read, edit, manage', ['read', 'edit', 'update', 'delete', 'import', 'synthesize']],
   ['GRAPH - Connections and tags', ['link', 'tag', 'edges']],
   ['MANAGE - Groups', ['tags', 'documents']],
