@@ -24,7 +24,11 @@
       "Bash(~/.local/bin/forest edges:*)",
       "Skill(lumberjack)",
       "Bash(gh issue list:*)",
-      "Bash(gh issue view:*)"
+      "Bash(gh issue view:*)",
+      "Bash(./dev.sh lint:*)",
+      "Bash(./dev.sh:*)",
+      "Bash(dig:*)",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "ask": []
