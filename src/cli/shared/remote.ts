@@ -1,22 +1,21 @@
 /**
  * Remote mode helpers for CLI commands.
  *
- * Re-exports `isRemoteMode()` from config and provides a `getClient()`
- * singleton so every command shares the same ForestClient instance.
+ * Provides `getBackend()` which returns a ForestClient (remote) or
+ * LocalBackend (local) implementing the same IForestBackend interface.
  */
 
 import { loadConfig, isRemoteMode } from '../../lib/config';
 import { ForestClient } from '../../lib/client';
+import { LocalBackend } from '../../lib/local-backend';
+import type { IForestBackend } from '../../lib/backend';
 
-export { isRemoteMode };
+export type { IForestBackend };
 
 let _client: ForestClient | null = null;
+let _localBackend: LocalBackend | null = null;
 
-/**
- * Return the shared ForestClient instance.  Throws if remote mode is not
- * configured (caller should guard with `isRemoteMode()` first).
- */
-export function getClient(): ForestClient {
+function getClient(): ForestClient {
   if (_client) return _client;
 
   const config = loadConfig();
@@ -29,4 +28,19 @@ export function getClient(): ForestClient {
     apiKey: config.apiKey,
   });
   return _client;
+}
+
+/**
+ * Return an IForestBackend: ForestClient if remote mode is configured,
+ * LocalBackend otherwise.  Singletons are cached per mode.
+ */
+export function getBackend(): IForestBackend {
+  if (isRemoteMode()) {
+    return getClient();
+  }
+
+  if (!_localBackend) {
+    _localBackend = new LocalBackend();
+  }
+  return _localBackend;
 }
