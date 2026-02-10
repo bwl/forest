@@ -12,6 +12,7 @@ import { documentsRoutes } from './routes/documents';
 import { graphRoutes } from './routes/graph';
 import { exportRoutes } from './routes/export';
 import { suggestRoutes } from './routes/suggest';
+import { contextRoutes } from './routes/context';
 import { websocketRoute } from './routes/websocket';
 
 const DEFAULT_PORT = 3000;
@@ -94,6 +95,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     .use(graphRoutes)
     .use(exportRoutes)
     .use(suggestRoutes)
+    .use(contextRoutes)
     .use(websocketRoute);
 
   return { app, port, hostname };

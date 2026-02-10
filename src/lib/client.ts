@@ -507,6 +507,53 @@ export interface SuggestResultRemote {
   total: number;
 }
 
+// ── Context types ─────────────────────────────────────────────────────
+
+export interface ContextNodeRemote {
+  id: string;
+  shortId: string;
+  title: string;
+  tags: string[];
+  roles: string[];
+  pagerank: number;
+  bodyPreview: string;
+  degree: { internal: number; external: number };
+  bridgeTo?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContextEdgeRemote {
+  sourceId: string;
+  targetId: string;
+  score: number;
+  semanticScore: number | null;
+  tagScore: number | null;
+}
+
+export interface ContextSummaryRemote {
+  seedTags: string[];
+  seedQuery: string;
+  totalNodes: number;
+  hubCount: number;
+  bridgeCount: number;
+  peripheryCount: number;
+  internalEdges: number;
+  externalEdges: number;
+  dominantTags: string[];
+  dateRange: string;
+  budgetTokens: number;
+  usedTokens: number;
+}
+
+export interface ContextResultRemote {
+  summary: ContextSummaryRemote;
+  hubs: ContextNodeRemote[];
+  bridges: ContextNodeRemote[];
+  periphery: ContextNodeRemote[];
+  edges: ContextEdgeRemote[];
+}
+
 // ── Health types ───────────────────────────────────────────────────────
 
 export interface HealthResult {
@@ -837,6 +884,18 @@ export class ForestClient implements IForestBackend {
         id: opts.id,
         depth: opts.depth,
         limit: opts.limit,
+      },
+    });
+  }
+
+  // ── Context ────────────────────────────────────────────────────────
+
+  async getContext(opts: { tag?: string; query?: string; budget?: number }): Promise<ContextResultRemote> {
+    return this.request<ContextResultRemote>('GET', '/api/v1/context', {
+      query: {
+        tag: opts.tag,
+        query: opts.query,
+        budget: opts.budget,
       },
     });
   }

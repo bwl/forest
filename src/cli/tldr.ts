@@ -173,6 +173,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'documents.stats',
       'documents',
       'suggest',
+      'context',
       'path',
     ],
   };
@@ -294,6 +295,28 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     rel: ['admin.health', 'edges'],
   },
 
+
+  context: {
+    cmd: 'context',
+    p: 'Show cluster topology (hubs, bridges, periphery) around a topic for agent consumption',
+    in: ['tag', 'query'],
+    out: ['xml_topology', 'json_topology'],
+    fx: 'none',
+    fl: [
+      { n: 'tag', t: 'str', desc: 'seed cluster by tag (e.g. project:kingdom)' },
+      { n: 'query', t: 'str', desc: 'seed by semantic search query' },
+      { n: 'budget', t: 'int', d: 8000, desc: 'token budget for output' },
+      { n: 'json', t: 'bool', d: false, desc: 'JSON output instead of XML' },
+    ],
+    ex: [
+      'forest context --tag project:kingdom',
+      'forest context --query "audio processing"',
+      'forest context --tag project:kingdom --query "quest system"',
+      'forest context --tag domain:projects --budget 4000',
+      'forest context --tag project:forest --json',
+    ],
+    rel: ['search', 'explore', 'suggest'],
+  },
 
   suggest: {
     cmd: 'suggest',

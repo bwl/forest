@@ -47,6 +47,7 @@ import type {
   HealthResult,
   StatsResult,
   NodeSummary,
+  ContextResultRemote,
 } from './client';
 
 export interface IForestBackend {
@@ -98,6 +99,9 @@ export interface IForestBackend {
   getDocument(id: string): Promise<GetDocumentResult>;
   getDocumentChunks(id: string): Promise<GetDocumentChunksResult>;
   getDocumentStats(): Promise<DocumentStatsResult>;
+
+  // ── Context ────────────────────────────────────────────────────────
+  getContext(opts: { tag?: string; query?: string; budget?: number }): Promise<ContextResultRemote>;
 
   // ── System ─────────────────────────────────────────────────────────
   getEdgeThresholds(): Promise<EdgeThresholdsResult>;

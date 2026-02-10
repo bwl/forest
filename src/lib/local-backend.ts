@@ -49,6 +49,7 @@ import type {
   StatsResult,
   NodeSummary,
   EdgeSummary,
+  ContextResultRemote,
 } from './client';
 
 import { formatId } from '../cli/shared/utils';
@@ -82,6 +83,7 @@ import { findPath } from '../core/graph';
 import { importDocumentCore } from '../core/import';
 import { getHealthReport, isHealthy } from '../core/health';
 import { suggestCore } from '../core/suggest';
+import { contextCore } from '../core/context';
 import { deduplicateChunks } from './reconstruction';
 
 // ── DB imports (for operations not covered by core) ─────────────────────
@@ -747,6 +749,18 @@ export class LocalBackend implements IForestBackend {
       bySource: Object.fromEntries(sources),
       byStrategy: Object.fromEntries(strategies),
     };
+  }
+
+  // ── Context ────────────────────────────────────────────────────────
+
+  async getContext(
+    opts: { tag?: string; query?: string; budget?: number },
+  ): Promise<ContextResultRemote> {
+    return await contextCore({
+      tag: opts.tag,
+      query: opts.query,
+      budget: opts.budget,
+    });
   }
 
   // ── System ─────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { registerDocumentsCommands } from './commands/documents';
 import { registerAliases } from './aliases';
 import { createStatsCommand } from './commands/stats';
 import { createSuggestCommand } from './commands/suggest';
+import { createContextCommand } from './commands/context';
 import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
@@ -50,6 +51,7 @@ export async function createForestCli() {
   cli.command(createSearchCommand(clerc));
   cli.command(createStatsCommand(clerc));
   cli.command(createSuggestCommand(clerc));
+  cli.command(createContextCommand(clerc));
   cli.command(createServeCommand(clerc));
   cli.command(createConfigCommand(clerc));
   cli.command(createVersionCommand(clerc));
