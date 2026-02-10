@@ -587,9 +587,28 @@ function computeDateRange(nodeInfos: ContextNodeInfo[]): string {
 
 // ── Token estimation ─────────────────────────────────────────────────────
 
-function estimateTokens(text: string): number {
-  // ~4 tokens per word
-  return Math.ceil(text.split(/\s+/).length * 4);
+/** Estimate tokens from character count. ~3.5 chars per token for XML with titles. */
+function estimateCharsToTokens(chars: number): number {
+  return Math.ceil(chars / 3.5);
+}
+
+function estimateNodeTokens(node: ContextNodeInfo): number {
+  // XML overhead: tags, attributes, indentation
+  let chars = 80; // <node id="..." title="..." role="..." pagerank="...">
+  chars += node.title.length + node.tags.join(', ').length;
+  chars += 60; // <tags>, <degree> elements
+  if (node.bodyPreview) chars += node.bodyPreview.length + 30;
+  if (node.bridgeTo && node.bridgeTo.length > 0) {
+    chars += node.bridgeTo.join(', ').length + 30;
+  }
+  return estimateCharsToTokens(chars);
+}
+
+function estimateEdgeTokens(edge: ContextEdgeInfo): number {
+  // <edge source="8" source_title="..." target="8" target_title="..." score="0.XX" ... />
+  let chars = 80; // XML boilerplate + ids + scores
+  chars += edge.sourceTitle.length + edge.targetTitle.length;
+  return estimateCharsToTokens(chars);
 }
 
 // ── Budget-aware assembly ────────────────────────────────────────────────
@@ -612,58 +631,64 @@ function applyBudget(
   budget: number,
 ): ContextResult {
   const totalNodes = data.hubs.length + data.bridges.length + data.periphery.length;
-
-  // Estimate base tokens (summary + node headers without body previews)
-  let tokenEstimate = 200; // summary overhead
-
-  // Each node header: ~20 tokens (id, title, tags, role, degree)
-  tokenEstimate += totalNodes * 20;
-
-  // Body previews: ~25 tokens each (100 chars ≈ 25 words ≈ 100 tokens, but we estimate conservatively)
-  const bodyPreviewTokens = totalNodes * 30;
-
-  // Edges: ~15 tokens each
-  const edgeTokens = data.edges.length * 15;
-
-  // Bridge-to info: ~10 tokens per bridge
-  const bridgeToTokens = data.bridges.length * 10;
-
-  tokenEstimate += bodyPreviewTokens + edgeTokens + bridgeToTokens;
+  const allNodes = [...data.hubs, ...data.bridges, ...data.periphery];
+  const hubIds = new Set(data.hubs.map((n) => n.id));
+  const bridgeIds = new Set(data.bridges.map((n) => n.id));
+  const hubBridgeIds = new Set([...hubIds, ...bridgeIds]);
 
   let usedEdges = data.edges;
   let usedPeriphery = data.periphery;
-  let peripheryCollapsed = false;
 
-  // Budget trimming
+  const estimate = () => {
+    let tokens = 200; // summary + XML envelope
+    for (const n of data.hubs) tokens += estimateNodeTokens(n);
+    for (const n of data.bridges) tokens += estimateNodeTokens(n);
+    for (const n of usedPeriphery) tokens += estimateNodeTokens(n);
+    if (usedPeriphery.length === 0 && data.periphery.length > 0) tokens += 15;
+    for (const e of usedEdges) tokens += estimateEdgeTokens(e);
+    return tokens;
+  };
+
+  let tokenEstimate = estimate();
+
+  // Step 1: Strip body previews
   if (tokenEstimate > budget) {
-    // Step 1: Strip body previews
-    for (const node of [...data.hubs, ...data.bridges, ...data.periphery]) {
+    for (const node of allNodes) {
       node.bodyPreview = '';
     }
-    tokenEstimate -= bodyPreviewTokens;
+    tokenEstimate = estimate();
   }
 
+  // Step 2: Drop periphery↔periphery edges
   if (tokenEstimate > budget) {
-    // Step 2: Strip periphery↔periphery edges (keep hub/bridge edges)
-    const hubBridgeIds = new Set([
-      ...data.hubs.map((n) => n.id),
-      ...data.bridges.map((n) => n.id),
-    ]);
-
-    usedEdges = data.edges.filter(
+    usedEdges = usedEdges.filter(
       (e) => hubBridgeIds.has(e.sourceId) || hubBridgeIds.has(e.targetId),
     );
-    const removedEdgeTokens = (data.edges.length - usedEdges.length) * 15;
-    tokenEstimate -= removedEdgeTokens;
+    tokenEstimate = estimate();
   }
 
+  // Step 3: Drop bridge↔bridge edges (keep only hub↔* edges)
   if (tokenEstimate > budget) {
-    // Step 3: Collapse peripheral nodes to summary count
-    const peripheryTokensSaved = usedPeriphery.length * 20;
-    peripheryCollapsed = true;
-    tokenEstimate -= peripheryTokensSaved;
-    tokenEstimate += 10; // collapsed summary line
+    usedEdges = usedEdges.filter(
+      (e) => hubIds.has(e.sourceId) || hubIds.has(e.targetId),
+    );
+    tokenEstimate = estimate();
+  }
+
+  // Step 4: Collapse peripheral nodes
+  if (tokenEstimate > budget) {
     usedPeriphery = [];
+    tokenEstimate = estimate();
+  }
+
+  // Step 5: Cap remaining edges to top-N by score
+  if (tokenEstimate > budget && usedEdges.length > 0) {
+    const sorted = [...usedEdges].sort((a, b) => b.score - a.score);
+    while (tokenEstimate > budget && sorted.length > 0) {
+      sorted.pop();
+      usedEdges = sorted;
+      tokenEstimate = estimate();
+    }
   }
 
   const summary: ContextSummary = {
@@ -678,7 +703,7 @@ function applyBudget(
     dominantTags: meta.dominantTags,
     dateRange: meta.dateRange,
     budgetTokens: budget,
-    usedTokens: Math.min(tokenEstimate, budget),
+    usedTokens: tokenEstimate,
   };
 
   return {
