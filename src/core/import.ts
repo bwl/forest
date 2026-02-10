@@ -17,6 +17,8 @@ import {
   DocumentMetadata,
   upsertDocument,
   replaceDocumentChunks,
+  beginBatch,
+  endBatch,
 } from '../lib/db';
 import { extractTags, tokenize, pickTitle } from '../lib/text';
 import { computeEmbeddingForNode } from '../lib/embeddings';
@@ -57,6 +59,21 @@ export type ImportResult = {
  * Takes document text and options, returns structured result
  */
 export async function importDocumentCore(
+  documentText: string,
+  options: ImportOptions = {}
+): Promise<ImportResult> {
+  // Batch all DB writes — persist once at the end instead of after every insert.
+  // Without this, each insertNode/insertOrUpdateEdge exports the full 80MB+ DB to disk,
+  // which crashes the server on memory-constrained hosts.
+  await beginBatch();
+  try {
+    return await _importDocumentCoreInner(documentText, options);
+  } finally {
+    await endBatch();
+  }
+}
+
+async function _importDocumentCoreInner(
   documentText: string,
   options: ImportOptions = {}
 ): Promise<ImportResult> {

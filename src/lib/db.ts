@@ -604,8 +604,24 @@ async function backfillCanonicalDocuments(db: Database) {
   }
 }
 
+// Batch mode: when > 0, persist is deferred until endBatch() is called.
+// This avoids repeated full-DB exports during bulk operations like import.
+let batchDepth = 0;
+
+export async function beginBatch(): Promise<void> {
+  batchDepth++;
+}
+
+export async function endBatch(): Promise<void> {
+  if (batchDepth > 0) batchDepth--;
+  if (batchDepth === 0 && dirty) {
+    await persist();
+  }
+}
+
 async function markDirtyAndPersist() {
   dirty = true;
+  if (batchDepth > 0) return; // Defer persist until endBatch
   await persist();
 }
 
