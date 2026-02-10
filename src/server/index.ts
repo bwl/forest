@@ -14,6 +14,7 @@ import { exportRoutes } from './routes/export';
 import { suggestRoutes } from './routes/suggest';
 import { contextRoutes } from './routes/context';
 import { websocketRoute } from './routes/websocket';
+import { webRoutes } from './routes/web';
 
 const DEFAULT_PORT = 3000;
 const DEFAULT_HOSTNAME = '::'; // Dual-stack: listens on both IPv4 and IPv6
@@ -24,6 +25,7 @@ const PUBLIC_PATHS = new Set(['/', '/api/v1/health']);
 function isPublicPath(path: string): boolean {
   if (PUBLIC_PATHS.has(path)) return true;
   if (path.startsWith('/swagger')) return true;
+  if (path === '/web' || path.startsWith('/web/')) return true;
   return false;
 }
 
@@ -96,7 +98,8 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     .use(exportRoutes)
     .use(suggestRoutes)
     .use(contextRoutes)
-    .use(websocketRoute);
+    .use(websocketRoute)
+    .use(webRoutes);
 
   return { app, port, hostname };
 }
@@ -109,6 +112,7 @@ export async function startServer(options: { port?: number; hostname?: string } 
   // Display user-friendly URL
   const displayHost = hostname === '::' || hostname === '0.0.0.0' ? 'localhost' : hostname;
   console.log(`🌲 Forest server running at http://${displayHost}:${port}`);
+  console.log(`🌐 Web UI available at http://${displayHost}:${port}/web`);
   console.log(`📚 API docs available at http://${displayHost}:${port}/swagger`);
   if (process.env.FOREST_API_KEY) {
     console.log(`🔒 Bearer token auth enabled`);
