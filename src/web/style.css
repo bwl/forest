@@ -1054,8 +1054,8 @@ a:hover { color: var(--link-hover); }
 }
 
 .graph-link {
-  stroke: var(--border-light);
-  stroke-opacity: 0.4;
+  stroke: #8b949e;
+  stroke-opacity: 0.6;
 }
 
 .graph-node.highlighted circle {

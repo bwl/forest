@@ -23,9 +23,25 @@ export function createConfigCommand(clerc: ClercModule) {
           type: Boolean,
           description: 'Emit JSON output (use with --show)',
         },
+        'api-key': {
+          type: Boolean,
+          description: 'Print the API key (unredacted)',
+        },
       },
     },
     async ({ flags, parameters }: any) => {
+      // Handle --api-key flag
+      if (flags['api-key']) {
+        const config = loadConfig();
+        if (config.apiKey) {
+          console.log(config.apiKey);
+        } else {
+          console.error('No API key configured. Run `forest config` to set one.');
+          process.exitCode = 1;
+        }
+        return;
+      }
+
       // Handle --show flag
       if (flags.show) {
         const config = loadConfig();

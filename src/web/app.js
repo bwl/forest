@@ -228,7 +228,7 @@ const views = {
             <div class="stat-label">Tag Usages</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">${data.degree.mean?.toFixed(1) || '0'}</div>
+            <div class="stat-value">${data.degree.mean?.toFixed(3) || '0'}</div>
             <div class="stat-label">Avg Degree</div>
           </div>
         </div>
@@ -904,10 +904,10 @@ const graphRenderer = {
 
     const nodeIdSet = new Set(nodes.map(n => n.id));
     const links = (data.edges || [])
-      .filter(e => nodeIdSet.has(e.sourceId) && nodeIdSet.has(e.targetId))
+      .filter(e => nodeIdSet.has(e.sourceId || e.source) && nodeIdSet.has(e.targetId || e.target))
       .map(e => ({
-        source: e.sourceId,
-        target: e.targetId,
+        source: e.sourceId || e.source,
+        target: e.targetId || e.target,
         score: e.score || 0,
       }));
 
@@ -1077,10 +1077,10 @@ const graphRenderer = {
 
     const nodeIdSet = new Set(nodes.map(n => n.id));
     const links = (data.edges || [])
-      .filter(e => nodeIdSet.has(e.sourceId) && nodeIdSet.has(e.targetId))
+      .filter(e => nodeIdSet.has(e.sourceId || e.source) && nodeIdSet.has(e.targetId || e.target))
       .map(e => ({
-        source: e.sourceId,
-        target: e.targetId,
+        source: e.sourceId || e.source,
+        target: e.targetId || e.target,
         score: e.score || 0,
       }));
 
