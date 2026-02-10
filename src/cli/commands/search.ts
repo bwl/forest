@@ -230,20 +230,18 @@ async function runSemanticSearch(query: string, flags: SearchFlags, tags: string
     return;
   }
 
-  const maxTitleWidth = 50;
-  console.log(`${'SCORE'.padEnd(10)} ${'ID'.padEnd(10)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(30)}`);
-  console.log('─'.repeat(10 + 10 + maxTitleWidth + 30 + 3));
-
-  for (const item of result.nodes) {
-    const coloredScore = colorize.embeddingScore(item.similarity);
-    const score = coloredScore.padEnd(20);
-    const shortId = colorize.nodeId(item.shortId ?? item.id.slice(0, 8));
-    const idCol = shortId.padEnd(30);
-    const title = truncate(item.title, maxTitleWidth).padEnd(maxTitleWidth);
-    const tagsStr = truncate((item.tags?.join(', ') ?? ''), 30);
-    console.log(`${score} ${idCol} ${title} ${tagsStr}`);
-  }
-  console.log();
+  printResultCards(
+    result.nodes.map((item) => ({
+      score: item.similarity,
+      id: item.id,
+      shortId: item.shortId,
+      title: item.title,
+      bodyPreview: item.bodyPreview,
+      tags: item.tags,
+      createdAt: item.createdAt,
+    })),
+    { scoreColorizer: colorize.embeddingScore },
+  );
 }
 
 async function runMetadataSearch(
@@ -366,33 +364,86 @@ function printMetadataResults(
     return;
   }
 
-  const maxTitleWidth = 50;
-  const scoreWidth = 10;
-  const idWidth = 10;
-  const tagsWidth = 30;
-
-  console.log(
-    `${'SCORE'.padEnd(scoreWidth)} ${'ID'.padEnd(idWidth)} ${'TITLE'.padEnd(maxTitleWidth)} ${'TAGS'.padEnd(tagsWidth)}`,
+  printResultCards(
+    matches.map((item) => ({
+      score: item.score,
+      id: options.longIds ? item.id : (item.shortId ?? item.id.slice(0, 8)),
+      shortId: item.shortId,
+      title: item.title,
+      bodyPreview: item.bodyPreview,
+      tags: item.tags,
+      createdAt: item.createdAt,
+    })),
+    { scoreColorizer: colorize.embeddingScore, longIds: options.longIds },
   );
-  console.log('─'.repeat(scoreWidth + idWidth + tagsWidth + maxTitleWidth + 3));
-
-  for (const item of matches) {
-    const coloredScore = colorize.embeddingScore(item.score);
-    const score = coloredScore.padEnd(scoreWidth + 10);
-    const displayId = options.longIds ? item.id : (item.shortId ?? item.id.slice(0, 8));
-    const coloredId = colorize.nodeId(displayId);
-    const shortId = coloredId.padEnd(idWidth + 20);
-    const title = truncate(item.title, maxTitleWidth).padEnd(maxTitleWidth);
-    const tags = truncate(item.tags.join(', '), tagsWidth);
-    console.log(`${score} ${shortId} ${title} ${tags}`);
-  }
-
-  console.log('');
 }
 
 function truncate(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength - 3) + '...';
+}
+
+interface SearchResultCard {
+  score: number;
+  id: string;
+  shortId?: string;
+  title: string;
+  bodyPreview?: string;
+  tags?: string[];
+  createdAt?: string;
+}
+
+function printResultCards(
+  items: SearchResultCard[],
+  opts: { scoreColorizer: (v: number) => string; longIds?: boolean },
+) {
+  const termWidth = process.stdout.columns || 100;
+  // Layout: ' ' + score(2) + '  ' + id(8) + '  ' = 15 chars before title
+  const prefixWidth = 15;
+  const indent = ' '.repeat(prefixWidth);
+
+  for (const item of items) {
+    const displayId = opts.longIds ? item.id : (item.shortId ?? item.id.slice(0, 8));
+    const coloredScore = opts.scoreColorizer(item.score);
+    const coloredId = colorize.nodeId(displayId);
+    const dateStr = item.createdAt ? relativeDate(item.createdAt) : '';
+    const dateVisible = dateStr.length;
+
+    // Title fills remaining space, leaving room for right-aligned date
+    const titleBudget = Math.max(20, termWidth - prefixWidth - (dateVisible > 0 ? dateVisible + 2 : 0));
+    const titleStr = truncate(item.title, titleBudget).padEnd(titleBudget);
+    const datePart = dateStr ? `  ${colorize.grey(dateStr)}` : '';
+    console.log(` ${coloredScore}  ${coloredId}  ${titleStr}${datePart}`);
+
+    // Body preview (dimmed, second line)
+    const contentBudget = Math.max(20, termWidth - prefixWidth);
+    if (item.bodyPreview && item.bodyPreview.trim().length > 0) {
+      const cleaned = item.bodyPreview.trim().replace(/\n+/g, ' ');
+      console.log(`${indent}${colorize.grey(truncate(cleaned, contentBudget))}`);
+    }
+
+    // Tags (dimmed, third line)
+    const tagsArr = item.tags ?? [];
+    if (tagsArr.length > 0) {
+      console.log(`${indent}${colorize.grey(truncate(tagsArr.join(', '), contentBudget))}`);
+    }
+
+    console.log();
+  }
+}
+
+function relativeDate(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay >= 365) return `${Math.floor(diffDay / 365)}y ago`;
+  if (diffDay >= 30) return `${Math.floor(diffDay / 30)}mo ago`;
+  if (diffDay >= 7) return `${Math.floor(diffDay / 7)}w ago`;
+  if (diffDay >= 1) return `${diffDay}d ago`;
+  if (diffHr >= 1) return `${diffHr}h ago`;
+  if (diffMin >= 1) return `${diffMin}m ago`;
+  return 'now';
 }
 
 function normalizeMode(value?: string): SearchMode | undefined {
