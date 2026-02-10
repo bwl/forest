@@ -129,20 +129,32 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     await insertNode(rootNode);
   }
 
+  // Compute embeddings for all chunks concurrently (limit 3 parallel calls)
+  const EMBED_CONCURRENCY = 3;
+  const chunkEmbeddings: (number[] | undefined)[] = new Array(chunks.length);
+
+  for (let i = 0; i < chunks.length; i += EMBED_CONCURRENCY) {
+    const batch = chunks.slice(i, i + EMBED_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((chunk) => computeEmbeddingForNode({ title: chunk.title, body: chunk.body }))
+    );
+    for (let j = 0; j < results.length; j++) {
+      chunkEmbeddings[i + j] = results[j];
+    }
+  }
+
   // Create nodes for each chunk
   const chunkNodes: ChunkNodeInfo[] = [];
   const existingNodes = await listNodes();
 
-  for (const chunk of chunks) {
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
     const chunkId = randomUUID();
     const combinedText = `${chunk.title}\n${chunk.body}`;
     const tokenCounts = tokenize(combinedText);
 
     // Use provided tags or auto-extract
     const chunkTags = options.tags || extractTags(combinedText, tokenCounts);
-
-    // Compute embedding
-    const embedding = await computeEmbeddingForNode({ title: chunk.title, body: chunk.body });
 
     const chunkNodeMetadata: NodeMetadata = {
       origin: 'import',
@@ -156,7 +168,7 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
       body: chunk.body,
       tags: chunkTags,
       tokenCounts,
-      embedding,
+      embedding: chunkEmbeddings[i],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isChunk: true,

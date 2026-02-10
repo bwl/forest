@@ -581,6 +581,10 @@ export class ForestClient implements IForestBackend {
 
   // ── Generic request ────────────────────────────────────────────────
 
+  private static readonly DEFAULT_TIMEOUT_MS = 60_000;
+  private static readonly LONG_TIMEOUT_MS = 300_000; // 5 min for import/synthesize
+  private static readonly LONG_TIMEOUT_PATHS = ['/api/v1/documents/import', '/api/v1/nodes/synthesize', '/api/v1/nodes/write'];
+
   private async request<T>(
     method: string,
     path: string,
@@ -606,7 +610,10 @@ export class ForestClient implements IForestBackend {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
 
-    const init: RequestInit = { method, headers };
+    const timeoutMs = ForestClient.LONG_TIMEOUT_PATHS.includes(path)
+      ? ForestClient.LONG_TIMEOUT_MS
+      : ForestClient.DEFAULT_TIMEOUT_MS;
+    const init: RequestInit = { method, headers, signal: AbortSignal.timeout(timeoutMs) };
     if (options.body !== undefined) {
       init.body = JSON.stringify(options.body);
     }

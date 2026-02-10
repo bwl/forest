@@ -64,6 +64,38 @@ export async function embedNoteText(text: string): Promise<number[] | undefined>
   return embedMock(text);
 }
 
+// --- Retry + Timeout helpers ---
+
+const EMBED_TIMEOUT_MS = 30_000;
+const EMBED_MAX_RETRIES = 2;
+const EMBED_BACKOFF_BASE_MS = 1_000;
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= EMBED_MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        ...init,
+        signal: AbortSignal.timeout(EMBED_TIMEOUT_MS),
+      });
+      if (res.status >= 500 && attempt < EMBED_MAX_RETRIES) {
+        // Retry on server errors
+        lastError = new Error(`HTTP ${res.status} ${res.statusText}`);
+        await new Promise((r) => setTimeout(r, EMBED_BACKOFF_BASE_MS * 2 ** attempt));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err as Error;
+      if (attempt < EMBED_MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, EMBED_BACKOFF_BASE_MS * 2 ** attempt));
+        continue;
+      }
+    }
+  }
+  throw new Error(`Embedding API failed after ${EMBED_MAX_RETRIES + 1} attempts: ${lastError?.message}`);
+}
+
 // --- Providers ---
 
 // Mock hashing embedding: deterministic 384-dim vector via token hashing
@@ -100,7 +132,7 @@ async function embedOpenRouter(text: string): Promise<number[]> {
   const apiKey = config.openrouterApiKey || process.env.FOREST_OR_KEY;
   if (!apiKey) throw new Error('OpenRouter API key required: set openrouterApiKey in ~/.forestrc or FOREST_OR_KEY env var');
   const model = getEmbeddingModel();
-  const res = await fetch('https://openrouter.ai/api/v1/embeddings', {
+  const res = await fetchWithRetry('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -126,7 +158,7 @@ async function embedOpenAI(text: string): Promise<number[]> {
   const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OpenAI API key required: set openaiApiKey in ~/.forestrc or OPENAI_API_KEY env var');
   const model = getEmbeddingModel();
-  const res = await fetch('https://api.openai.com/v1/embeddings', {
+  const res = await fetchWithRetry('https://api.openai.com/v1/embeddings', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
