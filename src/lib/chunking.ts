@@ -146,7 +146,37 @@ function chunkByHeaders(text: string, maxTokens: number): DocumentChunk[] {
     chunk.metadata.totalChunks = totalChunks;
   });
 
-  return chunks;
+  return mergeSmallChunks(chunks, maxTokens);
+}
+
+/**
+ * Merge undersized chunks into their predecessor to reduce graph noise.
+ * Chunks below minTokens are folded into the previous chunk as long as
+ * the combined size stays within maxTokens.
+ */
+function mergeSmallChunks(chunks: DocumentChunk[], maxTokens: number): DocumentChunk[] {
+  const minTokens = Math.max(Math.floor(maxTokens / 4), 50);
+  const merged: DocumentChunk[] = [];
+
+  for (const chunk of chunks) {
+    const prev = merged[merged.length - 1];
+    if (prev && chunk.metadata.estimatedTokens < minTokens) {
+      const combinedTokens = prev.metadata.estimatedTokens + chunk.metadata.estimatedTokens;
+      if (combinedTokens <= maxTokens) {
+        prev.body = prev.body + '\n\n' + chunk.body;
+        prev.metadata.estimatedTokens = combinedTokens;
+        continue;
+      }
+    }
+    merged.push({ ...chunk });
+  }
+
+  // Reindex
+  merged.forEach((c, i) => {
+    c.metadata.chunkIndex = i;
+    c.metadata.totalChunks = merged.length;
+  });
+  return merged;
 }
 
 /**
