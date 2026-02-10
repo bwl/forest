@@ -8,7 +8,13 @@ import {
   EdgeRecord,
   deleteEdgeBetween,
   insertOrUpdateEdge,
+  listDocuments,
+  getDocumentChunks,
+  getNodeById,
+  beginBatch,
+  endBatch,
 } from '../../lib/db';
+import { composeChunkTitle } from '../../core/import';
 
 import { edgeIdentifier, handleError } from '../shared/utils';
 import { getVersion } from './version';
@@ -43,6 +49,11 @@ type AdminDoctorFlags = {
 };
 
 type AdminMigrateV2Flags = {
+  tldr?: string;
+};
+
+type AdminBackfillChunkTitlesFlags = {
+  'dry-run'?: boolean;
   tldr?: string;
 };
 
@@ -208,6 +219,36 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(doctorCommand);
 
+  // admin backfill-chunk-titles
+  const backfillChunkTitlesCommand = clerc.defineCommand(
+    {
+      name: 'admin backfill-chunk-titles',
+      description: 'Rename existing chunk nodes to use the new "Doc [2/7] Section" format',
+      flags: {
+        'dry-run': {
+          type: Boolean,
+          description: 'Preview changes without saving',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ flags }: { flags: AdminBackfillChunkTitlesFlags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.backfill-chunk-titles'], getVersion(), jsonMode);
+        }
+        await runAdminBackfillChunkTitles(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(backfillChunkTitlesCommand);
+
   // admin (base command)
   const baseCommand = clerc.defineCommand(
     {
@@ -224,11 +265,12 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
           'Administrative commands for system maintenance.',
           '',
           'Subcommands:',
-          '  migrate-v2   Migrate database to scoring v2',
-          '  embeddings  Recompute embeddings for all nodes',
-          '  tags        Regenerate tags using current method',
-          '  health      Check system health and configuration',
-          '  doctor      Guided setup and troubleshooting',
+          '  migrate-v2              Migrate database to scoring v2',
+          '  embeddings              Recompute embeddings for all nodes',
+          '  tags                    Regenerate tags using current method',
+          '  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format',
+          '  health                  Check system health and configuration',
+          '  doctor                  Guided setup and troubleshooting',
           '',
           'Use `forest admin <subcommand> --help` for flag details.',
         ],
@@ -249,11 +291,12 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
         console.log('forest admin - System maintenance and diagnostics');
         console.log('');
         console.log('Subcommands:');
-        console.log('  migrate-v2   Migrate database to scoring v2');
-        console.log('  embeddings  Recompute embeddings for all nodes');
-        console.log('  tags        Regenerate tags using current method');
-        console.log('  health      Check system health and configuration');
-        console.log('  doctor      Guided setup and troubleshooting');
+        console.log('  migrate-v2              Migrate database to scoring v2');
+        console.log('  embeddings              Recompute embeddings for all nodes');
+        console.log('  tags                    Regenerate tags using current method');
+        console.log('  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format');
+        console.log('  health                  Check system health and configuration');
+        console.log('  doctor                  Guided setup and troubleshooting');
         console.log('');
         console.log('Use `forest admin <subcommand> --help` for details.');
       } catch (error) {
@@ -593,6 +636,98 @@ async function runAdminHealth(flags: AdminHealthFlags) {
 function printCheck(label: string, check: HealthCheck) {
   const icon = check.status === 'ok' ? '+' : check.status === 'warning' ? '!' : 'x';
   console.log(`[${icon}] ${label}: ${check.message}`);
+}
+
+async function runAdminBackfillChunkTitles(flags: AdminBackfillChunkTitlesFlags) {
+  const dryRun = flags['dry-run'] || false;
+
+  if (dryRun) {
+    console.log('DRY RUN - no changes will be saved\n');
+  }
+
+  const documents = await listDocuments();
+  if (documents.length === 0) {
+    console.log('No documents found. Nothing to backfill.');
+    return;
+  }
+
+  console.log(`Found ${documents.length} document(s). Scanning chunks...\n`);
+
+  let updated = 0;
+  let skipped = 0;
+  let errors = 0;
+  const samples: Array<{ id: string; before: string; after: string }> = [];
+
+  if (!dryRun) {
+    await beginBatch();
+  }
+
+  try {
+    for (const doc of documents) {
+      const chunks = await getDocumentChunks(doc.id);
+      if (chunks.length === 0) continue;
+
+      const totalChunks = chunks.length;
+
+      for (const chunk of chunks) {
+        const node = await getNodeById(chunk.nodeId);
+        if (!node) {
+          errors++;
+          continue;
+        }
+
+        // The current node.title IS the raw section title for old chunks.
+        // For already-backfilled chunks, composeChunkTitle should produce the same title.
+        const newTitle = composeChunkTitle(doc.title, chunk.chunkOrder, totalChunks, node.title);
+
+        if (newTitle === node.title) {
+          skipped++;
+          continue;
+        }
+
+        if (samples.length < 5) {
+          samples.push({
+            id: node.id.slice(0, 8),
+            before: node.title,
+            after: newTitle,
+          });
+        }
+
+        if (!dryRun) {
+          await updateNode(node.id, { title: newTitle });
+        }
+
+        console.log(`[${node.id.slice(0, 8)}] "${node.title}" → "${newTitle}"`);
+        updated++;
+      }
+    }
+  } finally {
+    if (!dryRun) {
+      await endBatch();
+    }
+  }
+
+  // Summary
+  console.log('\n' + '='.repeat(60));
+  console.log('SUMMARY');
+  console.log('='.repeat(60));
+  console.log(`Documents: ${documents.length}`);
+  console.log(`Updated:   ${updated}`);
+  console.log(`Skipped:   ${skipped} (already correct)`);
+  console.log(`Errors:    ${errors}`);
+
+  if (dryRun) {
+    console.log('\nDRY RUN - no changes were saved');
+  }
+
+  if (samples.length > 0) {
+    console.log('\nSample renames:');
+    for (const s of samples) {
+      console.log(`  ${s.id}: "${s.before}" → "${s.after}"`);
+    }
+  }
+
+  console.log('\nBackfill complete.');
 }
 
 async function runAdminDoctor() {

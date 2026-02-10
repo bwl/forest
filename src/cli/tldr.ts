@@ -161,6 +161,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'tags',
       'admin.embeddings',
       'admin.tags',
+      'admin.backfill-chunk-titles',
       'admin.health',
       'admin.doctor',
       'admin.migrate-v2',
@@ -385,7 +386,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'none',
     fl: [],
     ex: ['forest admin'],
-    rel: ['admin.health', 'admin.embeddings', 'admin.tags', 'admin.doctor'],
+    rel: ['admin.health', 'admin.embeddings', 'admin.tags', 'admin.backfill-chunk-titles', 'admin.doctor'],
   },
 
   'admin.migrate-v2': {
@@ -433,6 +434,22 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest admin tags --skip-unchanged',
     ],
     rel: ['config', 'capture', 'tags.list'],
+  },
+
+  'admin.backfill-chunk-titles': {
+    cmd: 'admin.backfill-chunk-titles',
+    p: 'Rename existing chunk nodes to the new "Doc [2/7] Section" title format',
+    in: [],
+    out: ['progress_log', 'updated_records'],
+    fx: 'db:write',
+    fl: [
+      { n: 'dry-run', t: 'bool', d: false, desc: 'preview changes without saving' },
+    ],
+    ex: [
+      'forest admin backfill-chunk-titles --dry-run',
+      'forest admin backfill-chunk-titles',
+    ],
+    rel: ['import', 'documents.list', 'admin.tags'],
   },
 
   'admin.health': {

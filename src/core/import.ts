@@ -46,7 +46,7 @@ export type ChunkNodeInfo = {
  * Compose a display title for a chunk node.
  * Returns "Doc Title [2/7] Section Title" or just "Doc Title [2/7]" if the raw title is generic.
  */
-function composeChunkTitle(docTitle: string, index: number, total: number, rawTitle: string): string {
+export function composeChunkTitle(docTitle: string, index: number, total: number, rawTitle: string): string {
   const position = `[${index + 1}/${total}]`;
   const isGeneric = /^Chunk \d+$/i.test(rawTitle);
   if (isGeneric || !rawTitle) {
