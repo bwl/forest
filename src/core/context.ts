@@ -33,7 +33,9 @@ export interface ContextNodeInfo {
 
 export interface ContextEdgeInfo {
   sourceId: string;
+  sourceTitle: string;
   targetId: string;
+  targetTitle: string;
   score: number;
   semanticScore: number | null;
   tagScore: number | null;
@@ -114,7 +116,7 @@ export async function contextCore(options: ContextOptions): Promise<ContextResul
   );
 
   // 7. Build edge info objects
-  const edgeInfos = buildEdgeInfos(subgraph, internalEdges, externalEdges);
+  const edgeInfos = buildEdgeInfos(subgraph, internalEdges, externalEdges, nodeMap);
 
   // 8. Classify into groups
   const hubs = nodeInfos.filter((n) => n.roles.includes('hub'));
@@ -537,11 +539,14 @@ function buildEdgeInfos(
   subgraph: Graph,
   internalEdges: Array<{ key: string; source: string; target: string; attrs: any }>,
   externalEdges: Array<{ key: string; source: string; target: string; attrs: any }>,
+  nodeMap: Map<string, NodeRecord>,
 ): ContextEdgeInfo[] {
   const allEdges = [...internalEdges, ...externalEdges];
   return allEdges.map((e) => ({
     sourceId: e.source,
+    sourceTitle: nodeMap.get(e.source)?.title ?? '(unknown)',
     targetId: e.target,
+    targetTitle: nodeMap.get(e.target)?.title ?? '(unknown)',
     score: e.attrs.score ?? 0,
     semanticScore: e.attrs.semanticScore ?? null,
     tagScore: e.attrs.tagScore ?? null,

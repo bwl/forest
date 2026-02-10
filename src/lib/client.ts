@@ -525,7 +525,9 @@ export interface ContextNodeRemote {
 
 export interface ContextEdgeRemote {
   sourceId: string;
+  sourceTitle: string;
   targetId: string;
+  targetTitle: string;
   score: number;
   semanticScore: number | null;
   tagScore: number | null;

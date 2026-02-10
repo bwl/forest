@@ -150,7 +150,9 @@ export function serializeContextXml(result: ContextResultRemote): string {
   for (const edge of result.edges) {
     const parts = [
       `source="${formatId(edge.sourceId)}"`,
+      `source_title="${escapeXml(edge.sourceTitle)}"`,
       `target="${formatId(edge.targetId)}"`,
+      `target_title="${escapeXml(edge.targetTitle)}"`,
       `score="${edge.score.toFixed(2)}"`,
     ];
     if (edge.semanticScore !== null) {
