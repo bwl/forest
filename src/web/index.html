@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forest</title>
+  <link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login screen -->
+    <div id="login-screen" class="screen">
+      <div class="login-container">
+        <div class="login-logo">&#x1F332;</div>
+        <h1 class="login-title">Forest</h1>
+        <p class="login-subtitle">Graph-native knowledge base</p>
+        <div id="login-form">
+          <input type="password" id="api-key-input" placeholder="API Key" autocomplete="off">
+          <button id="login-btn">Connect</button>
+          <p id="login-error" class="error-text"></p>
+        </div>
+        <p id="login-status" class="login-subtitle" style="display:none">Connecting...</p>
+      </div>
+    </div>
+
+    <!-- Main app shell -->
+    <div id="main-app" style="display:none">
+      <header id="header">
+        <div class="header-left">
+          <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">&#9776;</button>
+          <a class="logo" href="#dashboard">&#x1F332; Forest</a>
+        </div>
+        <div class="header-center">
+          <div class="search-box">
+            <span class="search-icon">&#8981;</span>
+            <input type="text" id="global-search" placeholder="Search nodes...">
+          </div>
+        </div>
+        <div class="header-right">
+          <button class="btn-icon" id="logout-btn" title="Disconnect">&#9211;</button>
+        </div>
+      </header>
+
+      <div id="layout">
+        <nav id="sidebar">
+          <a href="#dashboard" class="nav-item active" data-view="dashboard">
+            <span class="nav-icon">&#9670;</span><span class="nav-label">Dashboard</span>
+          </a>
+          <a href="#nodes" class="nav-item" data-view="nodes">
+            <span class="nav-icon">&#9673;</span><span class="nav-label">Nodes</span>
+          </a>
+          <a href="#graph" class="nav-item" data-view="graph">
+            <span class="nav-icon">&#11043;</span><span class="nav-label">Graph</span>
+          </a>
+          <a href="#tags" class="nav-item" data-view="tags">
+            <span class="nav-icon">#</span><span class="nav-label">Tags</span>
+          </a>
+          <a href="#search" class="nav-item" data-view="search">
+            <span class="nav-icon">&#8981;</span><span class="nav-label">Search</span>
+          </a>
+        </nav>
+
+        <main id="content">
+          <!-- Views rendered here dynamically -->
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="/web/app.js"></script>
+</body>
+</html>
