@@ -3,6 +3,7 @@ import {
   listDocuments,
   getDocumentById,
   getDocumentChunks,
+  getNodeById,
   DocumentRecord,
   DocumentChunkRecord,
 } from '../../lib/db';
@@ -152,6 +153,57 @@ export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
       detail: {
         summary: 'Get document chunks',
         description: 'Returns all chunk mappings for a document with offsets and checksums',
+        tags: ['Documents'],
+      },
+    }
+  )
+
+  .get(
+    '/documents/:id/full',
+    async ({ params, set }) => {
+      try {
+        const document = await getDocumentById(params.id);
+        if (!document) {
+          throw new NodeNotFoundError(params.id);
+        }
+
+        const chunks = await getDocumentChunks(params.id);
+        const chunkDetails = await Promise.all(
+          chunks.map(async (chunk) => {
+            const node = await getNodeById(chunk.nodeId);
+            return {
+              nodeId: chunk.nodeId,
+              shortId: formatId(chunk.nodeId),
+              title: node?.title ?? '',
+              chunkOrder: chunk.chunkOrder,
+              offset: chunk.offset,
+              length: chunk.length,
+            };
+          })
+        );
+
+        chunkDetails.sort((a, b) => a.chunkOrder - b.chunkOrder);
+
+        return createSuccessResponse({
+          document,
+          chunks: chunkDetails,
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String({ description: 'Document ID' }),
+      }),
+      detail: {
+        summary: 'Get full document with chunk boundaries',
+        description: 'Returns document body and chunk boundary info for the reader view',
         tags: ['Documents'],
       },
     }

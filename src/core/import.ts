@@ -42,6 +42,19 @@ export type ChunkNodeInfo = {
   chunk: DocumentChunk;
 };
 
+/**
+ * Compose a display title for a chunk node.
+ * Returns "Doc Title [2/7] Section Title" or just "Doc Title [2/7]" if the raw title is generic.
+ */
+function composeChunkTitle(docTitle: string, index: number, total: number, rawTitle: string): string {
+  const position = `[${index + 1}/${total}]`;
+  const isGeneric = /^Chunk \d+$/i.test(rawTitle);
+  if (isGeneric || !rawTitle) {
+    return `${docTitle} ${position}`;
+  }
+  return `${docTitle} ${position} ${rawTitle}`;
+}
+
 export type ImportResult = {
   documentTitle: string;
   rootNode: NodeRecord | null;
@@ -179,9 +192,11 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
       ...(options.sourceFile ? { sourceFile: options.sourceFile } : {}),
     };
 
+    const displayTitle = composeChunkTitle(documentTitle, i, chunks.length, chunk.title);
+
     const node: NodeRecord = {
       id: chunkId,
-      title: chunk.title,
+      title: displayTitle,
       body: chunk.body,
       tags: chunkTags,
       tokenCounts,
@@ -256,7 +271,7 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
   if (rootNode) {
     const firstChunkPreview = chunks[0].body.substring(0, 500);
     const structureSection = chunkNodes
-      .map((cn, i) => `${i + 1}. [${cn.node.id.substring(0, 8)}] ${cn.node.title}`)
+      .map((cn, i) => `${i + 1}. [${cn.node.id.substring(0, 8)}] ${cn.chunk.title}`)
       .join('\n');
 
     const finalBody = `# ${documentTitle}

@@ -67,6 +67,9 @@ const api = {
     return this.fetch(`/search/metadata?${q}`);
   },
   exportJson(body = false) { return this.fetch(`/export/json?body=${body}&edges=true`); },
+  documents() { return this.fetch('/documents'); },
+  document(id) { return this.fetch(`/documents/${id}`); },
+  documentFull(id) { return this.fetch(`/documents/${id}/full`); },
 };
 
 // --- Utilities ---
@@ -102,6 +105,10 @@ function scoreClass(score) {
   if (score >= 0.6) return 'score-high';
   if (score >= 0.35) return 'score-mid';
   return 'score-low';
+}
+
+function formatId(uuid) {
+  return uuid ? uuid.substring(0, 8) : '';
 }
 
 function truncate(str, len = 100) {
@@ -393,8 +400,17 @@ const views = {
       const node = data.node;
       const edges = data.edges || [];
 
+      const chunkBanner = node.isChunk && node.parentDocumentId
+        ? `<div class="chunk-banner">
+            <span>Part of a document${node.chunkOrder != null ? ` (chunk ${node.chunkOrder + 1})` : ''}</span>
+            <a href="#document/${node.parentDocumentId}">View full document &#8594;</a>
+          </div>`
+        : '';
+
       content.innerHTML = `
         <div class="back-link" onclick="history.back()">&#8592; Back</div>
+
+        ${chunkBanner}
 
         <div class="detail-header">
           <div class="detail-title">${escapeHtml(node.title)}</div>
@@ -698,6 +714,108 @@ const views = {
     const mode = document.getElementById('search-mode')?.value || 'semantic';
     if (!q) return;
     location.hash = `search?q=${encodeURIComponent(q)}&mode=${mode}`;
+  },
+
+  // ---- Documents List ----
+  async documentsView() {
+    const content = document.getElementById('content');
+    content.innerHTML = components.loading();
+
+    try {
+      const data = await api.documents();
+
+      content.innerHTML = `
+        <div class="view-header">
+          <h1 class="view-title">Documents</h1>
+          <span class="section-subtitle">${data.count} documents</span>
+        </div>
+        <div id="documents-list"></div>
+      `;
+
+      const listEl = document.getElementById('documents-list');
+
+      if (data.documents && data.documents.length > 0) {
+        listEl.innerHTML = data.documents.map(doc => {
+          const meta = doc.metadata || {};
+          const strategy = meta.chunkStrategy || 'unknown';
+          const chunkCount = meta.chunkCount || '?';
+          return `
+            <div class="card" style="cursor:pointer" onclick="app.navigate('document/${doc.id}')">
+              <div class="card-header">
+                <span class="card-title">${escapeHtml(doc.title)}</span>
+                <span class="card-id">${escapeHtml(formatId(doc.id))}</span>
+              </div>
+              <div class="card-meta">
+                <span>${chunkCount} chunks</span>
+                <span>${strategy}</span>
+                <span>${shortDate(doc.createdAt)}</span>
+              </div>
+            </div>`;
+        }).join('');
+      } else {
+        listEl.innerHTML = components.empty('&#9776;', 'No documents imported yet');
+      }
+    } catch (err) {
+      content.innerHTML = components.empty('&#9888;', 'Failed to load documents: ' + err.message);
+    }
+  },
+
+  // ---- Document Reader ----
+  async documentReader(id) {
+    const content = document.getElementById('content');
+    content.innerHTML = components.loading();
+
+    try {
+      const data = await api.documentFull(id);
+      const doc = data.document;
+      const chunks = data.chunks || [];
+
+      // Split document body by chunk boundaries
+      const bodyText = doc.body || '';
+
+      content.innerHTML = `
+        <div class="back-link" onclick="app.navigate('documents')">&#8592; All Documents</div>
+
+        <div class="detail-header">
+          <div class="detail-title">${escapeHtml(doc.title)}</div>
+          <div class="detail-meta">
+            <span class="detail-meta-item"><span class="card-id">${escapeHtml(formatId(doc.id))}</span></span>
+            <span class="detail-meta-item">${chunks.length} chunks</span>
+            <span class="detail-meta-item">Created ${shortDate(doc.createdAt)}</span>
+            <span class="detail-meta-item">v${doc.version}</span>
+          </div>
+        </div>
+
+        ${chunks.length > 1 ? `
+          <div class="chunk-index">
+            <div class="chunk-index-title">Sections</div>
+            <div class="chunk-index-list">
+              ${chunks.map((c, i) => `
+                <div class="chunk-index-item" onclick="document.getElementById('chunk-${i}').scrollIntoView({behavior:'smooth',block:'start'})">
+                  <span class="chunk-index-num">${i + 1}.</span>
+                  <span>${escapeHtml(c.title)}</span>
+                </div>`).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div class="document-reader">
+          ${chunks.map((c, i) => {
+            const chunkBody = bodyText.substring(c.offset, c.offset + c.length);
+            return `
+              <div class="chunk-boundary" id="chunk-${i}">
+                <div class="chunk-boundary-label">
+                  <span>Chunk ${i + 1} of ${chunks.length}</span>
+                  <a href="#node/${c.nodeId}" onclick="event.stopPropagation()">${escapeHtml(c.shortId)}</a>
+                </div>
+                <div class="chunk-content">${escapeHtml(chunkBody)}</div>
+              </div>`;
+          }).join('')}
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = components.empty('&#9888;', 'Failed to load document: ' + err.message);
+    }
   },
 
   async _executeSearch(q, mode) {
@@ -1079,6 +1197,12 @@ const router = {
         break;
       case 'tag':
         if (segments[1]) await views.tagDetail(decodeURIComponent(segments[1]), params);
+        break;
+      case 'documents':
+        await views.documentsView();
+        break;
+      case 'document':
+        if (segments[1]) await views.documentReader(segments[1]);
         break;
       case 'search':
         await views.search(params);
