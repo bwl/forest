@@ -42,21 +42,41 @@ const normalizedArgs = normalizeArgs(rawArgs);
 runForestCli(normalizedArgs).catch(handleError);
 
 function normalizeArgs(args: string[]): string[] {
-  const normalized: string[] = [];
-  for (const arg of args) {
+  // First pass: collect repeated --tag values and normalize flags
+  const collected: string[] = [];
+  const tagValues: string[] = [];
+  let skipNext = false;
+  for (let i = 0; i < args.length; i++) {
+    if (skipNext) { skipNext = false; continue; }
+    const arg = args[i];
+    // --tag=value
+    if (arg.startsWith('--tag=')) {
+      tagValues.push(arg.slice(6));
+      continue;
+    }
+    // --tag value
+    if (arg === '--tag' && i + 1 < args.length) {
+      tagValues.push(args[i + 1]);
+      skipNext = true;
+      continue;
+    }
     if (arg === '--no-auto-link') {
-      normalized.push('--noAutoLink');
+      collected.push('--noAutoLink');
       continue;
     }
     if (arg === '--no-parent') {
-      normalized.push('--noParent');
+      collected.push('--noParent');
       continue;
     }
     if (arg === '--no-sequential') {
-      normalized.push('--noSequential');
+      collected.push('--noSequential');
       continue;
     }
-    normalized.push(arg);
+    collected.push(arg);
   }
-  return normalized;
+  // Inject collected --tag values as a single --tags flag
+  if (tagValues.length > 0) {
+    collected.push('--tags', tagValues.join(','));
+  }
+  return collected;
 }
