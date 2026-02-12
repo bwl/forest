@@ -133,20 +133,26 @@ async function runCapture(flags: CaptureFlags) {
   if (shouldPreview) {
     console.log('');
     try {
-      const neighborhood = await backend.getNeighborhood(node.id, { depth: 1, limit: 15 });
+      const NEARBY_LIMIT = 6;
+      const neighborhood = await backend.getNeighborhood(node.id, { depth: 1, limit: NEARBY_LIMIT });
       const directEdges = neighborhood.edges.filter(
         (e) => e.source === node.id || e.target === node.id,
       );
       if (directEdges.length > 0) {
         console.log(`${colorize.label('nearby:')}`);
         const nodeMap = new Map(neighborhood.nodes.map((n) => [n.id, n]));
-        for (const edge of directEdges) {
+        const shown = directEdges.slice(0, NEARBY_LIMIT);
+        for (const edge of shown) {
           const otherId = edge.source === node.id ? edge.target : edge.source;
           const otherNode = nodeMap.get(otherId);
-          const otherTitle = otherNode ? otherNode.title : otherId;
+          const otherTitle = otherNode ? otherNode.title : formatId(otherId);
           const otherFmtId = formatId(otherId);
           const coloredScore = colorize.embeddingScore(edge.score);
           console.log(`  ${coloredScore}  ${colorize.nodeId(otherFmtId)}  ${otherTitle}`);
+        }
+        const remaining = result.linking.edgesCreated - shown.length;
+        if (remaining > 0) {
+          console.log(`  ${colorize.grey(`...and ${remaining} more`)}`);
         }
       }
     } catch {
