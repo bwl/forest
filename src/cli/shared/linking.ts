@@ -1,7 +1,9 @@
 import {
   EdgeRecord,
   NodeRecord,
+  beginBatch,
   deleteEdgeBetween,
+  endBatch,
   insertOrUpdateEdge,
   listNodes,
 } from '../../lib/db';
@@ -48,31 +50,37 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
 
   const all = options.allNodes ?? (await listNodes());
   const context = buildTagIdfContext(all);
-  for (const other of all) {
-    if (other.id === node.id) continue;
-    const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(node, other, context);
-    const status = classifyEdgeScores(semanticScore, tagScore);
-    const [sourceId, targetId] = normalizeEdgePair(node.id, other.id);
-    if (status === 'discard') {
-      await deleteEdgeBetween(sourceId, targetId);
-      continue;
+
+  await beginBatch();
+  try {
+    for (const other of all) {
+      if (other.id === node.id) continue;
+      const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(node, other, context);
+      const status = classifyEdgeScores(semanticScore, tagScore);
+      const [sourceId, targetId] = normalizeEdgePair(node.id, other.id);
+      if (status === 'discard') {
+        await deleteEdgeBetween(sourceId, targetId);
+        continue;
+      }
+      const edge: EdgeRecord = {
+        id: edgeIdentifier(sourceId, targetId),
+        sourceId,
+        targetId,
+        score,
+        semanticScore,
+        tagScore,
+        sharedTags,
+        status,
+        edgeType: 'semantic',
+        metadata: { components },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await insertOrUpdateEdge(edge);
+      accepted += 1;
     }
-    const edge: EdgeRecord = {
-      id: edgeIdentifier(sourceId, targetId),
-      sourceId,
-      targetId,
-      score,
-      semanticScore,
-      tagScore,
-      sharedTags,
-      status,
-      edgeType: 'semantic',
-      metadata: { components },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await insertOrUpdateEdge(edge);
-    accepted += 1;
+  } finally {
+    await endBatch();
   }
 
   return { accepted };

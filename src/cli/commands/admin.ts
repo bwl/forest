@@ -402,36 +402,42 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
   let accepted = 0;
   const refreshed = await listNodes();
   const context = buildTagIdfContext(refreshed);
-  for (let i = 0; i < refreshed.length; i += 1) {
-    const a = refreshed[i];
-    for (let j = i + 1; j < refreshed.length; j += 1) {
-      const b = refreshed[j];
-      const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
-      const status = classifyEdgeScores(semanticScore, tagScore);
-      const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
 
-      if (status === 'discard') {
-        await deleteEdgeBetween(sourceId, targetId);
-        continue;
+  await beginBatch();
+  try {
+    for (let i = 0; i < refreshed.length; i += 1) {
+      const a = refreshed[i];
+      for (let j = i + 1; j < refreshed.length; j += 1) {
+        const b = refreshed[j];
+        const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
+        const status = classifyEdgeScores(semanticScore, tagScore);
+        const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
+
+        if (status === 'discard') {
+          await deleteEdgeBetween(sourceId, targetId);
+          continue;
+        }
+
+        const edge: EdgeRecord = {
+          id: edgeIdentifier(sourceId, targetId),
+          sourceId,
+          targetId,
+          score,
+          semanticScore,
+          tagScore,
+          sharedTags,
+          status,
+          edgeType: 'semantic',
+          metadata: { components },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        await insertOrUpdateEdge(edge);
+        accepted += 1;
       }
-
-      const edge: EdgeRecord = {
-        id: edgeIdentifier(sourceId, targetId),
-        sourceId,
-        targetId,
-        score,
-        semanticScore,
-        tagScore,
-        sharedTags,
-        status,
-        edgeType: 'semantic',
-        metadata: { components },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await insertOrUpdateEdge(edge);
-      accepted += 1;
     }
+  } finally {
+    await endBatch();
   }
   console.log(`Rescored graph: ${accepted} edges created`);
 }
