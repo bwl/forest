@@ -134,6 +134,7 @@ forest tags rename [old] [new]  # Rename a tag
 forest tags stats               # Tag statistics
 forest documents list           # List documents
 forest documents show [id]      # Show document
+forest documents delete [id]    # Delete document and all chunks
 forest export graphviz          # Export as DOT
 forest export json              # Export as JSON
 forest stats                    # Graph statistics

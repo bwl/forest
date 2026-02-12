@@ -169,9 +169,6 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'export.graphviz',
       'export.json',
       'export',
-      'documents.list',
-      'documents.show',
-      'documents.stats',
       'documents',
       'suggest',
       'context',
@@ -485,6 +482,26 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fl: [],
     ex: ['forest version'],
     rel: ['health'],
+  },
+
+  documents: {
+    cmd: 'documents',
+    p: 'Manage canonical documents (imported markdown split into linked chunks)',
+    in: ['args'],
+    out: ['document_list', 'document_record', 'chunk_list', 'document_stats', 'deletion_summary'],
+    fx: 'db:write (delete)',
+    fl: [
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+      { n: 'chunks', t: 'bool', d: false, desc: 'include chunk details (show)' },
+      { n: 'force', t: 'bool', d: false, desc: 'skip confirmation (delete)' },
+    ],
+    ex: [
+      'forest documents list',
+      'forest documents show abc123 --chunks',
+      'forest documents delete abc123 --force',
+      'forest documents stats',
+    ],
+    rel: ['import', 'read', 'delete', 'stats'],
   },
 
   'edges.explain': {

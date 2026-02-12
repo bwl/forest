@@ -45,6 +45,7 @@ const HIDE_IN_MAIN_HELP = new Set([
   'tags stats',
   'documents list',
   'documents show',
+  'documents delete',
   'documents stats',
   'export graphviz',
   'export json',
