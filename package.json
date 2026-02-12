@@ -30,7 +30,7 @@
     "clerc": "^0.44.0",
     "elysia": "^1.1.22",
     "graphology": "^0.25.1",
-    "marked": "^16.4.1",
+    "marked": "^15.0.7",
     "marked-terminal": "^7.3.0",
     "sql.js": "^1.11.0"
   },

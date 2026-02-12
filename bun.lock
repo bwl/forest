@@ -13,7 +13,7 @@
         "clerc": "^0.44.0",
         "elysia": "^1.1.22",
         "graphology": "^0.25.1",
-        "marked": "^16.4.1",
+        "marked": "^15.0.7",
         "marked-terminal": "^7.3.0",
         "sql.js": "^1.11.0",
       },
@@ -349,7 +349,7 @@
 
     "make-error": ["make-error@1.3.6", "", {}, "sha512-s8UhlNe7vPKomQhC1qFelMokr/Sc3AgNbso3n74mVPA5LTZwkB9NlXf4XPamLxJE8h0gh73rM94xvwRT2CVInw=="],
 
-    "marked": ["marked@16.4.1", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-ntROs7RaN3EvWfy3EZi14H4YxmT6A5YvywfhO+0pm+cH/dnSQRmdAmoFIc3B9aiwTehyk7pESH4ofyBY+V5hZg=="],
+    "marked": ["marked@15.0.12", "", { "bin": { "marked": "bin/marked.js" } }, "sha512-8dD6FusOQSrpv9Z1rdNMdlSgQOIP880DHqnohobOmYLElGEqAL/JvxvuxZO16r4HtjTlfPRDC1hbvxC9dPN2nA=="],
 
     "marked-terminal": ["marked-terminal@7.3.0", "", { "dependencies": { "ansi-escapes": "^7.0.0", "ansi-regex": "^6.1.0", "chalk": "^5.4.1", "cli-highlight": "^2.1.11", "cli-table3": "^0.6.5", "node-emoji": "^2.2.0", "supports-hyperlinks": "^3.1.0" }, "peerDependencies": { "marked": ">=1 <16" } }, "sha512-t4rBvPsHc57uE/2nJOLmMbZCQ4tgAccAED3ngXQqW6g+TxA488JzJ+FK3lQkzBQOI1mRV/r/Kq+1ZlJ4D0owQw=="],
 
