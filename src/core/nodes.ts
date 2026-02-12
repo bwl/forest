@@ -9,6 +9,11 @@ import {
   updateNode as dbUpdateNode,
   deleteNode as dbDeleteNode,
   listEdges,
+  getDocumentById,
+  getDocumentChunks,
+  deleteDocumentRecord,
+  beginBatch,
+  endBatch,
 } from '../lib/db';
 import { extractTags, pickTitle, tokenize } from '../lib/text';
 import { computeEmbeddingForNode } from '../lib/embeddings';
@@ -398,4 +403,40 @@ export async function deleteNodeCore(nodeId: string): Promise<DeleteNodeResult> 
     nodeId,
     edgesDeleted: result.edgesRemoved,
   };
+}
+
+export interface DeleteDocumentCoreResult {
+  documentId: string;
+  nodesRemoved: number;
+  edgesRemoved: number;
+}
+
+export async function deleteDocumentCore(documentId: string): Promise<DeleteDocumentCoreResult> {
+  const document = await getDocumentById(documentId);
+  if (!document) {
+    throw new Error(`Document with ID '${documentId}' not found`);
+  }
+
+  const chunks = await getDocumentChunks(documentId);
+  const nodeIds = [document.rootNodeId, ...chunks.map((c) => c.nodeId)].filter((id): id is string => !!id);
+  const uniqueNodeIds = [...new Set(nodeIds)];
+
+  let nodesRemoved = 0;
+  let edgesRemoved = 0;
+
+  await beginBatch();
+
+  for (const nodeId of uniqueNodeIds) {
+    const result = await dbDeleteNode(nodeId);
+    if (result.nodeRemoved) {
+      nodesRemoved++;
+      eventBus.emitNodeDeleted(nodeId, result.edgesRemoved);
+    }
+    edgesRemoved += result.edgesRemoved;
+  }
+
+  await deleteDocumentRecord(documentId);
+  await endBatch();
+
+  return { documentId, nodesRemoved, edgesRemoved };
 }

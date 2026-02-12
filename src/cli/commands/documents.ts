@@ -41,6 +41,33 @@ async function runDocumentsList(flags: DocumentsListFlags) {
   console.log();
 }
 
+async function resolveDocumentId(idRef: string): Promise<string | null> {
+  const backend = getBackend();
+  const { documents } = await backend.listDocuments();
+  // Exact match first
+  const exact = documents.find((d) => d.id === idRef);
+  if (exact) return exact.id;
+
+  // Prefix match (case-insensitive, dash-insensitive)
+  const prefix = idRef.replace(/-/g, '').toLowerCase();
+  const matches = documents.filter((d) =>
+    d.id.replace(/-/g, '').toLowerCase().startsWith(prefix)
+  );
+
+  if (matches.length === 1) return matches[0].id;
+
+  if (matches.length > 1) {
+    console.error(`✖ Ambiguous document ID '${idRef}' matches ${matches.length} documents:`);
+    for (const m of matches.slice(0, 5)) {
+      console.error(`  ${formatId(m.id)}  ${m.title}`);
+    }
+    return null;
+  }
+
+  console.error(`✖ No document matching '${idRef}'`);
+  return null;
+}
+
 async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowFlags) {
   if (!idRef) {
     console.error('✖ Provide a document ID');
@@ -48,8 +75,14 @@ async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowF
     return;
   }
 
+  const resolvedId = await resolveDocumentId(idRef);
+  if (!resolvedId) {
+    process.exitCode = 1;
+    return;
+  }
+
   const backend = getBackend();
-  const result = await backend.getDocument(idRef);
+  const result = await backend.getDocument(resolvedId);
   const document = result.document;
 
   if (flags.json) {
@@ -92,6 +125,47 @@ async function runDocumentsShow(idRef: string | undefined, flags: DocumentsShowF
   }
 
   console.log();
+}
+
+type DocumentsDeleteFlags = {
+  force?: boolean;
+  json?: boolean;
+};
+
+async function runDocumentsDelete(idRef: string | undefined, flags: DocumentsDeleteFlags) {
+  if (!idRef) {
+    console.error('Provide a document ID');
+    process.exitCode = 1;
+    return;
+  }
+
+  const resolvedId = await resolveDocumentId(idRef);
+  if (!resolvedId) {
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend = getBackend();
+  const { document } = await backend.getDocument(resolvedId);
+  const metadata = document.metadata as any;
+  const chunkCount = metadata?.chunkCount ?? 0;
+
+  if (!flags.force) {
+    console.log(`\nAbout to delete document: "${document.title}" (${formatId(document.id)})`);
+    console.log(`  This will remove the document record, its root node, and ${chunkCount} chunk(s).`);
+    console.log(`  Use --force to confirm.\n`);
+    return;
+  }
+
+  const result = await backend.deleteDocument(resolvedId);
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Deleted "${document.title}" (${formatId(document.id)})`);
+  console.log(`  ${result.deleted.nodesRemoved} nodes removed, ${result.deleted.edgesRemoved} edges removed`);
 }
 
 async function runDocumentsStats(flags: { json?: boolean }) {
@@ -165,8 +239,7 @@ export function registerDocumentsCommands(cli: ClercInstance, clerc: ClercModule
       },
     },
     async (ctx: any) => {
-      const [id] = ctx.parameters._;
-      await runDocumentsShow(id as string | undefined, ctx.flags as DocumentsShowFlags);
+      await runDocumentsShow(ctx.parameters.id as string | undefined, ctx.flags as DocumentsShowFlags);
     }
   );
 
@@ -186,8 +259,30 @@ export function registerDocumentsCommands(cli: ClercInstance, clerc: ClercModule
     }
   );
 
+  const deleteCommand = clerc.defineCommand(
+    {
+      name: 'documents delete',
+      description: 'Delete a document and all its chunks',
+      parameters: ['[id]'],
+      flags: {
+        force: {
+          type: Boolean,
+          description: 'Skip confirmation',
+        },
+        json: {
+          type: Boolean,
+          description: 'Output as JSON',
+        },
+      },
+    },
+    async (ctx: any) => {
+      await runDocumentsDelete(ctx.parameters.id as string | undefined, ctx.flags as DocumentsDeleteFlags);
+    }
+  );
+
   cli.command(listCommand);
   cli.command(showCommand);
+  cli.command(deleteCommand);
   cli.command(statsCommand);
   cli.command(documentsCommand);
 }

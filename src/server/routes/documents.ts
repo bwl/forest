@@ -8,6 +8,7 @@ import {
   DocumentChunkRecord,
 } from '../../lib/db';
 import { importDocumentCore } from '../../core/import';
+import { deleteDocumentCore } from '../../core/nodes';
 import { ForestError, ValidationError, NodeNotFoundError, createErrorResponse } from '../utils/errors';
 import { createSuccessResponse } from '../utils/helpers';
 import { formatId } from '../../cli/shared/utils';
@@ -204,6 +205,40 @@ export const documentsRoutes = new Elysia({ prefix: '/api/v1' })
       detail: {
         summary: 'Get full document with chunk boundaries',
         description: 'Returns document body and chunk boundary info for the reader view',
+        tags: ['Documents'],
+      },
+    }
+  )
+
+  // DELETE /documents/:id - Delete a document and all its chunks
+  .delete(
+    '/documents/:id',
+    async ({ params, set }) => {
+      try {
+        const result = await deleteDocumentCore(params.id);
+        return createSuccessResponse({
+          deleted: {
+            documentId: result.documentId,
+            nodesRemoved: result.nodesRemoved,
+            edgesRemoved: result.edgesRemoved,
+          },
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      params: t.Object({
+        id: t.String({ description: 'Document ID' }),
+      }),
+      detail: {
+        summary: 'Delete a document',
+        description: 'Deletes a document record and all its chunk nodes and edges',
         tags: ['Documents'],
       },
     }

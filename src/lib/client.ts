@@ -474,6 +474,14 @@ export interface GetDocumentChunksResult {
   count: number;
 }
 
+export interface DeleteDocumentResult {
+  deleted: {
+    documentId: string;
+    nodesRemoved: number;
+    edgesRemoved: number;
+  };
+}
+
 export interface DocumentStatsResult {
   totalDocuments: number;
   totalChunks: number;
@@ -862,6 +870,10 @@ export class ForestClient implements IForestBackend {
 
   async getDocumentChunks(id: string): Promise<GetDocumentChunksResult> {
     return this.request<GetDocumentChunksResult>('GET', `/api/v1/documents/${encodeURIComponent(id)}/chunks`);
+  }
+
+  async deleteDocument(id: string): Promise<DeleteDocumentResult> {
+    return this.request<DeleteDocumentResult>('DELETE', `/api/v1/documents/${encodeURIComponent(id)}`);
   }
 
   async getDocumentStats(): Promise<DocumentStatsResult> {

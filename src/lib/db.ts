@@ -1379,6 +1379,19 @@ export async function deleteDocumentChunksForNodes(nodeIds: string[]): Promise<v
   }
 }
 
+export async function deleteDocumentRecord(documentId: string): Promise<boolean> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('DELETE FROM documents WHERE id = :id');
+  stmt.bind({ ':id': documentId });
+  stmt.step();
+  const removed = db.getRowsModified() > 0;
+  stmt.free();
+  if (removed) {
+    await markDirtyAndPersist();
+  }
+  return removed;
+}
+
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   const db = await ensureDatabase();
   // Check if edge already exists to update degree counters accurately

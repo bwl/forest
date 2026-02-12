@@ -41,6 +41,7 @@ import type {
   ListDocumentsResult,
   GetDocumentResult,
   GetDocumentChunksResult,
+  DeleteDocumentResult,
   DocumentStatsResult,
   EdgeThresholdsResult,
   SuggestResultRemote,
@@ -98,6 +99,7 @@ export interface IForestBackend {
   listDocuments(): Promise<ListDocumentsResult>;
   getDocument(id: string): Promise<GetDocumentResult>;
   getDocumentChunks(id: string): Promise<GetDocumentChunksResult>;
+  deleteDocument(id: string): Promise<DeleteDocumentResult>;
   getDocumentStats(): Promise<DocumentStatsResult>;
 
   // ── Context ────────────────────────────────────────────────────────

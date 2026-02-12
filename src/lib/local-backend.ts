@@ -42,6 +42,7 @@ import type {
   ListDocumentsResult,
   GetDocumentResult,
   GetDocumentChunksResult,
+  DeleteDocumentResult,
   DocumentStatsResult,
   EdgeThresholdsResult,
   SuggestResultRemote,
@@ -62,6 +63,7 @@ import {
   getNodeCore,
   listNodesCore,
   deleteNodeCore,
+  deleteDocumentCore,
   updateNodeCore,
   getNodeEdgesCore,
 } from '../core/nodes';
@@ -711,6 +713,17 @@ export class LocalBackend implements IForestBackend {
     if (!document) throw new Error(`Document not found: ${id}`);
     const chunks = await getDocumentChunks(id);
     return { chunks, count: chunks.length };
+  }
+
+  async deleteDocument(id: string): Promise<DeleteDocumentResult> {
+    const result = await deleteDocumentCore(id);
+    return {
+      deleted: {
+        documentId: result.documentId,
+        nodesRemoved: result.nodesRemoved,
+        edgesRemoved: result.edgesRemoved,
+      },
+    };
   }
 
   async getDocumentStats(): Promise<DocumentStatsResult> {
