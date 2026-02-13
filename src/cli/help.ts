@@ -26,12 +26,12 @@ interface Renderers {
 // Command-to-category mapping (order preserved)
 const COMMAND_GROUPS: [string, string[]][] = [
   ['CAPTURE - Create content', ['capture', 'write']],
-  ['EXPLORE - Find and navigate', ['search', 'explore', 'suggest']],
+  ['EXPLORE - Find and navigate', ['search', 'explore', 'suggest', 'diff']],
   ['NOTES - Read, edit, manage', ['read', 'edit', 'update', 'delete', 'import', 'synthesize']],
-  ['GRAPH - Connections and tags', ['link', 'tag', 'edges']],
+  ['GRAPH - Connections and tags', ['link', 'tag', 'edges', 'snapshot']],
   ['MANAGE - Groups', ['tags', 'documents']],
   ['ADMIN - System administration', ['admin', 'config', 'serve']],
-  ['INFO - Reports and exports', ['stats', 'export', 'version']],
+  ['INFO - Reports and exports', ['stats', 'growth', 'export', 'version']],
 ];
 
 // Subcommands hidden from main help (shown via `forest <family> --help`)

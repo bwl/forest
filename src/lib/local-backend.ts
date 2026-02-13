@@ -53,6 +53,10 @@ import type {
   NodeSummary,
   EdgeSummary,
   ContextResultRemote,
+  GraphDiffResultRemote,
+  GraphGrowthResultRemote,
+  CreateGraphSnapshotResultRemote,
+  ListGraphSnapshotsResultRemote,
 } from './client';
 
 import { formatId } from '../cli/shared/utils';
@@ -90,6 +94,12 @@ import { importDocumentCore } from '../core/import';
 import { getHealthReport, isHealthy } from '../core/health';
 import { suggestCore } from '../core/suggest';
 import { contextCore } from '../core/context';
+import {
+  getGraphDiffCore,
+  getGraphGrowthCore,
+  createGraphSnapshotCore,
+  listGraphSnapshotsCore,
+} from '../core/temporal';
 import { deduplicateChunks } from './reconstruction';
 
 // ── DB imports (for operations not covered by core) ─────────────────────
@@ -658,6 +668,63 @@ export class LocalBackend implements IForestBackend {
     const limit = opts?.limit ?? 50;
     const { payload } = await buildNeighborhoodPayload(id, depth, limit);
     return payload;
+  }
+
+  async getGraphDiff(opts: { since: string; limit?: number }): Promise<GraphDiffResultRemote> {
+    const since = new Date(opts.since);
+    if (!Number.isFinite(since.getTime())) {
+      throw new Error(`Invalid "since" timestamp: ${opts.since}`);
+    }
+    return await getGraphDiffCore({
+      since,
+      limit: opts.limit,
+    });
+  }
+
+  async getGraphGrowth(
+    opts?: { since?: string; until?: string; limit?: number },
+  ): Promise<GraphGrowthResultRemote> {
+    const since = opts?.since ? new Date(opts.since) : undefined;
+    const until = opts?.until ? new Date(opts.until) : undefined;
+    if (since && !Number.isFinite(since.getTime())) {
+      throw new Error(`Invalid "since" timestamp: ${opts?.since}`);
+    }
+    if (until && !Number.isFinite(until.getTime())) {
+      throw new Error(`Invalid "until" timestamp: ${opts?.until}`);
+    }
+    return await getGraphGrowthCore({
+      since,
+      until,
+      limit: opts?.limit,
+    });
+  }
+
+  async createGraphSnapshot(
+    opts?: { snapshotType?: 'manual' | 'auto' },
+  ): Promise<CreateGraphSnapshotResultRemote> {
+    return await createGraphSnapshotCore(opts?.snapshotType ?? 'manual');
+  }
+
+  async listGraphSnapshots(opts?: {
+    limit?: number;
+    since?: string;
+    until?: string;
+    snapshotType?: 'manual' | 'auto';
+  }): Promise<ListGraphSnapshotsResultRemote> {
+    const since = opts?.since ? new Date(opts.since) : undefined;
+    const until = opts?.until ? new Date(opts.until) : undefined;
+    if (since && !Number.isFinite(since.getTime())) {
+      throw new Error(`Invalid "since" timestamp: ${opts?.since}`);
+    }
+    if (until && !Number.isFinite(until.getTime())) {
+      throw new Error(`Invalid "until" timestamp: ${opts?.until}`);
+    }
+    return await listGraphSnapshotsCore({
+      limit: opts?.limit,
+      since,
+      until,
+      snapshotType: opts?.snapshotType,
+    });
   }
 
   // ── Export ─────────────────────────────────────────────────────────

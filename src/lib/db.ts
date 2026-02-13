@@ -48,6 +48,34 @@ export type NodeHistoryRecord = {
   createdAt: string;
 };
 
+export type GraphSnapshotType = 'auto' | 'manual';
+
+export type GraphSnapshotNodeState = {
+  id: string;
+  title: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GraphSnapshotEdgeState = {
+  sourceId: string;
+  targetId: string;
+  score: number;
+};
+
+export type GraphSnapshotRecord = {
+  id: number;
+  takenAt: string;
+  snapshotType: GraphSnapshotType;
+  nodeCount: number;
+  edgeCount: number;
+  tagCount: number;
+  nodes: GraphSnapshotNodeState[];
+  edges: GraphSnapshotEdgeState[];
+  createdAt: string;
+};
+
 export type DegreeConsistencyReport = {
   mismatchedNodes: number;
   overcountNodes: number;
@@ -349,6 +377,20 @@ function runMigrations(db: Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_node_history_node_version ON node_history(node_id, version DESC);
+
+    CREATE TABLE IF NOT EXISTS graph_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      taken_at TEXT NOT NULL,
+      snapshot_type TEXT NOT NULL DEFAULT 'manual',
+      node_count INTEGER NOT NULL,
+      edge_count INTEGER NOT NULL,
+      tag_count INTEGER NOT NULL,
+      nodes_json TEXT NOT NULL,
+      edges_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_graph_snapshots_taken_at ON graph_snapshots(taken_at DESC);
   `);
 
   // Add missing columns for existing databases (best-effort migrations)
@@ -409,6 +451,24 @@ function runMigrations(db: Database) {
     }
     if (columns.length > 0 && !columns.includes('restored_from_version')) {
       db.exec(`ALTER TABLE node_history ADD COLUMN restored_from_version INTEGER;`);
+      dirty = true;
+    }
+  } catch (_) {
+    // Best-effort; ignore if pragma not supported in this context
+  }
+
+  // Add graph_snapshots columns for older databases if missing
+  try {
+    const res = db.exec(`PRAGMA table_info(graph_snapshots);`);
+    const columns = res.length > 0 ? res[0].values.map((row) => String(row[1])) : [];
+
+    if (columns.length > 0 && !columns.includes('snapshot_type')) {
+      db.exec(`ALTER TABLE graph_snapshots ADD COLUMN snapshot_type TEXT NOT NULL DEFAULT 'manual';`);
+      dirty = true;
+    }
+    if (columns.length > 0 && !columns.includes('created_at')) {
+      db.exec(`ALTER TABLE graph_snapshots ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`);
+      db.exec(`UPDATE graph_snapshots SET created_at = taken_at WHERE created_at = ''`);
       dirty = true;
     }
   } catch (_) {
@@ -666,6 +726,169 @@ async function backfillCanonicalDocuments(db: Database) {
 // Batch mode: when > 0, persist is deferred until endBatch() is called.
 // This avoids repeated full-DB exports during bulk operations like import.
 let batchDepth = 0;
+let autoSnapshotInFlight = false;
+
+function buildCurrentGraphSnapshotStateInternal(db: Database): {
+  nodeCount: number;
+  edgeCount: number;
+  tagCount: number;
+  nodes: GraphSnapshotNodeState[];
+  edges: GraphSnapshotEdgeState[];
+} {
+  const nodes: GraphSnapshotNodeState[] = [];
+  const nodeStmt = db.prepare(
+    `SELECT id, title, tags, created_at, updated_at
+     FROM nodes
+     ORDER BY id ASC`,
+  );
+  while (nodeStmt.step()) {
+    const row = nodeStmt.getAsObject();
+    nodes.push({
+      id: String(row.id),
+      title: String(row.title),
+      tags: row.tags ? (JSON.parse(String(row.tags)) as string[]) : [],
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    });
+  }
+  nodeStmt.free();
+
+  const edges: GraphSnapshotEdgeState[] = [];
+  const edgeStmt = db.prepare(
+    `SELECT source_id, target_id, score
+     FROM edges
+     ORDER BY source_id ASC, target_id ASC`,
+  );
+  while (edgeStmt.step()) {
+    const row = edgeStmt.getAsObject();
+    edges.push({
+      sourceId: String(row.source_id),
+      targetId: String(row.target_id),
+      score: Number(row.score),
+    });
+  }
+  edgeStmt.free();
+
+  const tagStmt = db.prepare('SELECT COUNT(DISTINCT tag) AS count FROM node_tags');
+  tagStmt.step();
+  const tagCount = Number(tagStmt.getAsObject().count ?? 0);
+  tagStmt.free();
+
+  return {
+    nodeCount: nodes.length,
+    edgeCount: edges.length,
+    tagCount,
+    nodes,
+    edges,
+  };
+}
+
+function insertGraphSnapshotInternal(
+  db: Database,
+  snapshotType: GraphSnapshotType,
+  options: { takenAt?: string } = {},
+): GraphSnapshotRecord {
+  const takenAt = options.takenAt ?? new Date().toISOString();
+  const createdAt = new Date().toISOString();
+  const state = buildCurrentGraphSnapshotStateInternal(db);
+
+  const stmt = db.prepare(
+    `INSERT INTO graph_snapshots
+      (taken_at, snapshot_type, node_count, edge_count, tag_count, nodes_json, edges_json, created_at)
+     VALUES
+      (:takenAt, :snapshotType, :nodeCount, :edgeCount, :tagCount, :nodesJson, :edgesJson, :createdAt)`,
+  );
+  stmt.bind({
+    ':takenAt': takenAt,
+    ':snapshotType': snapshotType,
+    ':nodeCount': state.nodeCount,
+    ':edgeCount': state.edgeCount,
+    ':tagCount': state.tagCount,
+    ':nodesJson': JSON.stringify(state.nodes),
+    ':edgesJson': JSON.stringify(state.edges),
+    ':createdAt': createdAt,
+  });
+  stmt.step();
+  stmt.free();
+
+  const idStmt = db.prepare('SELECT last_insert_rowid() AS id');
+  idStmt.step();
+  const insertedId = Number(idStmt.getAsObject().id ?? 0);
+  idStmt.free();
+
+  return {
+    id: insertedId,
+    takenAt,
+    snapshotType,
+    nodeCount: state.nodeCount,
+    edgeCount: state.edgeCount,
+    tagCount: state.tagCount,
+    nodes: state.nodes,
+    edges: state.edges,
+    createdAt,
+  };
+}
+
+function latestAutoSnapshotTakenAtInternal(db: Database): string | null {
+  const stmt = db.prepare(
+    `SELECT taken_at
+     FROM graph_snapshots
+     WHERE snapshot_type = 'auto'
+     ORDER BY taken_at DESC
+     LIMIT 1`,
+  );
+  const value = stmt.step() ? String(stmt.getAsObject().taken_at) : null;
+  stmt.free();
+  return value;
+}
+
+function isSameUtcDay(aIso: string, bIso: string): boolean {
+  const a = new Date(aIso);
+  const b = new Date(bIso);
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear() &&
+    a.getUTCMonth() === b.getUTCMonth() &&
+    a.getUTCDate() === b.getUTCDate()
+  );
+}
+
+function maybeCreateAutoGraphSnapshotInternal(db: Database): void {
+  if (autoSnapshotInFlight) return;
+
+  const nowIso = new Date().toISOString();
+  const latestAuto = latestAutoSnapshotTakenAtInternal(db);
+  if (latestAuto && isSameUtcDay(latestAuto, nowIso)) {
+    return;
+  }
+
+  const state = buildCurrentGraphSnapshotStateInternal(db);
+  if (state.nodeCount === 0 && state.edgeCount === 0) return;
+
+  autoSnapshotInFlight = true;
+  try {
+    const createdAt = new Date().toISOString();
+    const stmt = db.prepare(
+      `INSERT INTO graph_snapshots
+        (taken_at, snapshot_type, node_count, edge_count, tag_count, nodes_json, edges_json, created_at)
+       VALUES
+        (:takenAt, 'auto', :nodeCount, :edgeCount, :tagCount, :nodesJson, :edgesJson, :createdAt)`,
+    );
+    stmt.bind({
+      ':takenAt': nowIso,
+      ':nodeCount': state.nodeCount,
+      ':edgeCount': state.edgeCount,
+      ':tagCount': state.tagCount,
+      ':nodesJson': JSON.stringify(state.nodes),
+      ':edgesJson': JSON.stringify(state.edges),
+      ':createdAt': createdAt,
+    });
+    stmt.step();
+    stmt.free();
+    dirty = true;
+  } finally {
+    autoSnapshotInFlight = false;
+  }
+}
 
 export async function beginBatch(): Promise<void> {
   batchDepth++;
@@ -680,6 +903,10 @@ export async function endBatch(): Promise<void> {
 
 async function markDirtyAndPersist() {
   dirty = true;
+  if (!autoSnapshotInFlight) {
+    const db = await ensureDatabase();
+    maybeCreateAutoGraphSnapshotInternal(db);
+  }
   if (batchDepth > 0) return; // Defer persist until endBatch
   await persist();
 }
@@ -753,6 +980,24 @@ function parseDocumentChunkRow(row: any): DocumentChunkRecord {
     checksum: String(row.checksum),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
+  };
+}
+
+function parseGraphSnapshotType(value: string): GraphSnapshotType {
+  return value === 'auto' ? 'auto' : 'manual';
+}
+
+function parseGraphSnapshotRow(row: any): GraphSnapshotRecord {
+  return {
+    id: Number(row.id),
+    takenAt: String(row.taken_at),
+    snapshotType: parseGraphSnapshotType(String(row.snapshot_type ?? 'manual')),
+    nodeCount: Number(row.node_count),
+    edgeCount: Number(row.edge_count),
+    tagCount: Number(row.tag_count),
+    nodes: row.nodes_json ? (JSON.parse(String(row.nodes_json)) as GraphSnapshotNodeState[]) : [],
+    edges: row.edges_json ? (JSON.parse(String(row.edges_json)) as GraphSnapshotEdgeState[]) : [],
+    createdAt: String(row.created_at ?? row.taken_at),
   };
 }
 
@@ -1409,6 +1654,132 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
 
   // Ambiguous short ID
   throw new Error(`Ambiguous short ID '${id}': matches ${matches.length} nodes. Use a longer prefix.`);
+}
+
+export async function getCurrentGraphSnapshotState(): Promise<{
+  nodeCount: number;
+  edgeCount: number;
+  tagCount: number;
+  nodes: GraphSnapshotNodeState[];
+  edges: GraphSnapshotEdgeState[];
+}> {
+  const db = await ensureDatabase();
+  return buildCurrentGraphSnapshotStateInternal(db);
+}
+
+export async function createGraphSnapshot(
+  snapshotType: GraphSnapshotType = 'manual',
+  options: { takenAt?: string } = {},
+): Promise<GraphSnapshotRecord> {
+  const db = await ensureDatabase();
+  const snapshot = insertGraphSnapshotInternal(db, snapshotType, options);
+  await markDirtyAndPersist();
+  return snapshot;
+}
+
+export async function listGraphSnapshots(options: {
+  limit?: number;
+  since?: string;
+  until?: string;
+  snapshotType?: GraphSnapshotType;
+} = {}): Promise<GraphSnapshotRecord[]> {
+  const db = await ensureDatabase();
+  const conditions: string[] = [];
+  const params: Record<string, unknown> = {};
+
+  if (options.since) {
+    conditions.push('taken_at >= :since');
+    params[':since'] = options.since;
+  }
+  if (options.until) {
+    conditions.push('taken_at <= :until');
+    params[':until'] = options.until;
+  }
+  if (options.snapshotType) {
+    conditions.push('snapshot_type = :snapshotType');
+    params[':snapshotType'] = options.snapshotType;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const limitClause = options.limit ? 'LIMIT :limit' : '';
+  if (options.limit) {
+    params[':limit'] = Math.max(1, Math.floor(options.limit));
+  }
+
+  const stmt = db.prepare(
+    `SELECT *
+     FROM graph_snapshots
+     ${whereClause}
+     ORDER BY taken_at DESC
+     ${limitClause}`,
+  );
+  if (Object.keys(params).length > 0) {
+    stmt.bind(params as any);
+  }
+
+  const snapshots: GraphSnapshotRecord[] = [];
+  while (stmt.step()) {
+    snapshots.push(parseGraphSnapshotRow(stmt.getAsObject()));
+  }
+  stmt.free();
+
+  return snapshots;
+}
+
+export async function getLatestGraphSnapshot(): Promise<GraphSnapshotRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT *
+     FROM graph_snapshots
+     ORDER BY taken_at DESC
+     LIMIT 1`,
+  );
+  const snapshot = stmt.step() ? parseGraphSnapshotRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return snapshot;
+}
+
+export async function getEarliestGraphSnapshot(): Promise<GraphSnapshotRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT *
+     FROM graph_snapshots
+     ORDER BY taken_at ASC
+     LIMIT 1`,
+  );
+  const snapshot = stmt.step() ? parseGraphSnapshotRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return snapshot;
+}
+
+export async function getGraphSnapshotAtOrBefore(timestamp: string): Promise<GraphSnapshotRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT *
+     FROM graph_snapshots
+     WHERE taken_at <= :timestamp
+     ORDER BY taken_at DESC
+     LIMIT 1`,
+  );
+  stmt.bind({ ':timestamp': timestamp });
+  const snapshot = stmt.step() ? parseGraphSnapshotRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return snapshot;
+}
+
+export async function getGraphSnapshotAtOrAfter(timestamp: string): Promise<GraphSnapshotRecord | null> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `SELECT *
+     FROM graph_snapshots
+     WHERE taken_at >= :timestamp
+     ORDER BY taken_at ASC
+     LIMIT 1`,
+  );
+  stmt.bind({ ':timestamp': timestamp });
+  const snapshot = stmt.step() ? parseGraphSnapshotRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return snapshot;
 }
 
 export type ListNodeHistoryResult = {

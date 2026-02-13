@@ -51,6 +51,10 @@ import type {
   StatsResult,
   NodeSummary,
   ContextResultRemote,
+  GraphDiffResultRemote,
+  GraphGrowthResultRemote,
+  CreateGraphSnapshotResultRemote,
+  ListGraphSnapshotsResultRemote,
 } from './client';
 
 export interface IForestBackend {
@@ -94,6 +98,10 @@ export interface IForestBackend {
   findPath(from: string, to: string): Promise<PathResult>;
   linkNodes(data: LinkNodesInput): Promise<LinkNodesResult>;
   getNeighborhood(id: string, opts?: { depth?: number; limit?: number }): Promise<NeighborhoodResult>;
+  getGraphDiff(opts: { since: string; limit?: number }): Promise<GraphDiffResultRemote>;
+  getGraphGrowth(opts?: { since?: string; until?: string; limit?: number }): Promise<GraphGrowthResultRemote>;
+  createGraphSnapshot(opts?: { snapshotType?: 'manual' | 'auto' }): Promise<CreateGraphSnapshotResultRemote>;
+  listGraphSnapshots(opts?: { limit?: number; since?: string; until?: string; snapshotType?: 'manual' | 'auto' }): Promise<ListGraphSnapshotsResultRemote>;
 
   // ── Export ─────────────────────────────────────────────────────────
   exportJson(opts?: { body?: boolean; edges?: boolean }): Promise<ExportJsonResult>;

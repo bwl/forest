@@ -17,6 +17,11 @@ import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
 import { createLintCommand } from './commands/lint';
+import {
+  createDiffCommand,
+  createGrowthCommand,
+  createSnapshotCommand,
+} from './commands/temporal';
 import { createGroupedHelpRenderer } from './help';
 
 type ClercModule = typeof import('clerc');
@@ -56,6 +61,9 @@ export async function createForestCli() {
   cli.command(createConfigCommand(clerc));
   cli.command(createVersionCommand(clerc));
   cli.command(createLintCommand(clerc));
+  cli.command(createDiffCommand(clerc));
+  cli.command(createGrowthCommand(clerc));
+  cli.command(createSnapshotCommand(clerc));
   registerEdgesCommands(cli, clerc);
   registerTagsCommands(cli, clerc);
   registerDocumentsCommands(cli, clerc);

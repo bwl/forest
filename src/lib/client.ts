@@ -187,6 +187,127 @@ export interface StatsResult {
   highDegreeNodes: Array<{ id: string; title: string; edgeCount: number }>;
 }
 
+export interface TemporalDiffNodeRemote {
+  id: string;
+  title: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemporalDiffEdgeRemote {
+  key: string;
+  sourceId: string;
+  targetId: string;
+  sourceTitle: string;
+  targetTitle: string;
+  scoreBefore: number | null;
+  scoreAfter: number | null;
+  delta: number | null;
+}
+
+export interface TemporalDiffSectionRemote<T> {
+  total: number;
+  shown: number;
+  truncated: number;
+  items: T[];
+}
+
+export interface GraphDiffResultRemote {
+  requestedSince: string;
+  effectiveSince: string;
+  generatedAt: string;
+  baselineSnapshot: {
+    id: number;
+    takenAt: string;
+    snapshotType: 'auto' | 'manual';
+  };
+  warnings: string[];
+  summary: {
+    baseline: {
+      nodes: number;
+      edges: number;
+      tags: number;
+    };
+    current: {
+      nodes: number;
+      edges: number;
+      tags: number;
+    };
+    nodesAdded: number;
+    nodesRemoved: number;
+    nodesUpdated: number;
+    edgesAdded: number;
+    edgesRemoved: number;
+    edgesChanged: number;
+  };
+  nodes: {
+    added: TemporalDiffSectionRemote<TemporalDiffNodeRemote>;
+    removed: TemporalDiffSectionRemote<TemporalDiffNodeRemote>;
+    updated: TemporalDiffSectionRemote<TemporalDiffNodeRemote>;
+  };
+  edges: {
+    added: TemporalDiffSectionRemote<TemporalDiffEdgeRemote>;
+    removed: TemporalDiffSectionRemote<TemporalDiffEdgeRemote>;
+    changed: TemporalDiffSectionRemote<TemporalDiffEdgeRemote>;
+  };
+}
+
+export interface GraphGrowthPointRemote {
+  takenAt: string;
+  source: 'snapshot' | 'live';
+  snapshotType: 'auto' | 'manual' | null;
+  nodeCount: number;
+  edgeCount: number;
+  tagCount: number;
+}
+
+export interface GraphGrowthResultRemote {
+  from: string;
+  to: string;
+  generatedAt: string;
+  warnings: string[];
+  summary: {
+    points: number;
+    snapshots: number;
+    nodeDelta: number;
+    edgeDelta: number;
+    tagDelta: number;
+  };
+  points: GraphGrowthPointRemote[];
+}
+
+export interface GraphSnapshotRemote {
+  id: number;
+  takenAt: string;
+  snapshotType: 'auto' | 'manual';
+  nodeCount: number;
+  edgeCount: number;
+  tagCount: number;
+  nodes: Array<{
+    id: string;
+    title: string;
+    tags: string[];
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  edges: Array<{
+    sourceId: string;
+    targetId: string;
+    score: number;
+  }>;
+  createdAt: string;
+}
+
+export interface CreateGraphSnapshotResultRemote {
+  snapshot: GraphSnapshotRemote;
+}
+
+export interface ListGraphSnapshotsResultRemote {
+  snapshots: GraphSnapshotRemote[];
+  total: number;
+}
+
 // ── Update node types ─────────────────────────────────────────────────
 
 export interface UpdateNodeInput {
@@ -908,6 +1029,49 @@ export class ForestClient implements IForestBackend {
       query: {
         depth: opts?.depth,
         limit: opts?.limit,
+      },
+    });
+  }
+
+  async getGraphDiff(opts: { since: string; limit?: number }): Promise<GraphDiffResultRemote> {
+    return this.request<GraphDiffResultRemote>('GET', '/api/v1/graph/diff', {
+      query: {
+        since: opts.since,
+        limit: opts.limit,
+      },
+    });
+  }
+
+  async getGraphGrowth(opts?: { since?: string; until?: string; limit?: number }): Promise<GraphGrowthResultRemote> {
+    return this.request<GraphGrowthResultRemote>('GET', '/api/v1/graph/growth', {
+      query: {
+        since: opts?.since,
+        until: opts?.until,
+        limit: opts?.limit,
+      },
+    });
+  }
+
+  async createGraphSnapshot(opts?: { snapshotType?: 'manual' | 'auto' }): Promise<CreateGraphSnapshotResultRemote> {
+    return this.request<CreateGraphSnapshotResultRemote>('POST', '/api/v1/graph/snapshots', {
+      body: {
+        snapshotType: opts?.snapshotType ?? 'manual',
+      },
+    });
+  }
+
+  async listGraphSnapshots(opts?: {
+    limit?: number;
+    since?: string;
+    until?: string;
+    snapshotType?: 'manual' | 'auto';
+  }): Promise<ListGraphSnapshotsResultRemote> {
+    return this.request<ListGraphSnapshotsResultRemote>('GET', '/api/v1/graph/snapshots', {
+      query: {
+        limit: opts?.limit,
+        since: opts?.since,
+        until: opts?.until,
+        snapshotType: opts?.snapshotType,
       },
     });
   }

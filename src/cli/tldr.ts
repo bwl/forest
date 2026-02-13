@@ -138,6 +138,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'explore',
       'link',
       'search',
+      'diff',
       'read',
       'history',
       'restore',
@@ -148,6 +149,8 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'synthesize',
       'tag',
       'stats',
+      'growth',
+      'snapshot',
       'serve',
       'config',
       'version',
@@ -282,6 +285,70 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest search --mode metadata --tags research,ml --any-tag embeddings,metrics',
     ],
     rel: ['explore', 'capture'],
+  },
+
+  diff: {
+    cmd: 'diff',
+    p: 'Show graph-level changes since a point in time (nodes and edges)',
+    in: ['since'],
+    out: ['change_summary', 'added_removed_updated_nodes', 'added_removed_changed_edges'],
+    fx: 'none',
+    fl: [
+      { n: 'since', t: 'str', d: '1 week ago', desc: 'baseline time (e.g. "1 week ago", "2026-01-01")' },
+      { n: 'limit', t: 'int', d: 25, desc: 'max items to show per change section' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest diff --since "1 week ago"',
+      'forest diff --since 2026-01-01 --limit 50',
+      'forest diff --json',
+    ],
+    rel: ['growth', 'snapshot', 'history', 'stats'],
+  },
+
+  growth: {
+    cmd: 'growth',
+    p: 'Show graph growth trends over time from captured snapshots',
+    in: [],
+    out: ['timeline_points', 'growth_summary', 'trend_chart'],
+    fx: 'none',
+    fl: [
+      { n: 'since', t: 'str', d: '30 days ago', desc: 'start time for growth window' },
+      { n: 'until', t: 'str', d: 'now', desc: 'end time for growth window' },
+      { n: 'limit', t: 'int', d: 120, desc: 'max growth points to return' },
+      { n: 'metric', t: 'str', d: 'all', desc: 'nodes|edges|tags|all chart output' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest growth',
+      'forest growth --since "90 days ago" --metric nodes',
+      'forest growth --since 2026-01-01 --until 2026-02-01 --json',
+    ],
+    rel: ['diff', 'snapshot', 'stats'],
+  },
+
+  snapshot: {
+    cmd: 'snapshot',
+    p: 'Create or list graph snapshots used for temporal diff and growth',
+    in: [],
+    out: ['snapshot_record', 'snapshot_list'],
+    fx: 'db:write (create)',
+    fl: [
+      { n: 'list', t: 'bool', d: false, desc: 'list snapshots instead of creating one' },
+      { n: 'auto', t: 'bool', d: false, desc: 'create an auto-labeled snapshot (default: manual)' },
+      { n: 'snapshot-type', t: 'str', desc: 'filter listed snapshots by type: manual|auto' },
+      { n: 'since', t: 'str', desc: 'list snapshots since this time' },
+      { n: 'until', t: 'str', desc: 'list snapshots until this time' },
+      { n: 'limit', t: 'int', d: 50, desc: 'max snapshots to list' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest snapshot',
+      'forest snapshot --auto',
+      'forest snapshot --list --limit 20',
+      'forest snapshot --list --snapshot-type auto --since "30 days ago"',
+    ],
+    rel: ['diff', 'growth', 'stats'],
   },
 
   stats: {
