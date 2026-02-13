@@ -132,7 +132,12 @@ if [[ "\$SKIP_INSTALL" -ne 1 ]]; then
 fi
 
 echo "-> bun run build"
-bun run build
+if bun run build; then
+  :
+else
+  echo "-> bun run build failed; falling back to ./node_modules/.bin/tsc"
+  ./node_modules/.bin/tsc
+fi
 
 if [[ "\$SKIP_RESTART" -ne 1 ]]; then
   echo "-> sudo systemctl restart \$SERVICE"
