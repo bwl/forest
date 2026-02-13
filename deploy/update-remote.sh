@@ -15,6 +15,11 @@ Options:
   --service <name>         systemd service to restart (default: forest)
   --health-url <url>       Health endpoint to check after deploy
                            (default: http://127.0.0.1:3000/api/v1/health)
+  --health-retries <n>     Health-check attempts (default: 8)
+  --health-initial-delay <seconds>
+                           Initial retry delay for health check (default: 1)
+  --health-max-delay <seconds>
+                           Max retry delay for health check (default: 8)
   --no-install             Skip bun install
   --no-restart             Skip systemd restart
   --dry-run                Print resolved plan and exit
@@ -32,6 +37,9 @@ remote_path="/root/developer/forest"
 branch="master"
 service="forest"
 health_url="http://127.0.0.1:3000/api/v1/health"
+health_retries=8
+health_initial_delay=1
+health_max_delay=8
 skip_install=0
 skip_restart=0
 dry_run=0
@@ -56,6 +64,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --health-url)
       health_url="${2:-}"
+      shift 2
+      ;;
+    --health-retries)
+      health_retries="${2:-}"
+      shift 2
+      ;;
+    --health-initial-delay)
+      health_initial_delay="${2:-}"
+      shift 2
+      ;;
+    --health-max-delay)
+      health_max_delay="${2:-}"
       shift 2
       ;;
     --no-install)
@@ -88,12 +108,35 @@ if [[ -z "$host" ]]; then
   exit 1
 fi
 
+for numeric_value in "$health_retries" "$health_initial_delay" "$health_max_delay"; do
+  if ! [[ "$numeric_value" =~ ^[0-9]+$ ]]; then
+    echo "Health retry options must be non-negative integers." >&2
+    exit 1
+  fi
+done
+
+if [[ "$health_retries" -lt 1 ]]; then
+  echo "--health-retries must be >= 1" >&2
+  exit 1
+fi
+
+if [[ "$health_initial_delay" -lt 1 ]]; then
+  echo "--health-initial-delay must be >= 1" >&2
+  exit 1
+fi
+
+if [[ "$health_max_delay" -lt 1 ]]; then
+  echo "--health-max-delay must be >= 1" >&2
+  exit 1
+fi
+
 echo "Deploy plan:"
 echo "  host:       $host"
 echo "  path:       $remote_path"
 echo "  branch:     $branch"
 echo "  service:    $service"
 echo "  health url: $health_url"
+echo "  retries:    $health_retries (initial ${health_initial_delay}s, max ${health_max_delay}s)"
 echo "  install:    $([[ $skip_install -eq 1 ]] && echo skip || echo run)"
 echo "  restart:    $([[ $skip_restart -eq 1 ]] && echo skip || echo run)"
 
@@ -111,6 +154,9 @@ REMOTE_PATH=$(printf '%q' "$remote_path")
 BRANCH=$(printf '%q' "$branch")
 SERVICE=$(printf '%q' "$service")
 HEALTH_URL=$(printf '%q' "$health_url")
+HEALTH_RETRIES=$health_retries
+HEALTH_INITIAL_DELAY=$health_initial_delay
+HEALTH_MAX_DELAY=$health_max_delay
 SKIP_INSTALL=$skip_install
 SKIP_RESTART=$skip_restart
 
@@ -144,8 +190,30 @@ if [[ "\$SKIP_RESTART" -ne 1 ]]; then
   sudo -n systemctl restart "\$SERVICE"
 fi
 
-echo "-> curl -fsS \$HEALTH_URL"
-curl -fsS "\$HEALTH_URL"
+echo "-> health check \$HEALTH_URL (retries: \$HEALTH_RETRIES)"
+attempt=1
+delay="\$HEALTH_INITIAL_DELAY"
+while true; do
+  if curl -fsS "\$HEALTH_URL"; then
+    break
+  fi
+
+  if [[ "\$attempt" -ge "\$HEALTH_RETRIES" ]]; then
+    echo "Health check failed after \$attempt attempt(s)." >&2
+    exit 1
+  fi
+
+  echo "Health check failed (attempt \$attempt/\$HEALTH_RETRIES). Retrying in \${delay}s..."
+  sleep "\$delay"
+  attempt=\$((attempt + 1))
+
+  if [[ "\$delay" -lt "\$HEALTH_MAX_DELAY" ]]; then
+    delay=\$((delay * 2))
+    if [[ "\$delay" -gt "\$HEALTH_MAX_DELAY" ]]; then
+      delay="\$HEALTH_MAX_DELAY"
+    fi
+  fi
+done
 
 echo
 echo "Remote deploy complete."

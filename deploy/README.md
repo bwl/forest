@@ -86,7 +86,7 @@ This script will:
 2. `git fetch` + `git pull --ff-only` on `master`
 3. Run `bun install` and `bun run build`
 4. Restart `forest` via systemd
-5. Check `http://127.0.0.1:3000/api/v1/health`
+5. Check `http://127.0.0.1:3000/api/v1/health` with retry/backoff
 
 Useful flags:
 
@@ -94,4 +94,5 @@ Useful flags:
 deploy/update-remote.sh --host root@forest.ettio.com --dry-run
 deploy/update-remote.sh --host root@forest.ettio.com --branch master --service forest
 deploy/update-remote.sh --host root@forest.ettio.com --no-install --no-restart
+deploy/update-remote.sh --host root@forest.ettio.com --health-retries 12 --health-initial-delay 1 --health-max-delay 10
 ```
