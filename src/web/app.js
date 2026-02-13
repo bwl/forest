@@ -398,7 +398,11 @@ const views = {
     try {
       const data = await api.node(id);
       const node = data.node;
-      const edges = data.edges || [];
+      const edges = [...(data.edges || [])].sort((a, b) => {
+        const scoreA = Number.isFinite(a?.score) ? a.score : -Infinity;
+        const scoreB = Number.isFinite(b?.score) ? b.score : -Infinity;
+        return scoreB - scoreA;
+      });
 
       const chunkBanner = node.isChunk && node.parentDocumentId
         ? `<div class="chunk-banner">
