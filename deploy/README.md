@@ -71,3 +71,27 @@ git pull
 bun install && bun run build
 sudo systemctl restart forest
 ```
+
+### Optional: one-command remote update script
+
+From your local machine, run:
+
+```bash
+deploy/update-remote.sh --host root@forest.ettio.com
+```
+
+This script will:
+
+1. SSH to the host
+2. `git fetch` + `git pull --ff-only` on `master`
+3. Run `bun install` and `bun run build`
+4. Restart `forest` via systemd
+5. Check `http://127.0.0.1:3000/api/v1/health`
+
+Useful flags:
+
+```bash
+deploy/update-remote.sh --host root@forest.ettio.com --dry-run
+deploy/update-remote.sh --host root@forest.ettio.com --branch master --service forest
+deploy/update-remote.sh --host root@forest.ettio.com --no-install --no-restart
+```
