@@ -177,7 +177,7 @@ export function formatEdgeForResponse(
 ) {
   const base: any = {
     id: edge.id,
-    connectedNodeId: edge.sourceId === connectedNode?.id ? edge.targetId : edge.sourceId,
+    connectedNodeId: connectedNode?.id ?? edge.targetId,
     connectedNode: connectedNode
       ? {
           id: connectedNode.id,

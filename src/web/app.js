@@ -160,9 +160,10 @@ const components = {
     const title = connected.title || 'Unknown';
     const shortId = connected.shortId || '????';
     const score = edge.score != null ? edge.score.toFixed(3) : '?';
-    const targetId = edge.connectedNodeId || connected.id;
+    const targetId = connected.id || edge.connectedNodeId;
+    const clickAttr = targetId ? ` onclick="app.navigate('node/${targetId}')"` : '';
     return `
-      <div class="edge-item" onclick="app.navigate('node/${targetId}')">
+      <div class="edge-item"${clickAttr}>
         <div>
           <span class="edge-node-title">${escapeHtml(title)}</span>
           <span class="edge-node-id">${escapeHtml(shortId)}</span>
