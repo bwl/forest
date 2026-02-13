@@ -42,6 +42,8 @@ const normalizedArgs = normalizeArgs(rawArgs);
 runForestCli(normalizedArgs).catch(handleError);
 
 function normalizeArgs(args: string[]): string[] {
+  const shouldRewriteTagFlag = commandUsesTagListFlag(args);
+
   // First pass: collect repeated --tag values and normalize flags
   const collected: string[] = [];
   const tagValues: string[] = [];
@@ -50,12 +52,12 @@ function normalizeArgs(args: string[]): string[] {
     if (skipNext) { skipNext = false; continue; }
     const arg = args[i];
     // --tag=value
-    if (arg.startsWith('--tag=')) {
+    if (shouldRewriteTagFlag && arg.startsWith('--tag=')) {
       tagValues.push(arg.slice(6));
       continue;
     }
     // --tag value
-    if (arg === '--tag' && i + 1 < args.length) {
+    if (shouldRewriteTagFlag && arg === '--tag' && i + 1 < args.length) {
       tagValues.push(args[i + 1]);
       skipNext = true;
       continue;
@@ -79,4 +81,19 @@ function normalizeArgs(args: string[]): string[] {
     collected.push('--tags', tagValues.join(','));
   }
   return collected;
+}
+
+function commandUsesTagListFlag(args: string[]): boolean {
+  const commandTokens = args.filter((arg) => !arg.startsWith('-')).slice(0, 2);
+  const commandPath = commandTokens.join(' ').toLowerCase();
+
+  // Only rewrite repeated --tag values for commands that actually expose --tags.
+  return (
+    commandPath === 'capture' ||
+    commandPath === 'search' ||
+    commandPath === 'update' ||
+    commandPath === 'import' ||
+    commandPath === 'node refresh' ||
+    commandPath === 'node import'
+  );
 }

@@ -18,11 +18,11 @@ import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
 import { createLintCommand } from './commands/lint';
 import { createGroupedHelpRenderer } from './help';
-import * as clerc from 'clerc';
 
-type ClercModule = typeof clerc;
+type ClercModule = typeof import('clerc');
 
 export async function createForestCli() {
+  const clerc = await loadClerc();
   const {
     Clerc,
     completionsPlugin,
@@ -69,4 +69,14 @@ export async function createForestCli() {
 export async function runForestCli(argv: readonly string[]): Promise<void> {
   const cli = await createForestCli();
   cli.parse({ argv: [...argv], run: true });
+}
+
+async function loadClerc(): Promise<ClercModule> {
+  // Use runtime dynamic import so CJS output can load ESM-only packages.
+  const importAtRuntime = new Function(
+    'specifier',
+    'return import(specifier);',
+  ) as (specifier: string) => Promise<unknown>;
+
+  return (await importAtRuntime('clerc')) as ClercModule;
 }
