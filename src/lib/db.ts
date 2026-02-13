@@ -806,6 +806,21 @@ function appendNodeHistorySnapshotInternal(
   return version;
 }
 
+function seedNodeHistoryIfMissingInternal(db: Database, nodeId: string): boolean {
+  const currentVersion = getLatestNodeHistoryVersionInternal(db, nodeId);
+  if (currentVersion > 0) return false;
+
+  const node = getNodeByIdInternal(db, nodeId);
+  if (!node) return false;
+
+  appendNodeHistorySnapshotInternal(db, node, {
+    operation: 'create',
+    createdAt: node.updatedAt || node.createdAt,
+  });
+  dirty = true;
+  return true;
+}
+
 function getNodeHistoryVersionInternal(
   db: Database,
   nodeId: string,
@@ -1364,6 +1379,10 @@ export async function listNodeHistory(
   options: { limit?: number; offset?: number } = {},
 ): Promise<ListNodeHistoryResult> {
   const db = await ensureDatabase();
+  const seeded = seedNodeHistoryIfMissingInternal(db, nodeId);
+  if (seeded) {
+    await markDirtyAndPersist();
+  }
   const limit = options.limit ?? 50;
   const offset = options.offset ?? 0;
 
@@ -1402,6 +1421,10 @@ export async function getNodeHistoryVersion(
   version: number,
 ): Promise<NodeHistoryRecord | null> {
   const db = await ensureDatabase();
+  const seeded = seedNodeHistoryIfMissingInternal(db, nodeId);
+  if (seeded) {
+    await markDirtyAndPersist();
+  }
   return getNodeHistoryVersionInternal(db, nodeId, version);
 }
 
@@ -1410,6 +1433,7 @@ export async function restoreNodeFromHistory(
   version: number,
 ): Promise<{ node: NodeRecord; restoredFromVersion: number; restoredToVersion: number }> {
   const db = await ensureDatabase();
+  seedNodeHistoryIfMissingInternal(db, nodeId);
   const history = getNodeHistoryVersionInternal(db, nodeId, version);
   if (!history) {
     throw new Error(`No history entry found for node ${nodeId} at version ${version}`);
