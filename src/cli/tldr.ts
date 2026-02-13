@@ -163,6 +163,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'tags',
       'admin.embeddings',
       'admin.rescore',
+      'admin.rebuild-degrees',
       'admin.tags',
       'admin.backfill-chunk-titles',
       'admin.health',
@@ -390,6 +391,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'admin.health',
       'admin.embeddings',
       'admin.rescore',
+      'admin.rebuild-degrees',
       'admin.tags',
       'admin.backfill-chunk-titles',
       'admin.doctor',
@@ -425,13 +427,30 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
 
   'admin.rescore': {
     cmd: 'admin.rescore',
-    p: 'Rescore all edges using current embeddings and scoring rules',
+    p: 'Rescore all edges using current embeddings and scoring rules (project-edge caps enforced)',
     in: [],
-    out: ['progress_log', 'updated_records'],
+    out: ['progress_log', 'accepted_edge_count', 'self_loop_cleanup'],
     fx: 'db:write',
     fl: [],
     ex: ['forest admin rescore'],
-    rel: ['admin.embeddings', 'edges', 'edges.threshold'],
+    rel: ['admin.embeddings', 'admin.rebuild-degrees', 'edges', 'edges.threshold'],
+  },
+
+  'admin.rebuild-degrees': {
+    cmd: 'admin.rebuild-degrees',
+    p: 'Rebuild accepted_degree counters from current edge rows',
+    in: [],
+    out: ['degree_consistency_report', 'repair_summary'],
+    fx: 'db:write',
+    fl: [
+      { n: 'clean-self-loops', t: 'bool', d: false, desc: 'delete self-loop edges before rebuild' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest admin rebuild-degrees',
+      'forest admin rebuild-degrees --clean-self-loops --json',
+    ],
+    rel: ['admin.health', 'admin.rescore', 'stats'],
   },
 
   'admin.tags': {

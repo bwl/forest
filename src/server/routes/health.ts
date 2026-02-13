@@ -21,6 +21,14 @@ export const healthRoutes = new Elysia({ prefix: '/api/v1' })
             provider: report.embeddingProvider.provider ?? 'unknown',
             available: report.embeddingProvider.status === 'ok',
           },
+          invariants: {
+            degreeConsistency: {
+              status: report.degreeConsistency.status,
+              mismatchedNodes: report.degreeConsistency.mismatchedNodes ?? null,
+              maxAbsDelta: report.degreeConsistency.maxAbsDelta ?? null,
+              message: report.degreeConsistency.message,
+            },
+          },
           uptime: process.uptime(),
         },
         meta: {

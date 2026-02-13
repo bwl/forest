@@ -78,6 +78,10 @@ export type CreateEdgeResult = {
 };
 
 export async function createEdgeCore(data: CreateEdgeData): Promise<CreateEdgeResult> {
+  if (data.sourceId === data.targetId) {
+    throw new Error('Cannot create self-loop edges');
+  }
+
   // Verify nodes exist
   const sourceNode = await getNodeById(data.sourceId);
   const targetNode = await getNodeById(data.targetId);

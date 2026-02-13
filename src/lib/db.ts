@@ -48,6 +48,13 @@ export type NodeHistoryRecord = {
   createdAt: string;
 };
 
+export type DegreeConsistencyReport = {
+  mismatchedNodes: number;
+  overcountNodes: number;
+  undercountNodes: number;
+  maxAbsDelta: number;
+};
+
 export type EdgeStatus = 'accepted';
 // Well-known edge types: semantic, parent-child, sequential, manual
 // Custom types allowed: inspired-by, implemented-as, documents, depends-on, etc.
@@ -836,6 +843,42 @@ function getNodeHistoryVersionInternal(
   const record = stmt.step() ? parseNodeHistoryRow(stmt.getAsObject()) : null;
   stmt.free();
   return record;
+}
+
+function getDegreeConsistencyReportInternal(db: Database): DegreeConsistencyReport {
+  const stmt = db.prepare(
+    `WITH actual AS (
+       SELECT
+         n.id AS node_id,
+         COALESCE(
+           SUM(CASE WHEN e.source_id = n.id THEN 1 ELSE 0 END) +
+           SUM(CASE WHEN e.target_id = n.id THEN 1 ELSE 0 END),
+           0
+         ) AS actual_degree
+       FROM nodes n
+       LEFT JOIN edges e
+         ON e.source_id = n.id OR e.target_id = n.id
+       GROUP BY n.id
+     )
+     SELECT
+       COUNT(*) AS mismatched_nodes,
+       SUM(CASE WHEN n.accepted_degree > a.actual_degree THEN 1 ELSE 0 END) AS overcount_nodes,
+       SUM(CASE WHEN n.accepted_degree < a.actual_degree THEN 1 ELSE 0 END) AS undercount_nodes,
+       COALESCE(MAX(ABS(n.accepted_degree - a.actual_degree)), 0) AS max_abs_delta
+     FROM nodes n
+     JOIN actual a ON a.node_id = n.id
+     WHERE n.accepted_degree != a.actual_degree`,
+  );
+  stmt.step();
+  const row = stmt.getAsObject();
+  stmt.free();
+
+  return {
+    mismatchedNodes: Number(row.mismatched_nodes ?? 0),
+    overcountNodes: Number(row.overcount_nodes ?? 0),
+    undercountNodes: Number(row.undercount_nodes ?? 0),
+    maxAbsDelta: Number(row.max_abs_delta ?? 0),
+  };
 }
 
 // Helper function to parse edge row from database
@@ -1731,6 +1774,10 @@ export async function deleteDocumentRecord(documentId: string): Promise<boolean>
 }
 
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
+  if (record.sourceId === record.targetId) {
+    throw new Error(`Self-loop edges are not allowed (node: ${record.sourceId})`);
+  }
+
   const db = await ensureDatabase();
   // Check if edge already exists to update degree counters accurately
   let existedBefore = false;
@@ -2001,6 +2048,50 @@ export async function deleteEdgeBetween(sourceId: string, targetId: string): Pro
     return true;
   }
   return false;
+}
+
+export async function deleteSelfLoopEdges(): Promise<{ removed: number }> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare(`DELETE FROM edges WHERE source_id = target_id`);
+  stmt.step();
+  const removed = db.getRowsModified();
+  stmt.free();
+  if (removed > 0) {
+    await markDirtyAndPersist();
+  }
+  return { removed };
+}
+
+export async function getDegreeConsistencyReport(): Promise<DegreeConsistencyReport> {
+  const db = await ensureDatabase();
+  return getDegreeConsistencyReportInternal(db);
+}
+
+export async function rebuildAcceptedDegreeCounters(): Promise<{
+  before: DegreeConsistencyReport;
+  after: DegreeConsistencyReport;
+}> {
+  const db = await ensureDatabase();
+  const before = getDegreeConsistencyReportInternal(db);
+
+  db.exec(
+    `UPDATE nodes
+     SET accepted_degree = COALESCE((
+       SELECT
+         SUM(CASE WHEN e.source_id = nodes.id THEN 1 ELSE 0 END) +
+         SUM(CASE WHEN e.target_id = nodes.id THEN 1 ELSE 0 END)
+       FROM edges e
+       WHERE e.source_id = nodes.id OR e.target_id = nodes.id
+     ), 0)`,
+  );
+
+  const after = getDegreeConsistencyReportInternal(db);
+
+  if (before.mismatchedNodes > 0 || after.mismatchedNodes > 0) {
+    await markDirtyAndPersist();
+  }
+
+  return { before, after };
 }
 
 export async function deleteNode(id: string): Promise<{ edgesRemoved: number; nodeRemoved: boolean }> {

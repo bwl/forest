@@ -40,6 +40,10 @@ export type LinkNodesResult = {
 };
 
 export async function linkNodesCore(input: LinkNodesInput): Promise<LinkNodesResult> {
+  if (input.sourceId === input.targetId) {
+    throw new Error('Cannot link a node to itself.');
+  }
+
   const a = await getNodeById(input.sourceId);
   const b = await getNodeById(input.targetId);
   if (!a || !b) {

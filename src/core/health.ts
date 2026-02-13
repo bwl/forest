@@ -1,7 +1,7 @@
 import fs from 'fs';
 
 import { getEmbeddingProvider, getEmbeddingModel, embeddingsEnabled } from '../lib/embeddings';
-import { getDbPath } from '../lib/db';
+import { getDbPath, getDegreeConsistencyReport } from '../lib/db';
 import { loadConfig } from '../lib/config';
 
 export type HealthCheck = {
@@ -11,6 +11,12 @@ export type HealthCheck = {
 
 export type HealthReport = {
   database: HealthCheck & { path?: string; sizeBytes?: number };
+  degreeConsistency: HealthCheck & {
+    mismatchedNodes?: number;
+    overcountNodes?: number;
+    undercountNodes?: number;
+    maxAbsDelta?: number;
+  };
   embeddingProvider: HealthCheck & { provider?: string; model?: string };
   openaiKey?: HealthCheck;
   openrouterKey?: HealthCheck;
@@ -19,6 +25,7 @@ export type HealthReport = {
 export async function getHealthReport(): Promise<HealthReport> {
   const report: HealthReport = {
     database: await checkDatabase(),
+    degreeConsistency: await checkDegreeConsistency(),
     embeddingProvider: await checkEmbeddingProvider(),
   };
 
@@ -37,6 +44,7 @@ export async function getHealthReport(): Promise<HealthReport> {
 export function isHealthy(report: HealthReport): boolean {
   return [
     report.database.status === 'ok',
+    report.degreeConsistency.status === 'ok',
     report.embeddingProvider.status === 'ok',
     !report.openaiKey || report.openaiKey.status === 'ok',
     !report.openrouterKey || report.openrouterKey.status === 'ok',
@@ -92,6 +100,36 @@ async function checkDatabase(): Promise<HealthCheck & { path?: string; sizeBytes
       status: 'error',
       message: `Cannot access database file: ${error instanceof Error ? error.message : String(error)}`,
       path: resolvedPath,
+    };
+  }
+}
+
+async function checkDegreeConsistency(): Promise<HealthReport['degreeConsistency']> {
+  try {
+    const report = await getDegreeConsistencyReport();
+    if (report.mismatchedNodes === 0) {
+      return {
+        status: 'ok',
+        message: 'Degree counters are consistent with edges',
+        mismatchedNodes: 0,
+        overcountNodes: 0,
+        undercountNodes: 0,
+        maxAbsDelta: 0,
+      };
+    }
+
+    return {
+      status: 'error',
+      message: `${report.mismatchedNodes} node degree counters are stale (max delta ${report.maxAbsDelta})`,
+      mismatchedNodes: report.mismatchedNodes,
+      overcountNodes: report.overcountNodes,
+      undercountNodes: report.undercountNodes,
+      maxAbsDelta: report.maxAbsDelta,
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      message: `Degree consistency check failed: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }

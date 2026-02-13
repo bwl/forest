@@ -594,6 +594,14 @@ export interface HealthResult {
   status: 'healthy' | 'degraded';
   database: { connected: boolean; path?: string; size?: number };
   embeddings: { provider: string; available: boolean };
+  invariants?: {
+    degreeConsistency?: {
+      status: 'ok' | 'warning' | 'error';
+      mismatchedNodes?: number | null;
+      maxAbsDelta?: number | null;
+      message?: string;
+    };
+  };
   uptime: number;
 }
 

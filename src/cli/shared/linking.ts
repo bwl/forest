@@ -21,6 +21,7 @@ import { edgeIdentifier } from './utils';
 
 type RescoreOptions = {
   allNodes?: NodeRecord[];
+  manageBatch?: boolean;
 };
 
 export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRecord[]) {
@@ -62,6 +63,7 @@ export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRec
 
 export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}) {
   let accepted = 0;
+  const manageBatch = options.manageBatch !== false;
 
   const all = options.allNodes ?? (await listNodes());
   const others = all.filter((other) => other.id !== node.id);
@@ -77,7 +79,9 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
     manualEdgesByPair.set(pairKey(edge.sourceId, edge.targetId), edge);
   }
 
-  await beginBatch();
+  if (manageBatch) {
+    await beginBatch();
+  }
   try {
     for (const candidate of candidates) {
       const { sourceId, targetId, score, semanticScore, tagScore, sharedTags, components } = candidate;
@@ -134,7 +138,9 @@ export async function rescoreNode(node: NodeRecord, options: RescoreOptions = {}
       accepted += 1;
     }
   } finally {
-    await endBatch();
+    if (manageBatch) {
+      await endBatch();
+    }
   }
 
   return { accepted };

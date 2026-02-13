@@ -228,7 +228,7 @@ const views = {
             <div class="stat-label">Tag Usages</div>
           </div>
           <div class="stat-card">
-            <div class="stat-value">${data.degree.mean?.toFixed(3) || '0'}</div>
+            <div class="stat-value">${data.degree.avg?.toFixed(3) || '0'}</div>
             <div class="stat-label">Avg Degree</div>
           </div>
         </div>

@@ -1,22 +1,29 @@
-import { bulkSyncNodeTags, bulkUpdateEdgesV2, listEdges, listNodes, rebuildTagIdf, updateNode } from '../../lib/db';
+import {
+  beginBatch,
+  bulkSyncNodeTags,
+  bulkUpdateEdgesV2,
+  countEdges,
+  deleteSelfLoopEdges,
+  endBatch,
+  getDegreeConsistencyReport,
+  listDocuments,
+  getDocumentChunks,
+  getNodeById,
+  listEdges,
+  listNodes,
+  rebuildAcceptedDegreeCounters,
+  rebuildTagIdf,
+  updateNode,
+} from '../../lib/db';
 import { computeEmbeddingForNode, embeddingsEnabled } from '../../lib/embeddings';
 import { buildTagIdfContext, classifyEdgeScores, computeEdgeScore, normalizeEdgePair } from '../../lib/scoring';
 import { extractTagsAsync } from '../../lib/text';
 import { loadConfig } from '../../lib/config';
 import { getHealthReport, isHealthy, HealthCheck } from '../../core/health';
-import {
-  EdgeRecord,
-  deleteEdgeBetween,
-  insertOrUpdateEdge,
-  listDocuments,
-  getDocumentChunks,
-  getNodeById,
-  beginBatch,
-  endBatch,
-} from '../../lib/db';
 import { composeChunkTitle } from '../../core/import';
+import { rescoreNode } from '../shared/linking';
 
-import { edgeIdentifier, handleError } from '../shared/utils';
+import { handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { getBackend } from '../shared/remote';
@@ -32,6 +39,12 @@ type AdminEmbeddingsFlags = {
 };
 
 type AdminRescoreFlags = {
+  tldr?: string;
+};
+
+type AdminRebuildDegreesFlags = {
+  'clean-self-loops'?: boolean;
+  json?: boolean;
   tldr?: string;
 };
 
@@ -149,6 +162,40 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     },
   );
   cli.command(rescoreCommand);
+
+  // admin rebuild-degrees
+  const rebuildDegreesCommand = clerc.defineCommand(
+    {
+      name: 'admin rebuild-degrees',
+      description: 'Rebuild accepted_degree counters from the current edge table',
+      flags: {
+        'clean-self-loops': {
+          type: Boolean,
+          description: 'Delete self-loop edges before rebuilding counters',
+        },
+        json: {
+          type: Boolean,
+          description: 'Emit JSON output',
+        },
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ flags }: { flags: AdminRebuildDegreesFlags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.rebuild-degrees'], getVersion(), jsonMode);
+        }
+        await runAdminRebuildDegrees(flags);
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(rebuildDegreesCommand);
 
   // admin tags
   const tagsCommand = clerc.defineCommand(
@@ -298,6 +345,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
           '  migrate-v2              Migrate database to scoring v2',
           '  embeddings              Recompute embeddings for all nodes',
           '  rescore                 Rescore all edges using current embeddings',
+          '  rebuild-degrees         Rebuild degree counters from edge rows',
           '  tags                    Regenerate tags using current method',
           '  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format',
           '  health                  Check system health and configuration',
@@ -309,6 +357,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
           ['$ forest admin health', 'Check system health'],
           ['$ forest admin embeddings --rescore', 'Recompute embeddings and rescore edges'],
           ['$ forest admin rescore', 'Rescore edges without recomputing embeddings'],
+          ['$ forest admin rebuild-degrees --clean-self-loops', 'Repair stale counters and remove self-loops'],
           ['$ forest admin tags --dry-run', 'Preview tag regeneration'],
         ],
       },
@@ -326,6 +375,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
         console.log('  migrate-v2              Migrate database to scoring v2');
         console.log('  embeddings              Recompute embeddings for all nodes');
         console.log('  rescore                 Rescore all edges using current embeddings');
+        console.log('  rebuild-degrees         Rebuild degree counters from edge rows');
         console.log('  tags                    Regenerate tags using current method');
         console.log('  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format');
         console.log('  health                  Check system health and configuration');
@@ -433,88 +483,100 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
   if (!flags.rescore) return;
 
   console.log('Rescoring graph using updated embeddings...');
-  const accepted = await rescoreAllEdges();
-  console.log(`Rescored graph: ${accepted} edges created`);
+  const result = await rescoreAllEdges();
+  console.log(`Rescored graph: ${result.finalAcceptedEdges} accepted edges (${result.edgesTouched} writes)`);
 }
 
 async function runAdminRescore() {
   console.log('forest admin rescore');
   console.log('');
-  console.log('Rescoring all edges using current embeddings and thresholds...');
-  const accepted = await rescoreAllEdges();
-  console.log(`Rescored graph: ${accepted} edges created`);
+  console.log('Rescoring all edges using current embeddings, thresholds, and project-edge caps...');
+  const result = await rescoreAllEdges();
+  console.log(`Processed: ${result.processedNodes} nodes`);
+  console.log(`Touched:   ${result.edgesTouched} edge writes`);
+  console.log(`Accepted:  ${result.finalAcceptedEdges} edges in graph`);
+  if (result.selfLoopsRemoved > 0) {
+    console.log(`Removed:   ${result.selfLoopsRemoved} self-loop edges`);
+  }
+  if (result.degreeRepair.before.mismatchedNodes > 0 || result.degreeRepair.after.mismatchedNodes > 0) {
+    console.log(
+      `Degree repair: ${result.degreeRepair.before.mismatchedNodes} -> ${result.degreeRepair.after.mismatchedNodes} mismatches`,
+    );
+  }
 }
 
-async function rescoreAllEdges(): Promise<number> {
-  let accepted = 0;
+async function rescoreAllEdges(): Promise<{
+  processedNodes: number;
+  edgesTouched: number;
+  finalAcceptedEdges: number;
+  selfLoopsRemoved: number;
+  degreeRepair: Awaited<ReturnType<typeof rebuildAcceptedDegreeCounters>>;
+}> {
   const refreshed = await listNodes();
-  const context = buildTagIdfContext(refreshed);
-  const existingEdges = await listEdges('accepted');
-  const manualEdgesByPair = new Map<string, EdgeRecord>();
-  for (const edge of existingEdges) {
-    if (edge.edgeType !== 'manual') continue;
-    manualEdgesByPair.set(pairKey(edge.sourceId, edge.targetId), edge);
-  }
+  const selfLoopCleanup = await deleteSelfLoopEdges();
 
+  let edgesTouched = 0;
   await beginBatch();
   try {
-    for (let i = 0; i < refreshed.length; i += 1) {
-      const a = refreshed[i];
-      for (let j = i + 1; j < refreshed.length; j += 1) {
-        const b = refreshed[j];
-        const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
-        const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
-        const manualEdge = manualEdgesByPair.get(pairKey(sourceId, targetId));
-
-        if (manualEdge) {
-          await insertOrUpdateEdge({
-            ...manualEdge,
-            score,
-            semanticScore,
-            tagScore,
-            sharedTags,
-            status: 'accepted',
-            edgeType: 'manual',
-            metadata: {
-              ...(manualEdge.metadata ?? {}),
-              components,
-              manualOverride: true,
-            },
-            updatedAt: new Date().toISOString(),
-          });
-          accepted += 1;
-          continue;
-        }
-
-        const status = classifyEdgeScores(semanticScore, tagScore, sharedTags);
-
-        if (status === 'discard') {
-          await deleteEdgeBetween(sourceId, targetId);
-          continue;
-        }
-
-        const edge: EdgeRecord = {
-          id: edgeIdentifier(sourceId, targetId),
-          sourceId,
-          targetId,
-          score,
-          semanticScore,
-          tagScore,
-          sharedTags,
-          status,
-          edgeType: 'semantic',
-          metadata: { components },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        await insertOrUpdateEdge(edge);
-        accepted += 1;
-      }
+    for (const node of refreshed) {
+      const result = await rescoreNode(node, {
+        allNodes: refreshed,
+        manageBatch: false,
+      });
+      edgesTouched += result.accepted;
     }
   } finally {
     await endBatch();
   }
-  return accepted;
+
+  const degreeRepair = await rebuildAcceptedDegreeCounters();
+  const finalAcceptedEdges = await countEdges('accepted');
+  return {
+    processedNodes: refreshed.length,
+    edgesTouched,
+    finalAcceptedEdges,
+    selfLoopsRemoved: selfLoopCleanup.removed,
+    degreeRepair,
+  };
+}
+
+async function runAdminRebuildDegrees(flags: AdminRebuildDegreesFlags) {
+  const cleanSelfLoops = Boolean(flags['clean-self-loops']);
+  const asJson = Boolean(flags.json);
+
+  const before = await getDegreeConsistencyReport();
+  let selfLoopsRemoved = 0;
+  if (cleanSelfLoops) {
+    const cleaned = await deleteSelfLoopEdges();
+    selfLoopsRemoved = cleaned.removed;
+  }
+  const rebuilt = await rebuildAcceptedDegreeCounters();
+  const edgeCount = await countEdges('accepted');
+
+  if (asJson) {
+    console.log(
+      JSON.stringify(
+        {
+          selfLoopsRemoved,
+          edgesAccepted: edgeCount,
+          before,
+          rebuild: rebuilt,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log('forest admin rebuild-degrees');
+  console.log('');
+  if (cleanSelfLoops) {
+    console.log(`Self-loops removed: ${selfLoopsRemoved}`);
+  }
+  console.log(`Degree mismatches: ${before.mismatchedNodes} -> ${rebuilt.after.mismatchedNodes}`);
+  console.log(`Max degree delta:  ${before.maxAbsDelta} -> ${rebuilt.after.maxAbsDelta}`);
+  console.log(`Accepted edges:    ${edgeCount}`);
 }
 
 async function runAdminTags(flags: AdminTagsFlags) {
@@ -662,6 +724,13 @@ async function runAdminHealth(flags: AdminHealthFlags) {
       console.log(`  size: ${sizeMB} MB`);
     }
     console.log(`Embeddings: ${health.embeddings.provider} (${health.embeddings.available ? 'available' : 'unavailable'})`);
+    if (health.invariants?.degreeConsistency) {
+      const degree = health.invariants.degreeConsistency;
+      console.log(`Degree counters: ${degree.status}${typeof degree.mismatchedNodes === 'number' ? ` (${degree.mismatchedNodes} mismatches)` : ''}`);
+      if (degree.message) {
+        console.log(`  ${degree.message}`);
+      }
+    }
     console.log(`Uptime: ${Math.floor(health.uptime)}s`);
     return;
   }
@@ -684,6 +753,15 @@ async function runAdminHealth(flags: AdminHealthFlags) {
   if (typeof report.database.sizeBytes === 'number') {
     const sizeMB = (report.database.sizeBytes / (1024 * 1024)).toFixed(2);
     console.log(`  size: ${sizeMB} MB`);
+  }
+  console.log('');
+
+  printCheck('Degree Counters', report.degreeConsistency);
+  if (typeof report.degreeConsistency.mismatchedNodes === 'number') {
+    console.log(`  mismatched nodes: ${report.degreeConsistency.mismatchedNodes}`);
+  }
+  if (typeof report.degreeConsistency.maxAbsDelta === 'number') {
+    console.log(`  max absolute delta: ${report.degreeConsistency.maxAbsDelta}`);
   }
   console.log('');
 
@@ -830,6 +908,13 @@ async function runAdminDoctor() {
     issues.push(`Database: ${report.database.message}`);
   }
 
+  // Check degree consistency
+  if (report.degreeConsistency.status !== 'ok') {
+    issues.push(`Degree counters: ${report.degreeConsistency.message}`);
+    console.log('Tip: Run `forest admin rebuild-degrees --clean-self-loops` to repair counters.');
+    console.log('');
+  }
+
   // Check embedding provider
   if (report.embeddingProvider.status !== 'ok') {
     issues.push(`Embedding provider: ${report.embeddingProvider.message}`);
@@ -867,8 +952,4 @@ async function runAdminDoctor() {
     console.log('');
     console.log('Fix these issues and run `forest admin doctor` again.');
   }
-}
-
-function pairKey(sourceId: string, targetId: string): string {
-  return `${sourceId}::${targetId}`;
 }
