@@ -11,7 +11,9 @@ const state = {
   authRequired: false,
   currentView: 'dashboard',
   currentNodeId: null,
+  currentNodeBodyRaw: '',
   sidebarCollapsed: false,
+  nodeBodyView: sessionStorage.getItem('forest_node_body_view') === 'source' ? 'source' : 'rendered',
 };
 
 // --- API Client ---
@@ -114,6 +116,31 @@ function formatId(uuid) {
 function truncate(str, len = 100) {
   if (!str) return '';
   return str.length > len ? str.slice(0, len) + '...' : str;
+}
+
+function renderMarkdown(markdownText) {
+  const source = markdownText || '';
+  const parser = globalThis.marked;
+  const sanitizer = globalThis.DOMPurify;
+
+  if (
+    parser &&
+    typeof parser.parse === 'function' &&
+    sanitizer &&
+    typeof sanitizer.sanitize === 'function'
+  ) {
+    const rawHtml = parser.parse(source, { gfm: true, breaks: true });
+    return sanitizer.sanitize(rawHtml, { USE_PROFILES: { html: true } });
+  }
+
+  return `<pre>${escapeHtml(source)}</pre>`;
+}
+
+function renderNodeBody(body, mode) {
+  if (mode === 'source') {
+    return escapeHtml(body || '');
+  }
+  return renderMarkdown(body || '');
 }
 
 // --- Components ---
@@ -399,6 +426,8 @@ const views = {
     try {
       const data = await api.node(id);
       const node = data.node;
+      state.currentNodeId = node.id;
+      state.currentNodeBodyRaw = node.body || '';
       const edges = [...(data.edges || [])].sort((a, b) => {
         const scoreA = Number.isFinite(a?.score) ? a.score : -Infinity;
         const scoreB = Number.isFinite(b?.score) ? b.score : -Infinity;
@@ -429,7 +458,22 @@ const views = {
           ${components.tags(node.tags)}
         </div>
 
-        <div class="detail-body">${escapeHtml(node.body || '')}</div>
+        <div class="section-header">
+          <span class="section-title">Content</span>
+          <div class="view-toggle">
+            <button
+              class="btn btn-sm btn-secondary ${state.nodeBodyView === 'rendered' ? 'active' : ''}"
+              id="node-body-toggle-rendered"
+              onclick="app.setNodeBodyView('rendered')"
+            >Rendered</button>
+            <button
+              class="btn btn-sm btn-secondary ${state.nodeBodyView === 'source' ? 'active' : ''}"
+              id="node-body-toggle-source"
+              onclick="app.setNodeBodyView('source')"
+            >Source</button>
+          </div>
+        </div>
+        <div class="detail-body ${state.nodeBodyView === 'source' ? 'detail-body-source' : ''}" id="node-body">${renderNodeBody(node.body || '', state.nodeBodyView)}</div>
 
         ${edges.length > 0 ? `
           <div class="two-col">
@@ -1351,6 +1395,24 @@ const app = {
 
   navigate(path) {
     location.hash = path;
+  },
+
+  setNodeBodyView(mode) {
+    if (mode !== 'rendered' && mode !== 'source') return;
+
+    state.nodeBodyView = mode;
+    sessionStorage.setItem('forest_node_body_view', mode);
+
+    const bodyEl = document.getElementById('node-body');
+    if (bodyEl) {
+      bodyEl.classList.toggle('detail-body-source', mode === 'source');
+      bodyEl.innerHTML = renderNodeBody(state.currentNodeBodyRaw, mode);
+    }
+
+    const renderedBtn = document.getElementById('node-body-toggle-rendered');
+    const sourceBtn = document.getElementById('node-body-toggle-source');
+    renderedBtn?.classList.toggle('active', mode === 'rendered');
+    sourceBtn?.classList.toggle('active', mode === 'source');
   },
 
   globalSearch() {
