@@ -5,6 +5,41 @@ All notable changes to Forest will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-02-13
+
+### Added
+- **Temporal graph analysis toolkit** ([#34](https://github.com/bwl/forest/issues/34))
+  - `forest diff --since ...` for node/edge change summaries across snapshots
+  - `forest growth` for graph growth metrics over time
+  - `forest snapshot` for explicit point-in-time captures
+- **Snapshot persistence model** with automatic daily snapshots plus manual snapshot API/CLI parity
+  - New `graph_snapshots` table and temporal analysis core
+  - New API routes: `GET /api/v1/graph/diff`, `GET /api/v1/graph/growth`, `GET /api/v1/graph/snapshots`, `POST /api/v1/graph/snapshots`
+- **Node history and restore workflow** ([#31](https://github.com/bwl/forest/issues/31))
+  - New node history capture and restore commands
+  - Historical seed support for existing nodes when first accessed
+- **Ranking and operations controls**
+  - `forest admin rescore` for full-graph rescoring
+  - Degree counter maintenance and safeguards for stale edge metrics
+- **Deployment ergonomics**
+  - `deploy/update-remote.sh` for repeatable server updates
+  - Build fallback and startup health-check retry/backoff for safer deploys
+
+### Changed
+- **Ranking quality improvements** in edge scoring with stronger tag/project signal handling and improved rescore behavior
+- **TypeScript script consistency** by standardizing scripts on `bun x tsc`
+- **Web node detail UX**
+  - Connected node list now sorts by strongest accepted edge first
+  - Connected nodes are directly clickable for navigation
+  - Node markdown renders as HTML by default with a source toggle
+  - Content container now grows naturally with content (no fixed-height scroll box)
+
+### Fixed
+- **Manual snapshot duplication** - creating a manual snapshot no longer triggers a second automatic snapshot
+- **Accepted-degree counter drift** - rebuilt and hardened counter updates to keep graph stats accurate over time
+- **CLI runtime compatibility** - fixed tag flag normalization and ESM clerc loading edge cases
+- **Deploy false negatives** - startup health checks now tolerate slower service warm-up
+
 ## [0.3.1] - 2025-10-22
 
 ### Added
@@ -151,6 +186,7 @@ Initial tagged release with core Forest functionality.
 - Local embeddings with Xenova/all-MiniLM-L6-v2
 - Comprehensive test coverage
 
-[0.3.1]: https://github.com/bwl/forest/compare/7fa7acb..HEAD
-[0.3.0]: https://github.com/bwl/forest/compare/84710c7..7fa7acb
+[0.6.0]: https://github.com/bwl/forest/compare/v0.4.5..v0.6.0
+[0.3.1]: https://github.com/bwl/forest/compare/v0.3.0..v0.3.1
+[0.3.0]: https://github.com/bwl/forest/compare/v0.2.0..v0.3.0
 [0.2.0]: https://github.com/bwl/forest/releases/tag/v0.2.0

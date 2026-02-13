@@ -33,7 +33,7 @@ export const healthRoutes = new Elysia({ prefix: '/api/v1' })
         },
         meta: {
           timestamp: new Date().toISOString(),
-          version: '0.3.0',
+          version: '0.6.0',
         },
       };
     },

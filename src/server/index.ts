@@ -47,7 +47,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         return {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header', details: {} },
-          meta: { timestamp: new Date().toISOString(), version: '0.3.0' },
+          meta: { timestamp: new Date().toISOString(), version: '0.6.0' },
         };
       }
 
@@ -57,7 +57,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         return {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Invalid API key', details: {} },
-          meta: { timestamp: new Date().toISOString(), version: '0.3.0' },
+          meta: { timestamp: new Date().toISOString(), version: '0.6.0' },
         };
       }
     })
@@ -66,7 +66,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         documentation: {
           info: {
             title: 'Forest API',
-            version: '0.3.0',
+            version: '0.6.0',
             description: 'Graph-native knowledge base server',
           },
           tags: [
@@ -84,7 +84,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     )
     .get('/', () => ({
       name: 'Forest API',
-      version: '0.3.0',
+      version: '0.6.0',
       documentation: '/swagger',
     }))
     .use(healthRoutes)

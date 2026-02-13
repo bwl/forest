@@ -29,7 +29,7 @@ export function createSuccessResponse<T>(data: T): SuccessResponse<T> {
     data,
     meta: {
       timestamp: new Date().toISOString(),
-      version: '0.3.0',
+      version: '0.6.0',
     },
   };
 }
