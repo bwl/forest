@@ -901,9 +901,9 @@ export async function endBatch(): Promise<void> {
   }
 }
 
-async function markDirtyAndPersist() {
+async function markDirtyAndPersist(options: { skipAutoSnapshot?: boolean } = {}) {
   dirty = true;
-  if (!autoSnapshotInFlight) {
+  if (!options.skipAutoSnapshot && !autoSnapshotInFlight) {
     const db = await ensureDatabase();
     maybeCreateAutoGraphSnapshotInternal(db);
   }
@@ -1673,7 +1673,7 @@ export async function createGraphSnapshot(
 ): Promise<GraphSnapshotRecord> {
   const db = await ensureDatabase();
   const snapshot = insertGraphSnapshotInternal(db, snapshotType, options);
-  await markDirtyAndPersist();
+  await markDirtyAndPersist({ skipAutoSnapshot: true });
   return snapshot;
 }
 
