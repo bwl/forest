@@ -6,7 +6,6 @@
 import { createHash } from 'crypto';
 
 import {
-  deleteEdgeBetween,
   insertOrUpdateEdge,
   listNodes,
   rebuildTagIdf,
@@ -15,7 +14,6 @@ import {
 } from '../lib/db';
 import {
   buildTagIdfContext,
-  classifyEdgeScores,
   computeEdgeScore,
   normalizeEdgePair,
 } from '../lib/scoring';
@@ -72,26 +70,26 @@ export async function linkNodesCore(input: LinkNodesInput): Promise<LinkNodesRes
 
   const context = buildTagIdfContext(allNodes);
   const computed = computeEdgeScore(updatedA, updatedB, context);
-  const status = classifyEdgeScores(computed.semanticScore, computed.tagScore);
+  const status = 'accepted';
 
-  if (status === 'discard') {
-    await deleteEdgeBetween(sourceId, targetId);
-  } else {
-    await insertOrUpdateEdge({
-      id: edgeIdentifier(sourceId, targetId),
-      sourceId,
-      targetId,
-      score: computed.score,
-      semanticScore: computed.semanticScore,
-      tagScore: computed.tagScore,
-      sharedTags: computed.sharedTags,
-      status: 'accepted',
-      edgeType: 'semantic',
-      metadata: { components: computed.components },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-  }
+  await insertOrUpdateEdge({
+    id: edgeIdentifier(sourceId, targetId),
+    sourceId,
+    targetId,
+    score: computed.score,
+    semanticScore: computed.semanticScore,
+    tagScore: computed.tagScore,
+    sharedTags: computed.sharedTags,
+    status,
+    edgeType: 'manual',
+    metadata: {
+      components: computed.components,
+      manualOverride: true,
+      linkedVia: `#${bridgeTag}`,
+    },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
 
   return {
     tag: `#${bridgeTag}`,

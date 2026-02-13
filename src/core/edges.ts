@@ -97,7 +97,7 @@ export async function createEdgeCore(data: CreateEdgeData): Promise<CreateEdgeRe
   const context = buildTagIdfContext(allNodes);
   const computed = computeEdgeScore(sourceNode, targetNode, context);
 
-  // Compute score if not provided (default: max(semantic, tags))
+  // Compute score if not provided (default: fused semantic/tag score)
   const score = data.score ?? computed.score;
 
   // Create edge
@@ -206,7 +206,9 @@ export async function explainEdgeCore(edge: EdgeRecord): Promise<ExplainEdgeResu
   const computed = computeEdgeScore(sourceNode, targetNode, context);
   const semanticThreshold = getSemanticThreshold();
   const tagThreshold = getTagThreshold();
-  const status = classifyEdgeScores(computed.semanticScore, computed.tagScore) === 'accepted' ? 'accepted' : 'discarded';
+  const status = classifyEdgeScores(computed.semanticScore, computed.tagScore, computed.sharedTags) === 'accepted'
+    ? 'accepted'
+    : 'discarded';
 
   return {
     edge: {

@@ -196,7 +196,8 @@ async function runEdgesThreshold() {
   console.log(`Semantic threshold: ${result.semanticThreshold}`);
   console.log(`Tag threshold: ${result.tagThreshold}`);
   console.log('');
-  console.log('Edges are created when semantic_score or tag_score exceeds its threshold.');
+  console.log('Edges are created when semantic_score/tag_score thresholds pass,');
+  console.log('or when shared project tags clear the project-floor fallback.');
   if (backend.isRemote) {
     console.log('(Thresholds configured on the remote server.)');
   } else {

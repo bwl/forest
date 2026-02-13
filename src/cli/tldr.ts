@@ -160,6 +160,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'tags.stats',
       'tags',
       'admin.embeddings',
+      'admin.rescore',
       'admin.tags',
       'admin.backfill-chunk-titles',
       'admin.health',
@@ -383,7 +384,14 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'none',
     fl: [],
     ex: ['forest admin'],
-    rel: ['admin.health', 'admin.embeddings', 'admin.tags', 'admin.backfill-chunk-titles', 'admin.doctor'],
+    rel: [
+      'admin.health',
+      'admin.embeddings',
+      'admin.rescore',
+      'admin.tags',
+      'admin.backfill-chunk-titles',
+      'admin.doctor',
+    ],
   },
 
   'admin.migrate-v2': {
@@ -410,7 +418,18 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest admin embeddings',
       'forest admin embeddings --rescore',
     ],
-    rel: ['admin.health', 'edges'],
+    rel: ['admin.health', 'admin.rescore', 'edges'],
+  },
+
+  'admin.rescore': {
+    cmd: 'admin.rescore',
+    p: 'Rescore all edges using current embeddings and scoring rules',
+    in: [],
+    out: ['progress_log', 'updated_records'],
+    fx: 'db:write',
+    fl: [],
+    ex: ['forest admin rescore'],
+    rel: ['admin.embeddings', 'edges', 'edges.threshold'],
   },
 
   'admin.tags': {

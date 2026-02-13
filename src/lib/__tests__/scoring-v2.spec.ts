@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildTagIdfContext, classifyEdgeScores, computeTagScore } from '../scoring';
+import { buildTagIdfContext, classifyEdgeScores, computeTagScore, fuseEdgeScores } from '../scoring';
 
 describe('scoring v2: tag score', () => {
   it('returns null when there are no shared tags', () => {
@@ -71,5 +71,37 @@ describe('scoring v2: edge classification', () => {
       if (prevTags === undefined) delete process.env.FOREST_TAG_THRESHOLD;
       else process.env.FOREST_TAG_THRESHOLD = prevTags;
     }
+  });
+
+  it('accepts low-signal shared project edges when fused score clears project floor', () => {
+    const prevSemantic = process.env.FOREST_SEMANTIC_THRESHOLD;
+    const prevTags = process.env.FOREST_TAG_THRESHOLD;
+    const prevProjectFloor = process.env.FOREST_PROJECT_EDGE_FLOOR;
+
+    process.env.FOREST_SEMANTIC_THRESHOLD = '0.8';
+    process.env.FOREST_TAG_THRESHOLD = '0.6';
+    process.env.FOREST_PROJECT_EDGE_FLOOR = '0.25';
+
+    try {
+      expect(classifyEdgeScores(0.3, 0.25, ['project:gobot'])).toBe('accepted');
+      expect(classifyEdgeScores(0.3, 0.25, ['docs'])).toBe('discard');
+    } finally {
+      if (prevSemantic === undefined) delete process.env.FOREST_SEMANTIC_THRESHOLD;
+      else process.env.FOREST_SEMANTIC_THRESHOLD = prevSemantic;
+
+      if (prevTags === undefined) delete process.env.FOREST_TAG_THRESHOLD;
+      else process.env.FOREST_TAG_THRESHOLD = prevTags;
+
+      if (prevProjectFloor === undefined) delete process.env.FOREST_PROJECT_EDGE_FLOOR;
+      else process.env.FOREST_PROJECT_EDGE_FLOOR = prevProjectFloor;
+    }
+  });
+});
+
+describe('scoring v2: fused edge score', () => {
+  it('rewards consensus over one-sided matches', () => {
+    const strongConsensus = fuseEdgeScores(0.75, 0.72);
+    const oneSided = fuseEdgeScores(0.9, 0.05);
+    expect(strongConsensus).toBeGreaterThan(oneSided);
   });
 });

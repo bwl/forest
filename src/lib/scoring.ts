@@ -2,6 +2,8 @@ import { NodeRecord } from './db';
 
 const DEFAULT_SEMANTIC_THRESHOLD = 0.5;
 const DEFAULT_TAG_THRESHOLD = 0.3;
+const DEFAULT_PROJECT_EDGE_FLOOR = 0.3;
+const DEFAULT_PROJECT_EDGE_LIMIT = 10;
 
 export type TagIdfContext = {
   totalNodes: number;
@@ -48,6 +50,39 @@ export function getTagThreshold(): number {
   }
   const parsed = Number(process.env.FOREST_TAG_THRESHOLD);
   return Number.isFinite(parsed) ? parsed : DEFAULT_TAG_THRESHOLD;
+}
+
+export function getProjectEdgeFloor(): number {
+  if (!process.env.FOREST_PROJECT_EDGE_FLOOR) {
+    return DEFAULT_PROJECT_EDGE_FLOOR;
+  }
+  const parsed = Number(process.env.FOREST_PROJECT_EDGE_FLOOR);
+  if (!Number.isFinite(parsed)) return DEFAULT_PROJECT_EDGE_FLOOR;
+  return Math.max(0, Math.min(1, parsed));
+}
+
+export function getProjectEdgeLimit(): number {
+  if (!process.env.FOREST_PROJECT_EDGE_LIMIT) {
+    return DEFAULT_PROJECT_EDGE_LIMIT;
+  }
+  const parsed = Number(process.env.FOREST_PROJECT_EDGE_LIMIT);
+  if (!Number.isFinite(parsed)) return DEFAULT_PROJECT_EDGE_LIMIT;
+  return Math.max(1, Math.floor(parsed));
+}
+
+export function extractProjectTags(tags: string[]): string[] {
+  const out = new Set<string>();
+  for (const tag of tags) {
+    const normalized = tag.trim().toLowerCase();
+    if (normalized.startsWith('project:')) {
+      out.add(normalized);
+    }
+  }
+  return [...out].sort((a, b) => a.localeCompare(b));
+}
+
+export function hasSharedProjectTag(tags: string[]): boolean {
+  return extractProjectTags(tags).length > 0;
 }
 
 export function buildTagIdfContext(nodes: Array<Pick<NodeRecord, 'tags'>>): TagIdfContext {
@@ -152,7 +187,7 @@ export function computeEdgeScore(a: NodeRecord, b: NodeRecord, context: TagIdfCo
   const semanticScore = computeSemanticScore(a, b);
   const tagResult = computeTagScore(a.tags, b.tags, context);
   const tagScore = tagResult.score;
-  const score = Math.max(semanticScore ?? 0, tagScore ?? 0);
+  const score = fuseEdgeScores(semanticScore, tagScore);
 
   return {
     score,
@@ -163,10 +198,23 @@ export function computeEdgeScore(a: NodeRecord, b: NodeRecord, context: TagIdfCo
   };
 }
 
-export function classifyEdgeScores(semanticScore: number | null, tagScore: number | null): 'accepted' | 'discard' {
+export function classifyEdgeScores(
+  semanticScore: number | null,
+  tagScore: number | null,
+  sharedTags: string[] = [],
+): 'accepted' | 'discard' {
   const semanticOk = semanticScore !== null && semanticScore >= getSemanticThreshold();
   const tagOk = tagScore !== null && tagScore >= getTagThreshold();
-  return semanticOk || tagOk ? 'accepted' : 'discard';
+  if (semanticOk || tagOk) return 'accepted';
+
+  if (hasSharedProjectTag(sharedTags)) {
+    const fused = fuseEdgeScores(semanticScore, tagScore);
+    if (fused >= getProjectEdgeFloor()) {
+      return 'accepted';
+    }
+  }
+
+  return 'discard';
 }
 
 export function normalizeEdgePair(a: string, b: string): [string, string] {
@@ -188,4 +236,27 @@ export function cosineEmbeddings(a?: number[], b?: number[]): number {
   }
   if (magA === 0 || magB === 0) return 0;
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+export function fuseEdgeScores(semanticScore: number | null, tagScore: number | null): number {
+  const semantic = clamp01(semanticScore ?? 0);
+  const tag = clamp01(tagScore ?? 0);
+
+  const dominant = Math.max(semantic, tag);
+  const supporting = Math.min(semantic, tag);
+  const geometric = Math.sqrt(semantic * tag);
+  const disagreementPenalty = Math.abs(semantic - tag);
+
+  // Keep one strong signal useful, but reward agreement between channels.
+  return clamp01(
+    (0.7 * dominant) +
+    (0.2 * supporting) +
+    (0.1 * geometric) -
+    (0.1 * disagreementPenalty),
+  );
+}
+
+function clamp01(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
 }

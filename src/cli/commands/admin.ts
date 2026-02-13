@@ -31,6 +31,10 @@ type AdminEmbeddingsFlags = {
   tldr?: string;
 };
 
+type AdminRescoreFlags = {
+  tldr?: string;
+};
+
 type AdminTagsFlags = {
   'dry-run'?: boolean;
   limit?: number;
@@ -119,6 +123,32 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
     },
   );
   cli.command(embeddingsCommand);
+
+  // admin rescore
+  const rescoreCommand = clerc.defineCommand(
+    {
+      name: 'admin rescore',
+      description: 'Rescore all edges using current embeddings and scoring rules',
+      flags: {
+        tldr: {
+          type: String,
+          description: 'Output command metadata for agent consumption (--tldr or --tldr=json)',
+        },
+      },
+    },
+    async ({ flags }: { flags: AdminRescoreFlags }) => {
+      try {
+        if (flags.tldr !== undefined) {
+          const jsonMode = flags.tldr === 'json';
+          emitTldrAndExit(COMMAND_TLDR['admin.rescore'], getVersion(), jsonMode);
+        }
+        await runAdminRescore();
+      } catch (error) {
+        handleError(error);
+      }
+    },
+  );
+  cli.command(rescoreCommand);
 
   // admin tags
   const tagsCommand = clerc.defineCommand(
@@ -267,6 +297,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
           'Subcommands:',
           '  migrate-v2              Migrate database to scoring v2',
           '  embeddings              Recompute embeddings for all nodes',
+          '  rescore                 Rescore all edges using current embeddings',
           '  tags                    Regenerate tags using current method',
           '  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format',
           '  health                  Check system health and configuration',
@@ -277,6 +308,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
         examples: [
           ['$ forest admin health', 'Check system health'],
           ['$ forest admin embeddings --rescore', 'Recompute embeddings and rescore edges'],
+          ['$ forest admin rescore', 'Rescore edges without recomputing embeddings'],
           ['$ forest admin tags --dry-run', 'Preview tag regeneration'],
         ],
       },
@@ -293,6 +325,7 @@ export function registerAdminCommands(cli: ClercInstance, clerc: ClercModule) {
         console.log('Subcommands:');
         console.log('  migrate-v2              Migrate database to scoring v2');
         console.log('  embeddings              Recompute embeddings for all nodes');
+        console.log('  rescore                 Rescore all edges using current embeddings');
         console.log('  tags                    Regenerate tags using current method');
         console.log('  backfill-chunk-titles   Rename chunks to "Doc [2/7] Section" format');
         console.log('  health                  Check system health and configuration');
@@ -399,9 +432,29 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
 
   if (!flags.rescore) return;
 
+  console.log('Rescoring graph using updated embeddings...');
+  const accepted = await rescoreAllEdges();
+  console.log(`Rescored graph: ${accepted} edges created`);
+}
+
+async function runAdminRescore() {
+  console.log('forest admin rescore');
+  console.log('');
+  console.log('Rescoring all edges using current embeddings and thresholds...');
+  const accepted = await rescoreAllEdges();
+  console.log(`Rescored graph: ${accepted} edges created`);
+}
+
+async function rescoreAllEdges(): Promise<number> {
   let accepted = 0;
   const refreshed = await listNodes();
   const context = buildTagIdfContext(refreshed);
+  const existingEdges = await listEdges('accepted');
+  const manualEdgesByPair = new Map<string, EdgeRecord>();
+  for (const edge of existingEdges) {
+    if (edge.edgeType !== 'manual') continue;
+    manualEdgesByPair.set(pairKey(edge.sourceId, edge.targetId), edge);
+  }
 
   await beginBatch();
   try {
@@ -410,8 +463,30 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
       for (let j = i + 1; j < refreshed.length; j += 1) {
         const b = refreshed[j];
         const { score, semanticScore, tagScore, sharedTags, components } = computeEdgeScore(a, b, context);
-        const status = classifyEdgeScores(semanticScore, tagScore);
         const [sourceId, targetId] = normalizeEdgePair(a.id, b.id);
+        const manualEdge = manualEdgesByPair.get(pairKey(sourceId, targetId));
+
+        if (manualEdge) {
+          await insertOrUpdateEdge({
+            ...manualEdge,
+            score,
+            semanticScore,
+            tagScore,
+            sharedTags,
+            status: 'accepted',
+            edgeType: 'manual',
+            metadata: {
+              ...(manualEdge.metadata ?? {}),
+              components,
+              manualOverride: true,
+            },
+            updatedAt: new Date().toISOString(),
+          });
+          accepted += 1;
+          continue;
+        }
+
+        const status = classifyEdgeScores(semanticScore, tagScore, sharedTags);
 
         if (status === 'discard') {
           await deleteEdgeBetween(sourceId, targetId);
@@ -439,7 +514,7 @@ async function runAdminEmbeddings(flags: AdminEmbeddingsFlags) {
   } finally {
     await endBatch();
   }
-  console.log(`Rescored graph: ${accepted} edges created`);
+  return accepted;
 }
 
 async function runAdminTags(flags: AdminTagsFlags) {
@@ -792,4 +867,8 @@ async function runAdminDoctor() {
     console.log('');
     console.log('Fix these issues and run `forest admin doctor` again.');
   }
+}
+
+function pairKey(sourceId: string, targetId: string): string {
+  return `${sourceId}::${targetId}`;
 }
