@@ -6,8 +6,8 @@
     "forest": "dist/index.js"
   },
   "scripts": {
-    "build": "bunx tsc",
-    "lint": "bunx tsc --noEmit",
+    "build": "bun x tsc",
+    "lint": "bun x tsc --noEmit",
     "dev": "bun run src/index.ts",
     "dev:server": "bun run src/server/index.ts",
     "start": "bun run dist/index.js",
