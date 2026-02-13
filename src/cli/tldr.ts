@@ -139,6 +139,8 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'link',
       'search',
       'read',
+      'history',
+      'restore',
       'edit',
       'update',
       'delete',
@@ -723,6 +725,41 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest read @1 --json',
     ],
     rel: ['edit', 'update', 'explore'],
+  },
+
+  history: {
+    cmd: 'history',
+    p: 'Show version timeline for a note',
+    in: ['args'],
+    out: ['version_entries', 'current_version'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 50, desc: 'max history entries to return' },
+      { n: 'offset', t: 'int', d: 0, desc: 'skip first N entries (pagination)' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest history abc123',
+      'forest history @ --limit 20 --json',
+    ],
+    rel: ['read', 'restore', 'update'],
+  },
+
+  restore: {
+    cmd: 'restore',
+    p: 'Restore a note to a previous version snapshot',
+    in: ['args'],
+    out: ['updated_record', 'restore_summary', 'rescore_summary'],
+    fx: 'db:write,compute:embedding',
+    fl: [
+      { n: 'no-auto-link', t: 'bool', d: false, desc: 'skip rescoring edges after restore' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest restore abc123 4',
+      'forest restore @ 2 --no-auto-link',
+    ],
+    rel: ['history', 'read', 'update'],
   },
 
   edit: {

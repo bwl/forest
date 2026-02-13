@@ -50,6 +50,22 @@ export type NodeReadFlags = {
   tldr?: string;
 };
 
+export type NodeHistoryFlags = {
+  json?: boolean;
+  limit?: number;
+  offset?: number;
+  select?: number;
+  tldr?: string;
+};
+
+export type NodeRestoreFlags = {
+  json?: boolean;
+  autoLink?: boolean;
+  noAutoLink?: boolean;
+  select?: number;
+  tldr?: string;
+};
+
 export type NodeRefreshFlags = {
   title?: string;
   body?: string;
@@ -254,6 +270,120 @@ export async function runNodeRead(idRef: string | undefined, flags: NodeReadFlag
       console.log('');
       console.log(renderMarkdownToTerminal(node.body, markdownOptions));
     }
+  }
+}
+
+export async function runNodeHistory(idRef: string | undefined, flags: NodeHistoryFlags) {
+  if (!idRef || idRef.trim().length === 0) {
+    console.error('✖ Provide a node id or unique short id.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend = getBackend();
+  let resolvedId = idRef.trim();
+
+  // Select disambiguation is local-only for now.
+  if (!backend.isRemote && typeof flags.select === 'number') {
+    const node = await resolveNodeReference(resolvedId, { select: flags.select });
+    if (!node) {
+      console.error('✖ No node found. Provide a full id or unique short id.');
+      process.exitCode = 1;
+      return;
+    }
+    resolvedId = node.id;
+  }
+
+  const result = await backend.getNodeHistory(resolvedId, {
+    limit: flags.limit,
+    offset: flags.offset,
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`${result.node.shortId}  ${result.node.title}`);
+  console.log(`  current version: v${result.currentVersion}`);
+  console.log(`  snapshots: ${result.total}`);
+  if (result.entries.length === 0) {
+    console.log('  no history snapshots found');
+    return;
+  }
+
+  console.log('');
+  for (const entry of result.entries) {
+    const currentMarker = entry.version === result.currentVersion ? '*' : ' ';
+    const restoreSuffix =
+      entry.operation === 'restore' && entry.restoredFromVersion !== null
+        ? ` (from v${entry.restoredFromVersion})`
+        : '';
+    console.log(`${currentMarker} v${entry.version}  ${entry.createdAt}  ${entry.operation}${restoreSuffix}`);
+    console.log(`   ${entry.title}  (${entry.bodyLength} chars)`);
+    if (entry.tags.length > 0) {
+      console.log(`   tags: ${entry.tags.join(', ')}`);
+    }
+  }
+}
+
+export async function runNodeRestore(
+  idRef: string | undefined,
+  versionRef: string | undefined,
+  flags: NodeRestoreFlags,
+) {
+  if (!idRef || idRef.trim().length === 0) {
+    console.error('✖ Provide a node id or unique short id.');
+    process.exitCode = 1;
+    return;
+  }
+  if (!versionRef || versionRef.trim().length === 0) {
+    console.error('✖ Provide a version number to restore.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const version = Number.parseInt(versionRef, 10);
+  if (!Number.isInteger(version) || version <= 0) {
+    console.error('✖ Version must be a positive integer.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const backend = getBackend();
+  let resolvedId = idRef.trim();
+
+  // Select disambiguation is local-only for now.
+  if (!backend.isRemote && typeof flags.select === 'number') {
+    const node = await resolveNodeReference(resolvedId, { select: flags.select });
+    if (!node) {
+      console.error('✖ No node found. Provide a full id or unique short id.');
+      process.exitCode = 1;
+      return;
+    }
+    resolvedId = node.id;
+  }
+
+  const autoLink = computeAutoLinkIntent(flags);
+  const result = await backend.restoreNodeVersion(resolvedId, version, {
+    autoLink,
+  });
+
+  if (flags.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`✔ Restored note: ${result.node.title}`);
+  console.log(`   id: ${result.node.id}`);
+  console.log(`   restored: v${result.restoredFromVersion} -> v${result.restoredToVersion}`);
+  if (result.node.tags.length > 0) {
+    console.log(`   tags: ${result.node.tags.join(', ')}`);
+  }
+  if (autoLink) {
+    console.log(`   links after rescore: ${result.linking.edgesCreated}`);
+  } else {
+    console.log('   links: rescoring skipped (--no-auto-link)');
   }
 }
 

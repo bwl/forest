@@ -7,6 +7,8 @@ import {
   getNodeEdgesCore,
   createNodeCore,
   updateNodeCore,
+  getNodeHistoryCore,
+  restoreNodeVersionCore,
   deleteNodeCore,
 } from '../../core/nodes';
 import { synthesizeNodesCore } from '../../core/synthesize';
@@ -293,6 +295,84 @@ export const nodesRoutes = new Elysia({ prefix: '/api/v1' })
         tags: ['Nodes'],
         summary: 'Update node',
         description: 'Update an existing node',
+      },
+    },
+  )
+
+  // GET /nodes/:id/history - Get node version history
+  .get(
+    '/nodes/:id/history',
+    async ({ params, query, set }) => {
+      try {
+        const node = await resolveNodeId(params.id);
+        const limit = parseQueryInt(query.limit as string | undefined, 50, 1, 200);
+        const offset = parseQueryInt(query.offset as string | undefined, 0, 0);
+
+        validatePaginationParams(limit, offset);
+
+        const result = await getNodeHistoryCore(node.id, { limit, offset });
+
+        return createSuccessResponse({
+          node: formatNodeForList(result.node),
+          entries: result.entries,
+          total: result.total,
+          currentVersion: result.currentVersion,
+          pagination: createPaginationInfo(result.total, limit, offset),
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      detail: {
+        tags: ['Nodes'],
+        summary: 'Get node history',
+        description: 'List version history snapshots for a node',
+      },
+    },
+  )
+
+  // POST /nodes/:id/restore - Restore a node to a previous version
+  .post(
+    '/nodes/:id/restore',
+    async ({ params, body, set }) => {
+      try {
+        const node = await resolveNodeId(params.id);
+        const data = body as any;
+
+        if (!Number.isInteger(data.version) || data.version <= 0) {
+          throw new ValidationError('version is required and must be a positive integer');
+        }
+
+        const result = await restoreNodeVersionCore(node.id, data.version, {
+          autoLink: data.autoLink !== false,
+        });
+
+        return createSuccessResponse({
+          node: formatNodeForDetail(result.node),
+          restoredFromVersion: result.restoredFromVersion,
+          restoredToVersion: result.restoredToVersion,
+          linking: result.linking,
+        });
+      } catch (error) {
+        if (error instanceof ForestError) {
+          set.status = error.getStatusCode();
+        } else {
+          set.status = 500;
+        }
+        return createErrorResponse(error);
+      }
+    },
+    {
+      detail: {
+        tags: ['Nodes'],
+        summary: 'Restore node version',
+        description: 'Restore a node to a previous version snapshot',
       },
     },
   )

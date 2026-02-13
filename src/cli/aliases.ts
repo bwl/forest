@@ -7,12 +7,16 @@
 
 import {
   runNodeRead,
+  runNodeHistory,
+  runNodeRestore,
   runNodeEdit,
   runNodeRefresh,
   runNodeDelete,
   runNodeImport,
   runNodeSynthesize,
   type NodeReadFlags,
+  type NodeHistoryFlags,
+  type NodeRestoreFlags,
   type NodeEditFlags,
   type NodeRefreshFlags,
   type NodeDeleteFlags,
@@ -51,6 +55,65 @@ export function registerAliases(cli: ClercInstance, clerc: ClercModule) {
             emitTldrAndExit(COMMAND_TLDR.read, getVersion(), jsonMode);
           }
           await runNodeRead(parameters.id, flags);
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    ),
+  );
+
+  // forest history <ref>
+  cli.command(
+    clerc.defineCommand(
+      {
+        name: 'history',
+        description: 'Show version history for a note',
+        parameters: ['[id]'],
+        flags: {
+          limit: { type: Number, description: 'Max history entries to return (default: 50)' },
+          offset: { type: Number, description: 'Skip first N entries (for pagination)' },
+          json: { type: Boolean, description: 'Emit JSON output' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
+          tldr: { type: String, description: 'Output command metadata for agent consumption' },
+        },
+      },
+      async ({ parameters, flags }: { parameters: { id?: string }; flags: NodeHistoryFlags }) => {
+        try {
+          if (flags.tldr !== undefined) {
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.history, getVersion(), jsonMode);
+          }
+          await runNodeHistory(parameters.id, flags);
+        } catch (error) {
+          handleError(error);
+        }
+      },
+    ),
+  );
+
+  // forest restore <ref> <version>
+  cli.command(
+    clerc.defineCommand(
+      {
+        name: 'restore',
+        description: 'Restore a note to a previous version',
+        parameters: ['[id]', '[version]'],
+        flags: {
+          noAutoLink: { type: Boolean, description: 'Skip rescoring edges after restore' },
+          json: { type: Boolean, description: 'Emit JSON output' },
+          select: { type: Number, description: 'Pick Nth match (1-based) when reference is ambiguous' },
+          tldr: { type: String, description: 'Output command metadata for agent consumption' },
+        },
+      },
+      async (
+        { parameters, flags }: { parameters: { id?: string; version?: string }; flags: NodeRestoreFlags },
+      ) => {
+        try {
+          if (flags.tldr !== undefined) {
+            const jsonMode = flags.tldr === 'json';
+            emitTldrAndExit(COMMAND_TLDR.restore, getVersion(), jsonMode);
+          }
+          await runNodeRestore(parameters.id, parameters.version, flags);
         } catch (error) {
           handleError(error);
         }

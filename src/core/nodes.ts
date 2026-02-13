@@ -2,12 +2,15 @@ import { randomUUID } from 'crypto';
 import {
   NodeRecord,
   NodeMetadata,
+  NodeHistoryRecord,
   EdgeRecord,
   listNodes as dbListNodes,
   getNodeById,
   insertNode,
   updateNode as dbUpdateNode,
   deleteNode as dbDeleteNode,
+  listNodeHistory as dbListNodeHistory,
+  restoreNodeFromHistory as dbRestoreNodeFromHistory,
   listEdges,
   getDocumentById,
   getDocumentChunks,
@@ -88,6 +91,32 @@ export type UpdateNodeData = {
 
 export type UpdateNodeResult = {
   node: NodeRecord;
+  linking: {
+    edgesCreated: number;
+  };
+};
+
+export type NodeHistoryEntry = {
+  version: number;
+  title: string;
+  tags: string[];
+  bodyLength: number;
+  operation: NodeHistoryRecord['operation'];
+  restoredFromVersion: number | null;
+  createdAt: string;
+};
+
+export type GetNodeHistoryResult = {
+  node: NodeRecord;
+  entries: NodeHistoryEntry[];
+  total: number;
+  currentVersion: number;
+};
+
+export type RestoreNodeVersionResult = {
+  node: NodeRecord;
+  restoredFromVersion: number;
+  restoredToVersion: number;
   linking: {
     edgesCreated: number;
   };
@@ -336,22 +365,19 @@ export async function updateNodeCore(
   if (data.metadata !== undefined) {
     updateFields.metadata = data.metadata;
   }
-  await dbUpdateNode(nodeId, updateFields);
-
-  // Recompute embedding if body or title changed
+  // Recompute embedding if body or title changed, and persist in the same update.
   if (data.title || data.body) {
     try {
-      const updatedNode = await getNodeById(nodeId);
-      if (updatedNode) {
-        const embedding = await computeEmbeddingForNode(updatedNode);
-        if (embedding) {
-          await dbUpdateNode(nodeId, { embedding });
-        }
+      const embedding = await computeEmbeddingForNode({ title, body });
+      if (embedding) {
+        updateFields.embedding = embedding;
       }
     } catch (error) {
       console.warn('Failed to recompute embedding:', error);
     }
   }
+
+  await dbUpdateNode(nodeId, updateFields);
 
   // Get updated node
   const node = await getNodeById(nodeId);
@@ -384,6 +410,81 @@ export async function updateNodeCore(
 
   return {
     node,
+    linking: {
+      edgesCreated,
+    },
+  };
+}
+
+export async function getNodeHistoryCore(
+  nodeId: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<GetNodeHistoryResult> {
+  const node = await getNodeById(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID '${nodeId}' not found`);
+  }
+
+  const history = await dbListNodeHistory(node.id, options);
+  const entries: NodeHistoryEntry[] = history.entries.map((entry) => ({
+    version: entry.version,
+    title: entry.title,
+    tags: entry.tags,
+    bodyLength: entry.body.length,
+    operation: entry.operation,
+    restoredFromVersion: entry.restoredFromVersion,
+    createdAt: entry.createdAt,
+  }));
+
+  return {
+    node,
+    entries,
+    total: history.total,
+    currentVersion: history.currentVersion,
+  };
+}
+
+export async function restoreNodeVersionCore(
+  nodeId: string,
+  version: number,
+  options: { autoLink?: boolean } = {},
+): Promise<RestoreNodeVersionResult> {
+  if (!Number.isInteger(version) || version <= 0) {
+    throw new Error('Version must be a positive integer');
+  }
+
+  const previousNode = await getNodeById(nodeId);
+  if (!previousNode) {
+    throw new Error(`Node with ID '${nodeId}' not found`);
+  }
+
+  const restored = await dbRestoreNodeFromHistory(previousNode.id, version);
+  const node = restored.node;
+
+  let edgesCreated = 0;
+  if (options.autoLink !== false) {
+    const linkResult = await rescoreNode(node);
+    edgesCreated = linkResult.accepted;
+  }
+
+  eventBus.emitNodeUpdated(
+    {
+      id: node.id,
+      shortId: formatId(node.id),
+      title: node.title,
+      tags: node.tags,
+    },
+    {
+      title: node.title !== previousNode.title,
+      body: node.body !== previousNode.body,
+      tags: JSON.stringify(node.tags) !== JSON.stringify(previousNode.tags),
+    },
+  );
+
+  return {
+    node,
+    restoredFromVersion: restored.restoredFromVersion,
+    restoredToVersion: restored.restoredToVersion,
     linking: {
       edgesCreated,
     },

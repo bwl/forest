@@ -31,6 +31,23 @@ export type NodeRecord = {
   metadata: NodeMetadata | null;
 };
 
+export type NodeHistoryOperation = 'create' | 'update' | 'restore';
+
+export type NodeHistoryRecord = {
+  id: number;
+  nodeId: string;
+  version: number;
+  title: string;
+  body: string;
+  tags: string[];
+  tokenCounts: Record<string, number>;
+  embedding?: number[];
+  metadata: NodeMetadata | null;
+  operation: NodeHistoryOperation;
+  restoredFromVersion: number | null;
+  createdAt: string;
+};
+
 export type EdgeStatus = 'accepted';
 // Well-known edge types: semantic, parent-child, sequential, manual
 // Custom types allowed: inspired-by, implemented-as, documents, depends-on, etc.
@@ -307,6 +324,24 @@ function runMigrations(db: Database) {
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_document_chunks_node ON document_chunks(node_id);
     CREATE INDEX IF NOT EXISTS idx_document_chunks_document_order ON document_chunks(document_id, chunk_order);
+
+    CREATE TABLE IF NOT EXISTS node_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      node_id TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      tags TEXT NOT NULL,
+      token_counts TEXT NOT NULL,
+      embedding TEXT,
+      metadata TEXT,
+      operation TEXT NOT NULL DEFAULT 'update',
+      restored_from_version INTEGER,
+      created_at TEXT NOT NULL,
+      UNIQUE(node_id, version)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_node_history_node_version ON node_history(node_id, version DESC);
   `);
 
   // Add missing columns for existing databases (best-effort migrations)
@@ -350,6 +385,23 @@ function runMigrations(db: Database) {
     // Provenance tracking: node metadata JSON column
     if (!columns.includes('metadata')) {
       db.exec(`ALTER TABLE nodes ADD COLUMN metadata TEXT;`);
+      dirty = true;
+    }
+  } catch (_) {
+    // Best-effort; ignore if pragma not supported in this context
+  }
+
+  // Add node_history columns for older databases if missing
+  try {
+    const res = db.exec(`PRAGMA table_info(node_history);`);
+    const columns = res.length > 0 ? res[0].values.map((row) => String(row[1])) : [];
+
+    if (columns.length > 0 && !columns.includes('operation')) {
+      db.exec(`ALTER TABLE node_history ADD COLUMN operation TEXT NOT NULL DEFAULT 'update';`);
+      dirty = true;
+    }
+    if (columns.length > 0 && !columns.includes('restored_from_version')) {
+      db.exec(`ALTER TABLE node_history ADD COLUMN restored_from_version INTEGER;`);
       dirty = true;
     }
   } catch (_) {
@@ -644,6 +696,32 @@ function parseNodeRow(row: any): NodeRecord {
   };
 }
 
+function parseNodeHistoryRow(row: any): NodeHistoryRecord {
+  const operationRaw = String(row.operation ?? 'update');
+  const operation: NodeHistoryOperation =
+    operationRaw === 'create' || operationRaw === 'restore' || operationRaw === 'update'
+      ? operationRaw
+      : 'update';
+
+  return {
+    id: Number(row.id),
+    nodeId: String(row.node_id),
+    version: Number(row.version),
+    title: String(row.title),
+    body: String(row.body),
+    tags: JSON.parse(String(row.tags)),
+    tokenCounts: JSON.parse(String(row.token_counts)),
+    embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
+    metadata: row.metadata ? JSON.parse(String(row.metadata)) : null,
+    operation,
+    restoredFromVersion:
+      row.restored_from_version === null || row.restored_from_version === undefined
+        ? null
+        : Number(row.restored_from_version),
+    createdAt: String(row.created_at),
+  };
+}
+
 function parseDocumentRow(row: any): DocumentRecord {
   return {
     id: String(row.id),
@@ -669,6 +747,80 @@ function parseDocumentChunkRow(row: any): DocumentChunkRecord {
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
+}
+
+function getNodeByIdInternal(db: Database, id: string): NodeRecord | null {
+  const stmt = db.prepare('SELECT * FROM nodes WHERE id = :id LIMIT 1');
+  stmt.bind({ ':id': id });
+  const node = stmt.step() ? parseNodeRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return node;
+}
+
+function getLatestNodeHistoryVersionInternal(db: Database, nodeId: string): number {
+  const stmt = db.prepare(
+    `SELECT COALESCE(MAX(version), 0) AS max_version
+     FROM node_history
+     WHERE node_id = :nodeId`,
+  );
+  stmt.bind({ ':nodeId': nodeId });
+  stmt.step();
+  const maxVersion = Number(stmt.getAsObject().max_version ?? 0);
+  stmt.free();
+  return maxVersion;
+}
+
+function appendNodeHistorySnapshotInternal(
+  db: Database,
+  node: NodeRecord,
+  options: {
+    operation?: NodeHistoryOperation;
+    restoredFromVersion?: number | null;
+    createdAt?: string;
+  } = {},
+): number {
+  const version = getLatestNodeHistoryVersionInternal(db, node.id) + 1;
+  const createdAt = options.createdAt ?? new Date().toISOString();
+  const operation = options.operation ?? 'update';
+  const stmt = db.prepare(
+    `INSERT INTO node_history
+      (node_id, version, title, body, tags, token_counts, embedding, metadata, operation, restored_from_version, created_at)
+     VALUES
+      (:nodeId, :version, :title, :body, :tags, :tokenCounts, :embedding, :metadata, :operation, :restoredFromVersion, :createdAt)`,
+  );
+  stmt.bind({
+    ':nodeId': node.id,
+    ':version': version,
+    ':title': node.title,
+    ':body': node.body,
+    ':tags': JSON.stringify(node.tags),
+    ':tokenCounts': JSON.stringify(node.tokenCounts),
+    ':embedding': node.embedding ? JSON.stringify(node.embedding) : null,
+    ':metadata': node.metadata ? JSON.stringify(node.metadata) : null,
+    ':operation': operation,
+    ':restoredFromVersion': options.restoredFromVersion ?? null,
+    ':createdAt': createdAt,
+  });
+  stmt.step();
+  stmt.free();
+  return version;
+}
+
+function getNodeHistoryVersionInternal(
+  db: Database,
+  nodeId: string,
+  version: number,
+): NodeHistoryRecord | null {
+  const stmt = db.prepare(
+    `SELECT *
+     FROM node_history
+     WHERE node_id = :nodeId AND version = :version
+     LIMIT 1`,
+  );
+  stmt.bind({ ':nodeId': nodeId, ':version': version });
+  const record = stmt.step() ? parseNodeHistoryRow(stmt.getAsObject()) : null;
+  stmt.free();
+  return record;
 }
 
 // Helper function to parse edge row from database
@@ -852,21 +1004,36 @@ export async function insertNode(record: NodeRecord): Promise<void> {
   stmt.step();
   stmt.free();
   syncNodeTagsInternal(db, record.id, record.tags);
+  appendNodeHistorySnapshotInternal(db, record, {
+    operation: 'create',
+    createdAt: record.updatedAt,
+  });
   await markDirtyAndPersist();
 }
 
 export async function updateNodeTokens(id: string, tokenCounts: Record<string, number>): Promise<void> {
   const db = await ensureDatabase();
+  const updatedAt = new Date().toISOString();
   const stmt = db.prepare(
     `UPDATE nodes SET token_counts = :tokenCounts, updated_at = :updatedAt WHERE id = :id`
   );
   stmt.bind({
     ':tokenCounts': JSON.stringify(tokenCounts),
-    ':updatedAt': new Date().toISOString(),
+    ':updatedAt': updatedAt,
     ':id': id,
   });
   stmt.step();
+  const changes = db.getRowsModified();
   stmt.free();
+  if (changes > 0) {
+    const updatedNode = getNodeByIdInternal(db, id);
+    if (updatedNode) {
+      appendNodeHistorySnapshotInternal(db, updatedNode, {
+        operation: 'update',
+        createdAt: updatedAt,
+      });
+    }
+  }
   await markDirtyAndPersist();
 }
 
@@ -876,8 +1043,9 @@ export async function updateNode(
 ): Promise<void> {
   const db = await ensureDatabase();
   const nextTags = Array.isArray(fields.tags) ? fields.tags : undefined;
+  const updatedAt = new Date().toISOString();
   const sets: string[] = [];
-  const params: Record<string, unknown> = { ':id': id, ':updatedAt': new Date().toISOString() };
+  const params: Record<string, unknown> = { ':id': id, ':updatedAt': updatedAt };
   if (typeof fields.title === 'string') {
     sets.push('title = :title');
     params[':title'] = fields.title;
@@ -907,9 +1075,19 @@ export async function updateNode(
   const stmt = db.prepare(sql);
   stmt.bind(params as any);
   stmt.step();
+  const changes = db.getRowsModified();
   stmt.free();
   if (nextTags) {
     syncNodeTagsInternal(db, id, nextTags);
+  }
+  if (changes > 0) {
+    const updatedNode = getNodeByIdInternal(db, id);
+    if (updatedNode) {
+      appendNodeHistorySnapshotInternal(db, updatedNode, {
+        operation: 'update',
+        createdAt: updatedAt,
+      });
+    }
   }
   await markDirtyAndPersist();
 }
@@ -946,6 +1124,7 @@ export async function updateNodeIndexData(
   tokenCounts: Record<string, number>
 ): Promise<void> {
   const db = await ensureDatabase();
+  const updatedAt = new Date().toISOString();
   const stmt = db.prepare(
     `UPDATE nodes
      SET tags = :tags, token_counts = :tokenCounts, updated_at = :updatedAt
@@ -954,17 +1133,28 @@ export async function updateNodeIndexData(
   stmt.bind({
     ':tags': JSON.stringify(tags),
     ':tokenCounts': JSON.stringify(tokenCounts),
-    ':updatedAt': new Date().toISOString(),
+    ':updatedAt': updatedAt,
     ':id': id,
   });
   stmt.step();
+  const changes = db.getRowsModified();
   stmt.free();
   syncNodeTagsInternal(db, id, tags);
+  if (changes > 0) {
+    const updatedNode = getNodeByIdInternal(db, id);
+    if (updatedNode) {
+      appendNodeHistorySnapshotInternal(db, updatedNode, {
+        operation: 'update',
+        createdAt: updatedAt,
+      });
+    }
+  }
   await markDirtyAndPersist();
 }
 
 export async function updateNodeChunkOrder(id: string, chunkOrder: number): Promise<void> {
   const db = await ensureDatabase();
+  const updatedAt = new Date().toISOString();
   const stmt = db.prepare(
     `UPDATE nodes
      SET chunk_order = :chunkOrder, updated_at = :updatedAt
@@ -972,11 +1162,21 @@ export async function updateNodeChunkOrder(id: string, chunkOrder: number): Prom
   );
   stmt.bind({
     ':chunkOrder': chunkOrder,
-    ':updatedAt': new Date().toISOString(),
+    ':updatedAt': updatedAt,
     ':id': id,
   });
   stmt.step();
+  const changes = db.getRowsModified();
   stmt.free();
+  if (changes > 0) {
+    const updatedNode = getNodeByIdInternal(db, id);
+    if (updatedNode) {
+      appendNodeHistorySnapshotInternal(db, updatedNode, {
+        operation: 'update',
+        createdAt: updatedAt,
+      });
+    }
+  }
   await markDirtyAndPersist();
 }
 
@@ -1151,6 +1351,120 @@ export async function getNodeById(id: string): Promise<NodeRecord | null> {
 
   // Ambiguous short ID
   throw new Error(`Ambiguous short ID '${id}': matches ${matches.length} nodes. Use a longer prefix.`);
+}
+
+export type ListNodeHistoryResult = {
+  entries: NodeHistoryRecord[];
+  total: number;
+  currentVersion: number;
+};
+
+export async function listNodeHistory(
+  nodeId: string,
+  options: { limit?: number; offset?: number } = {},
+): Promise<ListNodeHistoryResult> {
+  const db = await ensureDatabase();
+  const limit = options.limit ?? 50;
+  const offset = options.offset ?? 0;
+
+  const countStmt = db.prepare(
+    `SELECT COUNT(*) as count
+     FROM node_history
+     WHERE node_id = :nodeId`,
+  );
+  countStmt.bind({ ':nodeId': nodeId });
+  countStmt.step();
+  const total = Number(countStmt.getAsObject().count ?? 0);
+  countStmt.free();
+
+  const currentVersion = getLatestNodeHistoryVersionInternal(db, nodeId);
+
+  const stmt = db.prepare(
+    `SELECT *
+     FROM node_history
+     WHERE node_id = :nodeId
+     ORDER BY version DESC
+     LIMIT :limit
+     OFFSET :offset`,
+  );
+  stmt.bind({ ':nodeId': nodeId, ':limit': limit, ':offset': offset });
+  const entries: NodeHistoryRecord[] = [];
+  while (stmt.step()) {
+    entries.push(parseNodeHistoryRow(stmt.getAsObject()));
+  }
+  stmt.free();
+
+  return { entries, total, currentVersion };
+}
+
+export async function getNodeHistoryVersion(
+  nodeId: string,
+  version: number,
+): Promise<NodeHistoryRecord | null> {
+  const db = await ensureDatabase();
+  return getNodeHistoryVersionInternal(db, nodeId, version);
+}
+
+export async function restoreNodeFromHistory(
+  nodeId: string,
+  version: number,
+): Promise<{ node: NodeRecord; restoredFromVersion: number; restoredToVersion: number }> {
+  const db = await ensureDatabase();
+  const history = getNodeHistoryVersionInternal(db, nodeId, version);
+  if (!history) {
+    throw new Error(`No history entry found for node ${nodeId} at version ${version}`);
+  }
+
+  const updatedAt = new Date().toISOString();
+  const stmt = db.prepare(
+    `UPDATE nodes
+     SET title = :title,
+         body = :body,
+         tags = :tags,
+         token_counts = :tokenCounts,
+         embedding = :embedding,
+         metadata = :metadata,
+         updated_at = :updatedAt
+     WHERE id = :id`,
+  );
+  stmt.bind({
+    ':id': nodeId,
+    ':title': history.title,
+    ':body': history.body,
+    ':tags': JSON.stringify(history.tags),
+    ':tokenCounts': JSON.stringify(history.tokenCounts),
+    ':embedding': history.embedding ? JSON.stringify(history.embedding) : null,
+    ':metadata': history.metadata ? JSON.stringify(history.metadata) : null,
+    ':updatedAt': updatedAt,
+  });
+  stmt.step();
+  const changes = db.getRowsModified();
+  stmt.free();
+
+  if (changes === 0) {
+    throw new Error(`Node ${nodeId} not found`);
+  }
+
+  syncNodeTagsInternal(db, nodeId, history.tags);
+
+  const updatedNode = getNodeByIdInternal(db, nodeId);
+  if (!updatedNode) {
+    throw new Error(`Failed to load node ${nodeId} after restore`);
+  }
+
+  const restoredToVersion = appendNodeHistorySnapshotInternal(db, updatedNode, {
+    operation: 'restore',
+    restoredFromVersion: history.version,
+    createdAt: updatedAt,
+  });
+
+  await markDirtyAndPersist();
+
+  return {
+    node: updatedNode,
+    restoredFromVersion: history.version,
+    restoredToVersion,
+  };
 }
 
 export async function getNodesByIds(ids: string[]): Promise<NodeRecord[]> {

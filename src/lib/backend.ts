@@ -13,6 +13,8 @@ import type {
   DeleteNodeResult,
   UpdateNodeInput,
   UpdateNodeResult,
+  NodeHistoryResult,
+  RestoreNodeVersionResult,
   SearchResult,
   MetadataSearchOptions,
   MetadataSearchResult,
@@ -60,6 +62,8 @@ export interface IForestBackend {
   listNodes(opts?: { limit?: number; offset?: number; sort?: string; order?: string }): Promise<ListNodesResult>;
   deleteNode(id: string): Promise<DeleteNodeResult>;
   updateNode(id: string, data: UpdateNodeInput): Promise<UpdateNodeResult>;
+  getNodeHistory(id: string, opts?: { limit?: number; offset?: number }): Promise<NodeHistoryResult>;
+  restoreNodeVersion(id: string, version: number, opts?: { autoLink?: boolean }): Promise<RestoreNodeVersionResult>;
 
   // ── Search ─────────────────────────────────────────────────────────
   searchSemantic(q: string, opts?: { limit?: number; offset?: number; minScore?: number; tags?: string }): Promise<SearchResult>;

@@ -14,6 +14,8 @@ import type {
   DeleteNodeResult,
   UpdateNodeInput,
   UpdateNodeResult,
+  NodeHistoryResult,
+  RestoreNodeVersionResult,
   SearchResult,
   MetadataSearchOptions,
   MetadataSearchResult,
@@ -66,6 +68,8 @@ import {
   deleteDocumentCore,
   updateNodeCore,
   getNodeEdgesCore,
+  getNodeHistoryCore,
+  restoreNodeVersionCore,
 } from '../core/nodes';
 import { semanticSearchCore, metadataSearchCore } from '../core/search';
 import {
@@ -217,6 +221,38 @@ export class LocalBackend implements IForestBackend {
     });
     return {
       node: formatNodeForDetail(result.node) as any,
+      linking: result.linking,
+    };
+  }
+
+  async getNodeHistory(
+    id: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<NodeHistoryResult> {
+    const result = await getNodeHistoryCore(id, {
+      limit: opts?.limit,
+      offset: opts?.offset,
+    });
+    return {
+      node: formatNodeForList(result.node) as any,
+      entries: result.entries,
+      total: result.total,
+      currentVersion: result.currentVersion,
+    };
+  }
+
+  async restoreNodeVersion(
+    id: string,
+    version: number,
+    opts?: { autoLink?: boolean },
+  ): Promise<RestoreNodeVersionResult> {
+    const result = await restoreNodeVersionCore(id, version, {
+      autoLink: opts?.autoLink !== false,
+    });
+    return {
+      node: formatNodeForDetail(result.node) as any,
+      restoredFromVersion: result.restoredFromVersion,
+      restoredToVersion: result.restoredToVersion,
       linking: result.linking,
     };
   }

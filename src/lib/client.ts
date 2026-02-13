@@ -201,6 +201,30 @@ export interface UpdateNodeResult {
   linking: { edgesCreated: number };
 }
 
+export interface NodeHistoryEntryRemote {
+  version: number;
+  title: string;
+  tags: string[];
+  bodyLength: number;
+  operation: 'create' | 'update' | 'restore';
+  restoredFromVersion: number | null;
+  createdAt: string;
+}
+
+export interface NodeHistoryResult {
+  node: NodeSummary;
+  entries: NodeHistoryEntryRemote[];
+  total: number;
+  currentVersion: number;
+}
+
+export interface RestoreNodeVersionResult {
+  node: NodeDetail;
+  restoredFromVersion: number;
+  restoredToVersion: number;
+  linking: { edgesCreated: number };
+}
+
 // ── Edge mutation types ───────────────────────────────────────────────
 
 export interface CreateEdgeInput {
@@ -749,6 +773,39 @@ export class ForestClient implements IForestBackend {
 
   async updateNode(id: string, data: UpdateNodeInput): Promise<UpdateNodeResult> {
     return this.request<UpdateNodeResult>('PUT', `/api/v1/nodes/${encodeURIComponent(id)}`, { body: data });
+  }
+
+  async getNodeHistory(
+    id: string,
+    opts?: { limit?: number; offset?: number },
+  ): Promise<NodeHistoryResult> {
+    return this.request<NodeHistoryResult>(
+      'GET',
+      `/api/v1/nodes/${encodeURIComponent(id)}/history`,
+      {
+        query: {
+          limit: opts?.limit,
+          offset: opts?.offset,
+        },
+      },
+    );
+  }
+
+  async restoreNodeVersion(
+    id: string,
+    version: number,
+    opts?: { autoLink?: boolean },
+  ): Promise<RestoreNodeVersionResult> {
+    return this.request<RestoreNodeVersionResult>(
+      'POST',
+      `/api/v1/nodes/${encodeURIComponent(id)}/restore`,
+      {
+        body: {
+          version,
+          autoLink: opts?.autoLink !== false,
+        },
+      },
+    );
   }
 
   // ── Edges ──────────────────────────────────────────────────────────
