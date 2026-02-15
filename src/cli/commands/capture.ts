@@ -24,6 +24,7 @@ export function createCaptureCommand(clerc: ClercModule) {
   return clerc.defineCommand(
     {
       name: 'capture',
+      alias: 'create',
       description: 'Capture a new idea and auto-link it into the graph',
       flags: {
         title: {
@@ -107,6 +108,65 @@ async function runCapture(flags: CaptureFlags) {
     : undefined;
 
   const backend = getBackend();
+
+  // Auto-chunk large inputs via the import pipeline
+  const AUTO_CHUNK_THRESHOLD = 500; // ~2000 chars
+  const estimatedTokens = Math.ceil(body.length / 4);
+  if (estimatedTokens > AUTO_CHUNK_THRESHOLD) {
+    const importResult = await backend.importDocument({
+      body,
+      title: flags.title,
+      tags,
+      autoLink,
+    });
+
+    if (flags.json) {
+      console.log(JSON.stringify(importResult, null, 2));
+      return;
+    }
+
+    const totalEdges = importResult.linking.parentChildEdges
+      + importResult.linking.sequentialEdges
+      + importResult.linking.semanticAccepted;
+
+    console.log(`${colorize.success('⚡')} Large input (~${estimatedTokens} tokens) — auto-chunked into ${importResult.totalChunks} nodes`);
+    console.log(`   ${colorize.label('doc:')} ${importResult.documentTitle}`);
+    if (importResult.rootNode) {
+      console.log(`   ${colorize.label('root:')} ${colorize.nodeId(formatId(importResult.rootNode.id))} ${importResult.rootNode.title}`);
+    }
+    console.log(`   ${colorize.label('chunks:')} ${importResult.totalChunks}`);
+    console.log(`   ${colorize.label('links:')} ${colorize.success(String(totalEdges))} edges`);
+
+    // Preview neighborhood from root node
+    const shouldPreview = computePreviewIntent(flags);
+    if (shouldPreview && importResult.rootNode) {
+      console.log('');
+      try {
+        const NEARBY_LIMIT = 6;
+        const neighborhood = await backend.getNeighborhood(importResult.rootNode.id, { depth: 1, limit: NEARBY_LIMIT });
+        const directEdges = neighborhood.edges.filter(
+          (e) => e.source === importResult.rootNode!.id || e.target === importResult.rootNode!.id,
+        );
+        if (directEdges.length > 0) {
+          console.log(`${colorize.label('nearby:')}`);
+          const nodeMap = new Map(neighborhood.nodes.map((n) => [n.id, n]));
+          const shown = directEdges.slice(0, NEARBY_LIMIT);
+          for (const edge of shown) {
+            const otherId = edge.source === importResult.rootNode!.id ? edge.target : edge.source;
+            const otherNode = nodeMap.get(otherId);
+            const otherTitle = otherNode ? otherNode.title : formatId(otherId);
+            const otherFmtId = formatId(otherId);
+            const coloredScore = colorize.embeddingScore(edge.score);
+            console.log(`  ${coloredScore}  ${colorize.nodeId(otherFmtId)}  ${otherTitle}`);
+          }
+        }
+      } catch {
+        // Preview is best-effort
+      }
+    }
+    return;
+  }
+
   const result = await backend.createNode({
     title: flags.title,
     body,
