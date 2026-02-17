@@ -5,6 +5,7 @@ import { DEFAULT_NEIGHBORHOOD_LIMIT, handleError } from '../shared/utils';
 import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { getBackend } from '../shared/remote';
+import { registerExportObsidianCommand } from './obsidian';
 
 import type { HandlerContext } from '@clerc/core';
 
@@ -113,6 +114,8 @@ export function registerExportCommands(cli: ClercInstance, clerc: ClercModule) {
   );
   cli.command(jsonCommand);
 
+  registerExportObsidianCommand(cli, clerc);
+
   const baseCommand = clerc.defineCommand(
     {
       name: 'export',
@@ -164,11 +167,13 @@ async function runExportDashboard() {
   console.log('');
   console.log('  JSON       Export full database as structured JSON');
   console.log('  Graphviz   Export node neighborhood as DOT graph');
+  console.log('  Obsidian   Export as Markdown vault for Obsidian');
   console.log('');
   console.log('Quick actions:');
   console.log('  forest export json                    Export everything');
   console.log('  forest export json --no-body          Export without note bodies');
   console.log('  forest export graphviz --id <id>      Export neighborhood graph');
+  console.log('  forest export obsidian --dir ./vault  Export as Obsidian vault');
   console.log('');
 }
 

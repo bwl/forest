@@ -175,6 +175,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'admin',
       'export.graphviz',
       'export.json',
+      'export.obsidian',
       'export',
       'documents',
       'suggest',
@@ -777,7 +778,23 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     ex: [
       'forest export json > export.json',
     ],
-    rel: ['export.graphviz', 'stats'],
+    rel: ['export.graphviz', 'export.obsidian', 'stats'],
+  },
+
+  'export.obsidian': {
+    cmd: 'export.obsidian',
+    p: 'Export graph as Obsidian-compatible Markdown vault with wikilinks',
+    in: [],
+    out: ['markdown_files'],
+    fx: 'fs_write',
+    fl: [
+      { n: 'dir', t: 'str', d: null, desc: 'target directory for the vault' },
+    ],
+    ex: [
+      'forest export obsidian --dir ./my-vault',
+      'forest export obsidian -d ~/obsidian/forest',
+    ],
+    rel: ['export.json', 'export.graphviz', 'stats'],
   },
 
   export: {
@@ -787,7 +804,7 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     out: ['help_text'],
     fx: 'none',
     fl: [],
-    ex: ['forest export graphviz', 'forest export json'],
+    ex: ['forest export graphviz', 'forest export json', 'forest export obsidian --dir ./vault'],
     rel: ['stats', 'health'],
   },
 
