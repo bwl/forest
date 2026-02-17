@@ -109,12 +109,15 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
 
   // Build lookup maps
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const nodeTagsById = new Map(nodes.map((n) => [n.id, new Set(n.tags ?? [])]));
 
   // Fetch full document records (with body) and chunk mappings
   type DocWithBody = DocumentSummary & { body: string };
   const documents: DocWithBody[] = [];
   const chunkNodeIds = new Set<string>();
+  const chunkToDocRoot = new Map<string, string>(); // chunkNodeId -> rootNodeId
   const rootNodeToDocId = new Map<string, string>();
+  const docChunkNodeIds = new Map<string, string[]>(); // docId -> chunk node IDs
 
   for (const summary of documentsResult.documents) {
     const full = await backend.getDocument(summary.id);
@@ -125,37 +128,74 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
     if (doc.rootNodeId) {
       rootNodeToDocId.set(doc.rootNodeId, doc.id);
     }
-    // Fetch chunks for this document and mark them as subsumed
+    // Fetch chunks and track which nodes belong to this document
     const chunksResult = await backend.getDocumentChunks(doc.id);
+    const chunkIds: string[] = [];
     for (const chunk of chunksResult.chunks) {
       chunkNodeIds.add(chunk.nodeId);
+      chunkIds.push(chunk.nodeId);
+      if (doc.rootNodeId) {
+        chunkToDocRoot.set(chunk.nodeId, doc.rootNodeId);
+      }
     }
+    docChunkNodeIds.set(doc.id, chunkIds);
   }
 
-  // Build adjacency: nodeId -> list of { targetId, score, sharedTags, semanticScore, tagScore }
+  // Resolve a node ID to its "canonical" ID for the export.
+  // Chunk nodes map to their parent document's root node;
+  // everything else maps to itself.
+  function canonicalId(id: string): string {
+    return chunkToDocRoot.get(id) ?? id;
+  }
+
+  // Compute shared tags between two nodes from the export data
+  function computeSharedTags(idA: string, idB: string): string[] {
+    const tagsA = nodeTagsById.get(idA);
+    const tagsB = nodeTagsById.get(idB);
+    if (!tagsA || !tagsB) return [];
+    const shared: string[] = [];
+    for (const t of tagsA) {
+      if (tagsB.has(t)) shared.push(t);
+    }
+    return shared;
+  }
+
+  // Build adjacency using canonical IDs so chunk edges roll up to documents.
+  // Key = canonical node ID, Value = map of peerId -> best EdgeInfo (deduped).
   type EdgeInfo = {
     peerId: string;
     score: number;
-    semanticScore?: number | null;
-    tagScore?: number | null;
-    sharedTags?: string[];
+    sharedTags: string[];
   };
-  const adjacency = new Map<string, EdgeInfo[]>();
+  const adjacencyMap = new Map<string, Map<string, EdgeInfo>>();
+
+  function addEdge(rawFrom: string, rawTo: string, score: number) {
+    const from = canonicalId(rawFrom);
+    const to = canonicalId(rawTo);
+    if (from === to) return; // skip self-links (e.g. chunk-to-root within same doc)
+
+    const peers = adjacencyMap.get(from) ?? new Map<string, EdgeInfo>();
+    const existing = peers.get(to);
+    // Keep the highest score if multiple chunk edges connect the same pair
+    if (!existing || score > existing.score) {
+      peers.set(to, {
+        peerId: to,
+        score,
+        sharedTags: computeSharedTags(rawFrom, rawTo),
+      });
+    }
+    adjacencyMap.set(from, peers);
+  }
 
   for (const edge of edges) {
-    const addEdge = (from: string, to: string) => {
-      const list = adjacency.get(from) ?? [];
-      list.push({
-        peerId: to,
-        score: edge.score,
-        semanticScore: (edge as any).semanticScore,
-        tagScore: (edge as any).tagScore,
-        sharedTags: (edge as any).sharedTags,
-      });
-      adjacency.set(from, list);
-    };
-    addEdge(edge.sourceId, edge.targetId);
-    addEdge(edge.targetId, edge.sourceId);
+    addEdge(edge.sourceId, edge.targetId, edge.score);
+    addEdge(edge.targetId, edge.sourceId, edge.score);
+  }
+
+  // Flatten to adjacency lists
+  const adjacency = new Map<string, EdgeInfo[]>();
+  for (const [nodeId, peers] of adjacencyMap) {
+    adjacency.set(nodeId, [...peers.values()]);
   }
 
   // Track filenames for wikilink resolution: nodeId -> filename (without .md)
@@ -168,7 +208,6 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
     const sid = shortId(id);
     const base = sanitizeFilename(`${sid} ${title}`);
     let name = base || sid;
-    // Deduplicate
     if (usedFilenames.has(name.toLowerCase())) {
       let i = 2;
       while (usedFilenames.has(`${name} ${i}`.toLowerCase())) i++;
@@ -181,9 +220,7 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
   // Pass 1: Assign filenames for documents (assembled)
   for (const doc of documents) {
     const filename = pickFilename(doc.id, doc.title);
-    // Map the document ID itself
     nodeFilenames.set(doc.id, filename);
-    // Also map the root node to this filename
     if (doc.rootNodeId) {
       nodeFilenames.set(doc.rootNodeId, filename);
     }
@@ -192,7 +229,7 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
   // Pass 2: Assign filenames for non-chunk, non-document-root regular nodes
   for (const node of nodes) {
     if (chunkNodeIds.has(node.id)) continue;
-    if (nodeFilenames.has(node.id)) continue; // already mapped as document root
+    if (nodeFilenames.has(node.id)) continue;
     const filename = pickFilename(node.id, node.title);
     nodeFilenames.set(node.id, filename);
   }
@@ -204,17 +241,16 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
     const edgeInfos = adjacency.get(nodeId);
     if (!edgeInfos || edgeInfos.length === 0) return '';
 
-    // Sort by score descending
     const sorted = [...edgeInfos].sort((a, b) => b.score - a.score);
 
     const lines: string[] = ['', '## Connections', ''];
     for (const info of sorted) {
       const peerFilename = nodeFilenames.get(info.peerId);
-      if (!peerFilename) continue; // chunk node without a mapping
+      if (!peerFilename) continue;
 
       const scoreParts: string[] = [];
       scoreParts.push(info.score.toFixed(2));
-      if (info.sharedTags && info.sharedTags.length > 0) {
+      if (info.sharedTags.length > 0) {
         scoreParts.push(`tags: ${info.sharedTags.join(', ')}`);
       }
 
@@ -228,12 +264,18 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
   // Write document files (assembled)
   for (const doc of documents) {
     const filename = nodeFilenames.get(doc.id)!;
-    const rootNode = doc.rootNodeId ? nodeById.get(doc.rootNodeId) : null;
 
-    // Collect all tags from document chunks + root node
+    // Aggregate tags from root node + all chunk nodes
     const allTags = new Set<string>();
+    const rootNode = doc.rootNodeId ? nodeById.get(doc.rootNodeId) : null;
     if (rootNode?.tags) {
       for (const t of rootNode.tags) allTags.add(t);
+    }
+    for (const chunkId of docChunkNodeIds.get(doc.id) ?? []) {
+      const chunkNode = nodeById.get(chunkId);
+      if (chunkNode?.tags) {
+        for (const t of chunkNode.tags) allTags.add(t);
+      }
     }
 
     const frontMatter = buildFrontMatter({
@@ -244,10 +286,8 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
       type: 'document',
     });
 
-    // Use the document's assembled body
     const body = doc.body || '';
-
-    // Connections from the root node (if it exists)
+    // Use root node ID for connections (that's where adjacency is keyed)
     const connections = doc.rootNodeId ? buildConnectionsSection(doc.rootNodeId) : '';
 
     const content = `${frontMatter}\n\n${body}${connections}\n`;
@@ -258,18 +298,17 @@ async function runExportObsidian(flags: ExportObsidianFlags) {
   // Write regular node files
   for (const node of nodes) {
     if (chunkNodeIds.has(node.id)) continue;
-    if (rootNodeToDocId.has(node.id)) continue; // handled as document above
+    if (rootNodeToDocId.has(node.id)) continue;
 
     const filename = nodeFilenames.get(node.id)!;
 
-    const metaFields: Record<string, unknown> = {
+    const frontMatter = buildFrontMatter({
       forest_id: shortId(node.id),
       tags: node.tags ?? [],
       created: node.createdAt,
       modified: node.updatedAt,
-    };
+    });
 
-    const frontMatter = buildFrontMatter(metaFields);
     const body = node.body ?? '';
     const connections = buildConnectionsSection(node.id);
 
