@@ -180,3 +180,110 @@ export async function computeEmbeddingForNode(n: Pick<NodeRecord, 'title' | 'bod
   const text = `${n.title}\n${n.body}`;
   return embedNoteText(text);
 }
+
+// --- Batch embedding ---
+
+const BATCH_SIZE_OPENROUTER = 50;
+const BATCH_SIZE_OPENAI = 2048;
+
+export async function embedBatch(
+  texts: string[],
+  options?: { maxBatchSize?: number },
+): Promise<(number[] | undefined)[]> {
+  const provider = getEmbeddingProvider();
+  if (provider === 'none') return new Array(texts.length).fill(undefined);
+  if (provider === 'mock') return Promise.all(texts.map(embedMock));
+
+  const maxBatch = options?.maxBatchSize ??
+    (provider === 'openai' ? BATCH_SIZE_OPENAI : BATCH_SIZE_OPENROUTER);
+
+  const results: (number[] | undefined)[] = new Array(texts.length);
+
+  for (let start = 0; start < texts.length; start += maxBatch) {
+    const chunk = texts.slice(start, start + maxBatch);
+    try {
+      const embeddings = await embedBatchAPI(chunk, provider);
+      for (let i = 0; i < embeddings.length; i++) {
+        results[start + i] = embeddings[i];
+      }
+    } catch (batchErr) {
+      // Retry batch once
+      try {
+        const embeddings = await embedBatchAPI(chunk, provider);
+        for (let i = 0; i < embeddings.length; i++) {
+          results[start + i] = embeddings[i];
+        }
+      } catch (_retryErr) {
+        // Fall back to individual calls for this batch
+        for (let i = 0; i < chunk.length; i++) {
+          try {
+            results[start + i] = await embedNoteText(chunk[i]);
+          } catch (_itemErr) {
+            results[start + i] = undefined;
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
+async function embedBatchAPI(
+  texts: string[],
+  provider: 'openrouter' | 'openai',
+): Promise<number[][]> {
+  const config = loadConfig();
+
+  if (provider === 'openrouter') {
+    const apiKey = config.openrouterApiKey || process.env.FOREST_OR_KEY;
+    if (!apiKey) throw new Error('OpenRouter API key required');
+    const model = getEmbeddingModel();
+    const res = await fetchWithRetry('https://openrouter.ai/api/v1/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://github.com/forest-cli',
+        'X-Title': 'Forest CLI',
+      },
+      body: JSON.stringify({ model, input: texts }),
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`OpenRouter batch error: ${res.status} ${res.statusText} - ${body}`);
+    }
+    const json: any = await res.json();
+    const data: any[] = json.data;
+    if (!Array.isArray(data) || data.length !== texts.length) {
+      throw new Error(`OpenRouter batch: expected ${texts.length} embeddings, got ${data?.length}`);
+    }
+    // Sort by index since API may return out of order
+    data.sort((a, b) => a.index - b.index);
+    return data.map((d) => d.embedding as number[]);
+  }
+
+  // OpenAI
+  const apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error('OpenAI API key required');
+  const model = getEmbeddingModel();
+  const res = await fetchWithRetry('https://api.openai.com/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ model, input: texts }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI batch error: ${res.status} ${res.statusText} - ${body}`);
+  }
+  const json: any = await res.json();
+  const data: any[] = json.data;
+  if (!Array.isArray(data) || data.length !== texts.length) {
+    throw new Error(`OpenAI batch: expected ${texts.length} embeddings, got ${data?.length}`);
+  }
+  data.sort((a, b) => a.index - b.index);
+  return data.map((d) => d.embedding as number[]);
+}
