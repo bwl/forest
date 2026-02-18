@@ -171,6 +171,7 @@ function isSynthesizeModelName(value: unknown): value is SynthesizeModelName {
  * should dispatch commands over HTTP rather than using the local database.
  */
 export function isRemoteMode(): boolean {
+  if (process.env.FOREST_TESTING_LOCALDB === '1') return false;
   const config = loadConfig();
   return typeof config.serverUrl === 'string' && config.serverUrl.trim().length > 0;
 }
