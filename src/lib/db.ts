@@ -1350,6 +1350,46 @@ export async function insertNode(record: NodeRecord): Promise<void> {
   await markDirtyAndPersist();
 }
 
+export async function insertNodeBulk(
+  records: NodeRecord[],
+  options?: { skipHistory?: boolean },
+): Promise<void> {
+  if (records.length === 0) return;
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, embedding_blob, created_at, updated_at, is_chunk, parent_document_id, chunk_order, metadata)
+     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :embeddingBlob, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder, :metadata)`,
+  );
+  for (const record of records) {
+    stmt.bind({
+      ':id': record.id,
+      ':title': record.title,
+      ':body': record.body,
+      ':tags': JSON.stringify(record.tags),
+      ':tokenCounts': JSON.stringify(record.tokenCounts),
+      ':embedding': record.embedding ? JSON.stringify(record.embedding) : null,
+      ':embeddingBlob': record.embedding ? embeddingToBlob(record.embedding) : null,
+      ':createdAt': record.createdAt,
+      ':updatedAt': record.updatedAt,
+      ':isChunk': record.isChunk ? 1 : 0,
+      ':parentDocumentId': record.parentDocumentId,
+      ':chunkOrder': record.chunkOrder,
+      ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
+    });
+    stmt.step();
+    stmt.reset();
+    syncNodeTagsInternal(db, record.id, record.tags);
+    if (!options?.skipHistory) {
+      appendNodeHistorySnapshotInternal(db, record, {
+        operation: 'create',
+        createdAt: record.updatedAt,
+      });
+    }
+  }
+  stmt.free();
+  dirty = true;
+}
+
 export async function updateNodeTokens(id: string, tokenCounts: Record<string, number>): Promise<void> {
   const db = await ensureDatabase();
   const updatedAt = new Date().toISOString();
@@ -1581,6 +1621,32 @@ export async function getNodeTagsOnly(): Promise<Array<{ id: string; tags: strin
   }
   stmt.free();
   return results;
+}
+
+export type ScoringNode = {
+  id: string;
+  tags: string[];
+  embedding?: number[];
+};
+
+export async function listNodesForScoring(): Promise<ScoringNode[]> {
+  const db = await ensureDatabase();
+  const stmt = db.prepare('SELECT id, tags, embedding_blob, embedding FROM nodes');
+  const nodes: ScoringNode[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    nodes.push({
+      id: String(row.id),
+      tags: JSON.parse(String(row.tags)),
+      embedding: row.embedding_blob
+        ? blobToEmbedding(row.embedding_blob as Uint8Array)
+        : row.embedding
+          ? (JSON.parse(String(row.embedding)) as number[])
+          : undefined,
+    });
+  }
+  stmt.free();
+  return nodes;
 }
 
 export async function getRecentNodes(limit: number = 5): Promise<Array<{
@@ -2235,6 +2301,47 @@ export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   applyDegreeTransition(db, record.sourceId, record.targetId, existedBefore, true);
 
   await markDirtyAndPersist();
+}
+
+export async function insertEdgeBulk(records: EdgeRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  const db = await ensureDatabase();
+  const stmt = db.prepare(
+    `INSERT INTO edges (id, source_id, target_id, score, semantic_score, tag_score, shared_tags, status, edge_type, metadata, created_at, updated_at)
+     VALUES (:id, :sourceId, :targetId, :score, :semanticScore, :tagScore, :sharedTags, :status, :edgeType, :metadata, :createdAt, :updatedAt)
+     ON CONFLICT(source_id, target_id)
+     DO UPDATE SET
+       score = excluded.score,
+       semantic_score = excluded.semantic_score,
+       tag_score = excluded.tag_score,
+       shared_tags = excluded.shared_tags,
+       status = excluded.status,
+       edge_type = excluded.edge_type,
+       metadata = excluded.metadata,
+       updated_at = excluded.updated_at`,
+  );
+  for (const record of records) {
+    if (record.sourceId === record.targetId) continue;
+    stmt.bind({
+      ':id': record.id,
+      ':sourceId': record.sourceId,
+      ':targetId': record.targetId,
+      ':score': record.score,
+      ':semanticScore': record.semanticScore,
+      ':tagScore': record.tagScore,
+      ':sharedTags': JSON.stringify(record.sharedTags ?? []),
+      ':status': record.status,
+      ':edgeType': record.edgeType,
+      ':metadata': record.metadata ? JSON.stringify(record.metadata) : null,
+      ':createdAt': record.createdAt,
+      ':updatedAt': record.updatedAt,
+    });
+    stmt.step();
+    stmt.reset();
+    // Skip per-edge degree tracking for bulk perf; rebuild after import
+  }
+  stmt.free();
+  dirty = true;
 }
 
 export async function bulkUpdateEdgesV2(
