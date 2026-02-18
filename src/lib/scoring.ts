@@ -260,3 +260,64 @@ function clamp01(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }
+
+// --- Batch cosine for scale testing ---
+
+export type CosinePair = { queryIdx: number; targetIdx: number; similarity: number };
+
+/**
+ * Cache-friendly batch cosine similarity.
+ * Computes all (query, target) pairs and returns those above threshold.
+ * Vectors are packed as flat Float32Arrays: vec[i] starts at offset i*dim.
+ */
+export function cosineBatchVsAll(
+  queryVecs: Float32Array,
+  allVecs: Float32Array,
+  dim: number,
+  threshold: number,
+): CosinePair[] {
+  const queryCount = queryVecs.length / dim;
+  const allCount = allVecs.length / dim;
+  const results: CosinePair[] = [];
+
+  // Pre-compute norms for allVecs
+  const allNorms = new Float32Array(allCount);
+  for (let j = 0; j < allCount; j++) {
+    const jOff = j * dim;
+    let mag = 0;
+    for (let d = 0; d < dim; d++) {
+      const v = allVecs[jOff + d];
+      mag += v * v;
+    }
+    allNorms[j] = Math.sqrt(mag);
+  }
+
+  for (let i = 0; i < queryCount; i++) {
+    const iOff = i * dim;
+    // Compute query norm
+    let magI = 0;
+    for (let d = 0; d < dim; d++) {
+      const v = queryVecs[iOff + d];
+      magI += v * v;
+    }
+    const normI = Math.sqrt(magI);
+    if (normI === 0) continue;
+
+    for (let j = 0; j < allCount; j++) {
+      const normJ = allNorms[j];
+      if (normJ === 0) continue;
+
+      const jOff = j * dim;
+      let dot = 0;
+      for (let d = 0; d < dim; d++) {
+        dot += queryVecs[iOff + d] * allVecs[jOff + d];
+      }
+      const similarity = dot / (normI * normJ);
+      if (similarity >= threshold) {
+        results.push({ queryIdx: i, targetIdx: j, similarity });
+      }
+    }
+  }
+
+  return results;
+}
