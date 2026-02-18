@@ -25,9 +25,10 @@ type RescoreOptions = {
 };
 
 export async function linkAgainstExisting(newNode: NodeRecord, existing: NodeRecord[]) {
-  const context = buildTagIdfContext([newNode, ...existing]);
+  const others = existing.filter((n) => n.id !== newNode.id);
+  const context = buildTagIdfContext([newNode, ...others]);
   let accepted = 0;
-  const candidates = buildEdgeCandidates(newNode, existing, context);
+  const candidates = buildEdgeCandidates(newNode, others, context);
   const { projectSelections, projectEdgeLimit } = resolveProjectSelections(candidates);
 
   for (const candidate of candidates) {
