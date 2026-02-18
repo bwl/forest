@@ -436,6 +436,13 @@ function runMigrations(db: Database) {
       db.exec(`ALTER TABLE nodes ADD COLUMN metadata TEXT;`);
       dirty = true;
     }
+
+    // BLOB embedding storage for performance (avoid JSON parse overhead)
+    if (!columns.includes('embedding_blob')) {
+      db.exec(`ALTER TABLE nodes ADD COLUMN embedding_blob BLOB;`);
+      backfillEmbeddingBlobs(db);
+      dirty = true;
+    }
   } catch (_) {
     // Best-effort; ignore if pragma not supported in this context
   }
@@ -558,6 +565,22 @@ function backfillAllDegrees(db: Database) {
     update.reset();
   }
   update.free();
+}
+
+function backfillEmbeddingBlobs(db: Database) {
+  const read = db.prepare(
+    `SELECT id, embedding FROM nodes WHERE embedding IS NOT NULL AND embedding_blob IS NULL`,
+  );
+  const write = db.prepare(`UPDATE nodes SET embedding_blob = :blob WHERE id = :id`);
+  while (read.step()) {
+    const row = read.getAsObject();
+    const arr = JSON.parse(String(row.embedding)) as number[];
+    write.bind({ ':blob': embeddingToBlob(arr), ':id': String(row.id) });
+    write.step();
+    write.reset();
+  }
+  read.free();
+  write.free();
 }
 
 function hashContent(content: string): string {
@@ -911,6 +934,14 @@ async function markDirtyAndPersist(options: { skipAutoSnapshot?: boolean } = {})
   await persist();
 }
 
+function embeddingToBlob(embedding: number[]): Buffer {
+  return Buffer.from(new Float32Array(embedding).buffer);
+}
+
+function blobToEmbedding(blob: Uint8Array): number[] {
+  return Array.from(new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4));
+}
+
 // Helper function to parse node row from database
 function parseNodeRow(row: any): NodeRecord {
   return {
@@ -919,7 +950,11 @@ function parseNodeRow(row: any): NodeRecord {
     body: String(row.body),
     tags: JSON.parse(String(row.tags)),
     tokenCounts: JSON.parse(String(row.token_counts)),
-    embedding: row.embedding ? (JSON.parse(String(row.embedding)) as number[]) : undefined,
+    embedding: row.embedding_blob
+      ? blobToEmbedding(row.embedding_blob as Uint8Array)
+      : row.embedding
+        ? (JSON.parse(String(row.embedding)) as number[])
+        : undefined,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     approximateScored: Number(row.approximate_scored ?? 1) === 1,
@@ -1287,8 +1322,8 @@ export async function listTagIdf(): Promise<TagIdfRecord[]> {
 export async function insertNode(record: NodeRecord): Promise<void> {
   const db = await ensureDatabase();
   const stmt = db.prepare(
-    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, created_at, updated_at, is_chunk, parent_document_id, chunk_order, metadata)
-     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder, :metadata)`
+    `INSERT INTO nodes (id, title, body, tags, token_counts, embedding, embedding_blob, created_at, updated_at, is_chunk, parent_document_id, chunk_order, metadata)
+     VALUES (:id, :title, :body, :tags, :tokenCounts, :embedding, :embeddingBlob, :createdAt, :updatedAt, :isChunk, :parentDocumentId, :chunkOrder, :metadata)`
   );
   stmt.bind({
     ':id': record.id,
@@ -1297,6 +1332,7 @@ export async function insertNode(record: NodeRecord): Promise<void> {
     ':tags': JSON.stringify(record.tags),
     ':tokenCounts': JSON.stringify(record.tokenCounts),
     ':embedding': record.embedding ? JSON.stringify(record.embedding) : null,
+    ':embeddingBlob': record.embedding ? embeddingToBlob(record.embedding) : null,
     ':createdAt': record.createdAt,
     ':updatedAt': record.updatedAt,
     ':isChunk': record.isChunk ? 1 : 0,
@@ -1368,6 +1404,8 @@ export async function updateNode(
   if (Array.isArray(fields.embedding)) {
     sets.push('embedding = :embedding');
     params[':embedding'] = JSON.stringify(fields.embedding);
+    sets.push('embedding_blob = :embeddingBlob');
+    params[':embeddingBlob'] = embeddingToBlob(fields.embedding);
   }
   if (fields.metadata !== undefined) {
     sets.push('metadata = :metadata');
@@ -1861,6 +1899,7 @@ export async function restoreNodeFromHistory(
          tags = :tags,
          token_counts = :tokenCounts,
          embedding = :embedding,
+         embedding_blob = :embeddingBlob,
          metadata = :metadata,
          updated_at = :updatedAt
      WHERE id = :id`,
@@ -1872,6 +1911,7 @@ export async function restoreNodeFromHistory(
     ':tags': JSON.stringify(history.tags),
     ':tokenCounts': JSON.stringify(history.tokenCounts),
     ':embedding': history.embedding ? JSON.stringify(history.embedding) : null,
+    ':embeddingBlob': history.embedding ? embeddingToBlob(history.embedding) : null,
     ':metadata': history.metadata ? JSON.stringify(history.metadata) : null,
     ':updatedAt': updatedAt,
   });
