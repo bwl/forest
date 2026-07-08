@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 
-import { buildTagIdfContext, classifyEdgeScores, computeTagScore, fuseEdgeScores } from '../scoring';
+import {
+  buildTagIdfContext,
+  classifyEdgeScores,
+  computeTagScore,
+  extractProjectTags,
+  fuseEdgeScores,
+} from '../scoring';
 
 describe('scoring v2: tag score', () => {
   it('returns null when there are no shared tags', () => {
@@ -50,6 +56,20 @@ describe('scoring v2: tag score', () => {
     expect(result.components.bridgeScore as number).toBeCloseTo(expectedBridge, 6);
     expect(result.score as number).toBeCloseTo(expectedBridge, 6);
   });
+
+  it('normalizes legacy project tags to project slash form', () => {
+    const context = buildTagIdfContext([
+      { tags: ['project/forest'] },
+      { tags: ['project:forest'] },
+      { tags: ['misc'] },
+    ]);
+
+    const result = computeTagScore(['project/forest'], ['project:forest'], context);
+
+    expect(extractProjectTags(['project:forest', 'project/forest'])).toEqual(['project/forest']);
+    expect(result.score).not.toBeNull();
+    expect(result.sharedTags).toEqual(['project/forest']);
+  });
 });
 
 describe('scoring v2: edge classification', () => {
@@ -83,6 +103,7 @@ describe('scoring v2: edge classification', () => {
     process.env.FOREST_PROJECT_EDGE_FLOOR = '0.25';
 
     try {
+      expect(classifyEdgeScores(0.3, 0.25, ['project/gobot'])).toBe('accepted');
       expect(classifyEdgeScores(0.3, 0.25, ['project:gobot'])).toBe('accepted');
       expect(classifyEdgeScores(0.3, 0.25, ['docs'])).toBe('discard');
     } finally {

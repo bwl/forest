@@ -74,13 +74,13 @@ async function runSuggest(flags: SuggestFlags) {
   }
 
   if (result.suggestions.length === 0) {
-    console.log(`No nodes found for project:${result.project}. Capture some knowledge first.`);
+    console.log(`No nodes found for project/${result.project}. Capture some knowledge first.`);
     return;
   }
 
   // Header
   const header = colorize.label(`forest suggest`) +
-    `  (project:${result.project}, ${result.total} node${result.total !== 1 ? 's' : ''} in scope)`;
+    `  (project/${result.project}, ${result.total} node${result.total !== 1 ? 's' : ''} in scope)`;
   console.log(header);
   console.log('');
 

@@ -62,7 +62,7 @@ Base acceptance rule:
 - accept when `semantic_score >= FOREST_SEMANTIC_THRESHOLD` (default `0.5`), or
 - accept when `tag_score >= FOREST_TAG_THRESHOLD` (default `0.3`)
 
-Project-tag behavior (`project:*` shared tags):
+Project-tag behavior (`project/<name>` shared tags; legacy `project:<name>` tags are still recognized):
 - candidates can also pass via `FOREST_PROJECT_EDGE_FLOOR` (default `0.3`) on fused score
 - per-node project links are capped by `FOREST_PROJECT_EDGE_LIMIT` (default `10`)
 - if a node has project peers but none pass, Forest still keeps the strongest project peer so project-tagged notes remain connected

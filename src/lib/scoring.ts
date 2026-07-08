@@ -73,12 +73,29 @@ export function getProjectEdgeLimit(): number {
 export function extractProjectTags(tags: string[]): string[] {
   const out = new Set<string>();
   for (const tag of tags) {
-    const normalized = tag.trim().toLowerCase();
-    if (normalized.startsWith('project:')) {
+    const normalized = normalizeProjectTag(tag);
+    if (normalized) {
       out.add(normalized);
     }
   }
   return [...out].sort((a, b) => a.localeCompare(b));
+}
+
+export function normalizeProjectTag(tag: string): string | null {
+  const normalized = tag.trim().toLowerCase();
+  if (normalized.startsWith('project/')) return normalized;
+  if (normalized.startsWith('project:')) return `project/${normalized.slice('project:'.length)}`;
+  return null;
+}
+
+export function normalizeTag(tag: string): string {
+  return normalizeProjectTag(tag) ?? tag.trim().toLowerCase();
+}
+
+export function createProjectTag(projectName: string): string {
+  const normalized = normalizeProjectTag(projectName);
+  if (normalized) return normalized;
+  return `project/${projectName.trim().toLowerCase()}`;
 }
 
 export function hasSharedProjectTag(tags: string[]): boolean {
@@ -90,7 +107,7 @@ export function buildTagIdfContext(nodes: Array<Pick<NodeRecord, 'tags'>>): TagI
   const docFreqByTag = new Map<string, number>();
 
   for (const node of nodes) {
-    const uniqueTags = new Set(node.tags.map((tag) => tag.toLowerCase()));
+    const uniqueTags = new Set(node.tags.map(normalizeTag));
     for (const tag of uniqueTags) {
       docFreqByTag.set(tag, (docFreqByTag.get(tag) ?? 0) + 1);
     }
@@ -113,8 +130,8 @@ export function computeSemanticScore(a: NodeRecord, b: NodeRecord): number | nul
 }
 
 export function computeTagScore(aTags: string[], bTags: string[], context: TagIdfContext): TagScoreResult {
-  const setA = new Set(aTags.map((tag) => tag.toLowerCase()));
-  const setB = new Set(bTags.map((tag) => tag.toLowerCase()));
+  const setA = new Set(aTags.map(normalizeTag));
+  const setB = new Set(bTags.map(normalizeTag));
 
   if (setA.size === 0 && setB.size === 0) {
     return {

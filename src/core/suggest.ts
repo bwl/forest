@@ -3,6 +3,7 @@ import path from 'path';
 import { listNodes, NodeRecord } from '../lib/db';
 import { semanticSearchCore } from './search';
 import { getEmbeddingProvider } from '../lib/embeddings';
+import { createProjectTag, normalizeProjectTag, normalizeTag } from '../lib/scoring';
 
 export type SuggestionMatchType = 'tag' | 'semantic';
 
@@ -81,12 +82,12 @@ function makeExcerpt(body: string, maxLen = 80): string {
 }
 
 /**
- * Filter tags for display: skip project:* and link/* prefixes.
+ * Filter tags for display: skip project tags and link/* prefixes.
  * Returns up to `max` tags.
  */
 function displayTags(tags: string[], max = 3): string[] {
   return tags
-    .filter((t) => !t.startsWith('project:') && !t.startsWith('link/'))
+    .filter((t) => !normalizeTag(t).startsWith('project/') && !t.startsWith('link/'))
     .slice(0, max);
 }
 
@@ -102,11 +103,17 @@ function nodeToSuggestion(node: NodeRecord, matchType: SuggestionMatchType, scor
   };
 }
 
+function normalizeProjectName(projectName: string): string {
+  const projectTag = normalizeProjectTag(projectName);
+  if (projectTag) return projectTag.slice('project/'.length);
+  return projectName.trim().toLowerCase();
+}
+
 /**
  * Core suggest logic: find nodes relevant to the current project.
  *
  * Two-pass approach:
- *  1. Tag pass — find nodes with `project:<name>` tag (fast, no embeddings)
+ *  1. Tag pass — find nodes with `project/<name>` tag (fast, no embeddings)
  *  2. Semantic pass — if embeddings available, search for project name
  * Results are deduplicated, tag matches ranked first.
  */
@@ -116,24 +123,24 @@ export async function suggestCore(options: SuggestOptions = {}): Promise<Suggest
   let source: SuggestResult['source'];
 
   if (options.project) {
-    projectName = options.project;
+    projectName = normalizeProjectName(options.project);
     source = 'flag';
   } else {
     const detected = detectProject(cwd);
     if (!detected) {
       return { project: '', source: 'basename', suggestions: [], total: 0 };
     }
-    projectName = detected.name;
+    projectName = normalizeProjectName(detected.name);
     source = detected.source;
   }
 
   const limit = options.limit ?? 10;
-  const projectTag = `project:${projectName}`;
+  const projectTag = createProjectTag(projectName);
 
   // --- Pass 1: Tag match ---
   const allNodes = await listNodes();
   const tagMatches = allNodes.filter((node) =>
-    node.tags.some((t) => t.toLowerCase() === projectTag.toLowerCase()),
+    node.tags.some((t) => normalizeTag(t) === projectTag),
   );
   const tagMatchIds = new Set(tagMatches.map((n) => n.id));
 

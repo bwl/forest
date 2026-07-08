@@ -23,7 +23,7 @@ export function createContextCommand(clerc: ClercModule) {
         tag: {
           type: String,
           alias: 't',
-          description: 'Seed cluster by tag (e.g. project:kingdom)',
+          description: 'Seed cluster by tag (e.g. project/kingdom)',
         },
         query: {
           type: String,
