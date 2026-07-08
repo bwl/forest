@@ -57,6 +57,7 @@ import type {
   GraphGrowthResultRemote,
   CreateGraphSnapshotResultRemote,
   ListGraphSnapshotsResultRemote,
+  BridgesResultRemote,
 } from './client';
 
 import { formatId } from '../cli/shared/utils';
@@ -89,7 +90,7 @@ import {
   getTagStatsCore,
 } from '../core/tags';
 import { linkNodesCore } from '../core/link';
-import { findPath } from '../core/graph';
+import { findPath, findBridgesCore } from '../core/graph';
 import { importDocumentCore } from '../core/import';
 import { getHealthReport, isHealthy } from '../core/health';
 import { suggestCore } from '../core/suggest';
@@ -640,6 +641,17 @@ export class LocalBackend implements IForestBackend {
       totalChunks: result.totalChunks,
       linking: result.linking,
     };
+  }
+
+  // ── Bridges ────────────────────────────────────────────────────────
+
+  async getBridges(
+    opts?: { limit?: number; minScore?: number },
+  ): Promise<BridgesResultRemote> {
+    return await findBridgesCore({
+      limit: opts?.limit,
+      minScore: opts?.minScore,
+    });
   }
 
   // ── Graph ──────────────────────────────────────────────────────────

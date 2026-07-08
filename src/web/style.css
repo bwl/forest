@@ -1162,3 +1162,82 @@ a:hover { color: var(--link-hover); }
   color: var(--text-tertiary);
   font-family: var(--font-mono);
 }
+
+/* ---- Bridges ---- */
+.bridge-card {
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+.bridge-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.bridge-rank {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  min-width: 24px;
+}
+
+.bridge-title {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bridge-title:hover {
+  color: var(--accent);
+}
+
+.bridge-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding-left: 32px;
+  font-size: 0.85em;
+}
+
+.bridge-doc-label {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.bridge-stat {
+  color: var(--text-tertiary);
+}
+
+.bridge-connections {
+  padding-left: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bridge-connection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+}
+
+.bridge-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.bridge-link:hover {
+  color: var(--accent);
+}

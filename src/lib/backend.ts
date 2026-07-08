@@ -55,6 +55,7 @@ import type {
   GraphGrowthResultRemote,
   CreateGraphSnapshotResultRemote,
   ListGraphSnapshotsResultRemote,
+  BridgesResultRemote,
 } from './client';
 
 export interface IForestBackend {
@@ -102,6 +103,9 @@ export interface IForestBackend {
   getGraphGrowth(opts?: { since?: string; until?: string; limit?: number }): Promise<GraphGrowthResultRemote>;
   createGraphSnapshot(opts?: { snapshotType?: 'manual' | 'auto' }): Promise<CreateGraphSnapshotResultRemote>;
   listGraphSnapshots(opts?: { limit?: number; since?: string; until?: string; snapshotType?: 'manual' | 'auto' }): Promise<ListGraphSnapshotsResultRemote>;
+
+  // ── Bridges ────────────────────────────────────────────────────────
+  getBridges(opts?: { limit?: number; minScore?: number }): Promise<BridgesResultRemote>;
 
   // ── Export ─────────────────────────────────────────────────────────
   exportJson(opts?: { body?: boolean; edges?: boolean }): Promise<ExportJsonResult>;

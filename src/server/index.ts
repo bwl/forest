@@ -14,6 +14,7 @@ import { graphRoutes } from './routes/graph';
 import { exportRoutes } from './routes/export';
 import { suggestRoutes } from './routes/suggest';
 import { contextRoutes } from './routes/context';
+import { bridgesRoutes } from './routes/bridges';
 import { websocketRoute } from './routes/websocket';
 import { webRoutes } from './routes/web';
 
@@ -119,6 +120,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     .use(exportRoutes)
     .use(suggestRoutes)
     .use(contextRoutes)
+    .use(bridgesRoutes)
     .use(websocketRoute)
     .use(webRoutes);
 

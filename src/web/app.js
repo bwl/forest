@@ -68,7 +68,17 @@ const api = {
     for (const [k, v] of Object.entries(params)) { if (v != null && v !== '') q.set(k, v); }
     return this.fetch(`/search/metadata?${q}`);
   },
-  exportJson(body = false) { return this.fetch(`/export/json?body=${body}&edges=true`); },
+  exportJson(body = false, opts = {}) {
+    const params = new URLSearchParams({ body: String(body), edges: 'true' });
+    if (opts.minScore) params.set('minScore', opts.minScore);
+    if (opts.edgeLimit) params.set('edgeLimit', opts.edgeLimit);
+    return this.fetch(`/export/json?${params}`);
+  },
+  bridges(params = {}) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) { if (v != null && v !== '') q.set(k, v); }
+    return this.fetch(`/bridges?${q}`);
+  },
   documents() { return this.fetch('/documents'); },
   document(id) { return this.fetch(`/documents/${id}`); },
   documentFull(id) { return this.fetch(`/documents/${id}/full`); },
@@ -541,7 +551,8 @@ const views = {
           <option value="3">Depth 3</option>
         </select>
         <button class="btn btn-sm btn-secondary" onclick="views._loadGraph()">Load</button>
-        <button class="btn btn-sm btn-secondary" onclick="views._loadFullGraph()">Full Graph</button>
+        <button class="btn btn-sm btn-secondary" onclick="views._loadDocumentGraph()">Documents</button>
+        <button class="btn btn-sm btn-secondary" onclick="views._loadCrossLinkGraph()">Cross-links</button>
       </div>
       <div class="graph-container" id="main-graph" style="height:calc(100vh - 200px)">
         <div class="graph-controls">
@@ -558,7 +569,7 @@ const views = {
     if (focusId) {
       views._loadGraph();
     } else {
-      views._loadFullGraph();
+      views._loadDocumentGraph();
     }
   },
 
@@ -580,26 +591,189 @@ const views = {
 
   async _loadFullGraph() {
     try {
-      const data = await api.exportJson(false);
+      // Request only high-score edges from the server to avoid 500K+ edge payloads
+      const data = await api.exportJson(false, { minScore: 0.65, edgeLimit: 15000 });
+      const allNodes = (data.nodes || []);
+
       // Convert export format to neighborhood format
       const graphData = {
-        nodes: (data.nodes || []).slice(0, 300).map(n => ({
+        nodes: allNodes.map(n => ({
           id: n.id,
           shortId: n.shortId,
           title: n.title,
           tags: n.tags || [],
           depth: 0,
+          parentDocumentId: n.parentDocumentId || null,
         })),
         edges: (data.edges || []).map(e => ({
           id: e.id,
           sourceId: e.sourceId,
           targetId: e.targetId,
           score: e.score,
+          edgeType: e.edgeType || 'semantic',
         })),
       };
+
       // Filter edges to only include nodes in our set
       const nodeIds = new Set(graphData.nodes.map(n => n.id));
       graphData.edges = graphData.edges.filter(e => nodeIds.has(e.sourceId) && nodeIds.has(e.targetId));
+
+      // Keep top-K edges per node (max 5 per node) for a readable graph
+      const MAX_EDGES_PER_NODE = 5;
+      const edgesByNode = {};
+      // Sort all edges by score descending
+      graphData.edges.sort((a, b) => b.score - a.score);
+      const keptEdges = [];
+      for (const e of graphData.edges) {
+        // Always keep structural edges (parent-child, sequential)
+        const isStructural = e.edgeType === 'parent-child' || e.edgeType === 'sequential';
+        const srcCount = edgesByNode[e.sourceId] || 0;
+        const tgtCount = edgesByNode[e.targetId] || 0;
+        if (isStructural || (srcCount < MAX_EDGES_PER_NODE && tgtCount < MAX_EDGES_PER_NODE)) {
+          keptEdges.push(e);
+          edgesByNode[e.sourceId] = srcCount + 1;
+          edgesByNode[e.targetId] = tgtCount + 1;
+        }
+      }
+      graphData.edges = keptEdges;
+
+      graphRenderer.render('main-graph', graphData, null);
+    } catch (err) {
+      const el = document.getElementById('main-graph');
+      if (el) el.innerHTML = components.empty('&#9888;', 'Failed to load graph: ' + err.message);
+    }
+  },
+
+  // Document-level overview: one node per document, edges = aggregated cross-doc links
+  async _loadDocumentGraph() {
+    try {
+      const data = await api.exportJson(false, { minScore: 0.6, edgeLimit: 30000 });
+      const allNodes = data.nodes || [];
+      const allEdges = data.edges || [];
+
+      // Build doc membership: nodeId → docId (parentDocumentId or self for roots)
+      const nodeDocMap = {};
+      const docNodes = {};  // docId → root node info
+      for (const n of allNodes) {
+        const docId = n.parentDocumentId || n.id;
+        nodeDocMap[n.id] = docId;
+        if (!n.parentDocumentId) {
+          // This is a root node or standalone
+          docNodes[n.id] = n;
+        }
+      }
+
+      // Count chunks per document
+      const docChunkCount = {};
+      for (const n of allNodes) {
+        const docId = nodeDocMap[n.id];
+        docChunkCount[docId] = (docChunkCount[docId] || 0) + 1;
+      }
+
+      // Aggregate edges across documents
+      const crossDocEdges = {};  // "docA::docB" → { count, maxScore, totalScore }
+      for (const e of allEdges) {
+        const srcDoc = nodeDocMap[e.sourceId];
+        const tgtDoc = nodeDocMap[e.targetId];
+        if (!srcDoc || !tgtDoc || srcDoc === tgtDoc) continue;  // skip intra-doc
+        const key = srcDoc < tgtDoc ? `${srcDoc}::${tgtDoc}` : `${tgtDoc}::${srcDoc}`;
+        if (!crossDocEdges[key]) {
+          crossDocEdges[key] = { srcDoc: srcDoc < tgtDoc ? srcDoc : tgtDoc, tgtDoc: srcDoc < tgtDoc ? tgtDoc : srcDoc, count: 0, maxScore: 0, totalScore: 0 };
+        }
+        crossDocEdges[key].count++;
+        crossDocEdges[key].maxScore = Math.max(crossDocEdges[key].maxScore, e.score);
+        crossDocEdges[key].totalScore += e.score;
+      }
+
+      // Build graph data with only document-level nodes
+      const graphData = {
+        nodes: Object.values(docNodes).map(n => ({
+          id: n.id,
+          shortId: (n.id || '').substring(0, 8),
+          title: n.title,
+          tags: n.tags || [],
+          depth: 0,
+          parentDocumentId: null,
+          chunkCount: docChunkCount[n.id] || 1,
+        })),
+        edges: Object.values(crossDocEdges)
+          .filter(e => e.count >= 3)  // only show docs with 3+ cross-links
+          .map(e => ({
+            sourceId: e.srcDoc,
+            targetId: e.tgtDoc,
+            score: e.maxScore,
+            count: e.count,
+            avgScore: e.totalScore / e.count,
+          })),
+      };
+
+      graphRenderer.render('main-graph', graphData, null);
+    } catch (err) {
+      const el = document.getElementById('main-graph');
+      if (el) el.innerHTML = components.empty('&#9888;', 'Failed to load graph: ' + err.message);
+    }
+  },
+
+  // Cross-link view: only chunks that connect to a different document
+  async _loadCrossLinkGraph() {
+    try {
+      const data = await api.exportJson(false, { minScore: 0.7, edgeLimit: 20000 });
+      const allNodes = data.nodes || [];
+      const allEdges = data.edges || [];
+
+      // Build doc membership
+      const nodeDocMap = {};
+      for (const n of allNodes) {
+        nodeDocMap[n.id] = n.parentDocumentId || n.id;
+      }
+
+      // Find cross-document edges only
+      const crossEdges = allEdges.filter(e => {
+        const srcDoc = nodeDocMap[e.sourceId];
+        const tgtDoc = nodeDocMap[e.targetId];
+        return srcDoc && tgtDoc && srcDoc !== tgtDoc;
+      });
+
+      // Keep only top 3 cross-doc edges per node
+      crossEdges.sort((a, b) => b.score - a.score);
+      const perNode = {};
+      const keptEdges = [];
+      for (const e of crossEdges) {
+        const sc = perNode[e.sourceId] || 0;
+        const tc = perNode[e.targetId] || 0;
+        if (sc < 3 && tc < 3) {
+          keptEdges.push(e);
+          perNode[e.sourceId] = sc + 1;
+          perNode[e.targetId] = tc + 1;
+        }
+      }
+
+      // Only include nodes that appear in kept edges
+      const usedIds = new Set();
+      keptEdges.forEach(e => { usedIds.add(e.sourceId); usedIds.add(e.targetId); });
+
+      const nodeMap = {};
+      allNodes.forEach(n => { nodeMap[n.id] = n; });
+
+      const graphData = {
+        nodes: [...usedIds].map(id => {
+          const n = nodeMap[id] || { id, title: id, tags: [] };
+          return {
+            id: n.id,
+            shortId: (n.id || '').substring(0, 8),
+            title: n.title,
+            tags: n.tags || [],
+            depth: 0,
+            parentDocumentId: n.parentDocumentId || null,
+          };
+        }),
+        edges: keptEdges.map(e => ({
+          sourceId: e.sourceId,
+          targetId: e.targetId,
+          score: e.score,
+        })),
+      };
+
       graphRenderer.render('main-graph', graphData, null);
     } catch (err) {
       const el = document.getElementById('main-graph');
@@ -723,6 +897,62 @@ const views = {
       }
     } catch (err) {
       content.innerHTML = components.empty('&#9888;', 'Failed to load tag: ' + err.message);
+    }
+  },
+
+  // ---- Bridges ----
+  async bridges(params = {}) {
+    const content = document.getElementById('content');
+    const limit = parseInt(params.limit) || 20;
+
+    content.innerHTML = `
+      <div class="view-header">
+        <h2>Bridge Nodes</h2>
+        <p class="view-subtitle">Passages that connect across different documents</p>
+      </div>
+      <div id="bridges-list" class="node-list">
+        ${components.loading()}
+      </div>`;
+
+    try {
+      const data = await api.bridges({ limit });
+      const listEl = document.getElementById('bridges-list');
+
+      if (data.bridges.length === 0) {
+        listEl.innerHTML = components.empty('\u21F5', 'No cross-document bridges found. Import multiple documents to discover connections.');
+        return;
+      }
+
+      listEl.innerHTML = data.bridges.map((bridge, i) => {
+        const shortId = formatId(bridge.nodeId);
+        const docLabel = bridge.documentTitle ? escapeHtml(bridge.documentTitle) : 'standalone';
+        const connections = (bridge.topConnections || []).map(conn => {
+          const connDoc = conn.documentTitle ? escapeHtml(conn.documentTitle) : '';
+          return `<div class="bridge-connection">
+            <span class="score-badge ${scoreClass(conn.score)}">${conn.score.toFixed(2)}</span>
+            <a href="#node/${conn.nodeId}" class="bridge-link">${escapeHtml(truncate(conn.nodeTitle, 60))}</a>
+            ${connDoc ? `<span class="bridge-doc-label">${connDoc}</span>` : ''}
+          </div>`;
+        }).join('');
+
+        return `
+          <div class="card bridge-card">
+            <div class="bridge-header">
+              <span class="bridge-rank">${i + 1}</span>
+              <a href="#node/${bridge.nodeId}" class="bridge-title">${escapeHtml(truncate(bridge.nodeTitle, 80))}</a>
+              <code class="mono">${shortId}</code>
+            </div>
+            <div class="bridge-meta">
+              <span class="bridge-doc-label">${docLabel}</span>
+              <span class="bridge-stat">\u2194 ${bridge.connectedDocCount} docs</span>
+              <span class="bridge-stat">${bridge.crossDocDegree} cross-links</span>
+              <span class="score-badge ${scoreClass(bridge.maxScore)}">best: ${bridge.maxScore.toFixed(2)}</span>
+            </div>
+            ${connections ? `<div class="bridge-connections">${connections}</div>` : ''}
+          </div>`;
+      }).join('');
+    } catch (err) {
+      content.innerHTML = components.empty('\u26A0', 'Failed to load bridges: ' + err.message);
     }
   },
 
@@ -949,6 +1179,7 @@ const graphRenderer = {
       tags: n.tags || [],
       depth: n.depth ?? 0,
       isFocus: n.id === focusNodeId,
+      parentDocumentId: n.parentDocumentId || null,
     }));
 
     const nodeIdSet = new Set(nodes.map(n => n.id));
@@ -968,27 +1199,40 @@ const graphRenderer = {
     });
     nodes.forEach(n => { n.degree = degreeMap[n.id] || 0; });
 
-    // Tag color mapping
-    const tagColors = {};
-    const colorScale = d3.scaleOrdinal(d3.schemeSet2);
+    // Document color mapping — chunks from the same document share a color
+    const docColors = {};
+    const colorPalette = [
+      '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff',
+      '#39d353', '#f0883e', '#db61a2', '#79c0ff', '#56d364',
+      '#e3b341', '#ff7b72', '#d2a8ff', '#7ee787', '#ffa657',
+    ];
     let colorIdx = 0;
     nodes.forEach(n => {
-      if (n.tags.length > 0) {
-        const primaryTag = n.tags[0];
-        if (!tagColors[primaryTag]) {
-          tagColors[primaryTag] = colorScale(colorIdx++);
-        }
+      // Group by document: use parentDocumentId for chunks, own id for root/standalone nodes
+      const docKey = n.parentDocumentId || n.id;
+      if (!docColors[docKey]) {
+        docColors[docKey] = colorPalette[colorIdx % colorPalette.length];
+        colorIdx++;
       }
+      n._docKey = docKey;
     });
+
+    // Standalone nodes (not part of any document) that each got a unique color
+    // should fall back to neutral gray to avoid wasting palette slots
+    const docKeyCounts = {};
+    nodes.forEach(n => { docKeyCounts[n._docKey] = (docKeyCounts[n._docKey] || 0) + 1; });
 
     function nodeColor(d) {
       if (d.isFocus) return '#58a6ff';
-      if (d.tags.length > 0 && tagColors[d.tags[0]]) return tagColors[d.tags[0]];
+      // Only use document colors for groups of 2+ nodes (actual documents)
+      if (docKeyCounts[d._docKey] > 1) return docColors[d._docKey];
       return '#8b949e';
     }
 
     function nodeRadius(d) {
       if (d.isFocus) return 10;
+      // Document-level nodes: size by chunk count
+      if (d.chunkCount) return Math.max(10, Math.min(40, 10 + Math.sqrt(d.chunkCount) * 3));
       return Math.max(4, Math.min(12, 4 + d.degree * 1.5));
     }
 
@@ -1018,8 +1262,8 @@ const graphRenderer = {
       .data(links)
       .join('line')
       .attr('class', 'graph-link')
-      .attr('stroke-width', d => 0.5 + d.score * 2)
-      .attr('stroke-opacity', d => 0.2 + d.score * 0.5);
+      .attr('stroke-width', d => d.count ? Math.max(1, Math.min(8, Math.sqrt(d.count) * 0.5)) : 0.5 + d.score * 2)
+      .attr('stroke-opacity', d => d.count ? 0.4 + Math.min(0.5, d.count / 500) : 0.2 + d.score * 0.5);
 
     // Nodes
     const node = g.append('g')
@@ -1050,20 +1294,22 @@ const graphRenderer = {
       .attr('stroke', d => d.isFocus ? '#58a6ff' : 'transparent')
       .attr('stroke-width', d => d.isFocus ? 3 : 0);
 
+    const isDocLevel = nodes.some(n => n.chunkCount);
     node.append('text')
-      .text(d => truncate(d.title, 20))
+      .text(d => truncate(d.title, isDocLevel ? 40 : 20))
       .attr('dx', d => nodeRadius(d) + 4)
       .attr('dy', 3)
-      .attr('font-size', d => d.isFocus ? '12px' : '10px')
-      .attr('fill', d => d.isFocus ? '#e6edf3' : '#8b949e');
+      .attr('font-size', d => d.chunkCount ? '13px' : d.isFocus ? '12px' : '10px')
+      .attr('fill', d => (d.isFocus || d.chunkCount) ? '#e6edf3' : '#8b949e');
 
     // Tooltip
     const tooltipEl = document.getElementById('graph-tooltip');
     node.on('mouseover', (event, d) => {
       if (tooltipEl) {
+        const chunkInfo = d.chunkCount ? ` &middot; ${d.chunkCount} chunks` : '';
         tooltipEl.innerHTML = `
           <div class="tooltip-title">${escapeHtml(d.title)}</div>
-          <div class="tooltip-id">${escapeHtml(d.shortId)} &middot; ${d.degree} connections</div>
+          <div class="tooltip-id">${escapeHtml(d.shortId)} &middot; ${d.degree} connections${chunkInfo}</div>
           ${d.tags.length > 0 ? `<div class="tooltip-tags">${d.tags.map(t => '#' + t).join(' ')}</div>` : ''}
         `;
         tooltipEl.style.display = 'block';
@@ -1081,12 +1327,18 @@ const graphRenderer = {
       app.navigate('node/' + d.id);
     });
 
-    // Simulation
+    // Simulation — scale forces for large graphs
+    const isLarge = nodes.length > 500;
+    const linkDist = isLarge ? 30 : 80;
+    const chargeStr = isLarge ? -50 : -200;
+    const alphaDecay = isLarge ? 0.04 : 0.0228;
+
     this.simulation = d3.forceSimulation(nodes)
-      .force('link', d3.forceLink(links).id(d => d.id).distance(80))
-      .force('charge', d3.forceManyBody().strength(-200))
+      .force('link', d3.forceLink(links).id(d => d.id).distance(linkDist))
+      .force('charge', d3.forceManyBody().strength(chargeStr).distanceMax(isLarge ? 300 : Infinity))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + 5))
+      .force('collision', d3.forceCollide().radius(d => nodeRadius(d) + (isLarge ? 2 : 5)))
+      .alphaDecay(alphaDecay)
       .on('tick', () => {
         link
           .attr('x1', d => d.source.x)
@@ -1252,6 +1504,9 @@ const router = {
         break;
       case 'document':
         if (segments[1]) await views.documentReader(segments[1]);
+        break;
+      case 'bridges':
+        await views.bridges(params);
         break;
       case 'search':
         await views.search(params);

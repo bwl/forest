@@ -2673,6 +2673,132 @@ export async function deleteNode(id: string): Promise<{ edgesRemoved: number; no
   return { edgesRemoved, nodeRemoved };
 }
 
+// ── Bridge node queries ─────────────────────────────────────────────────
+
+export type BridgeNodeRow = {
+  nodeId: string;
+  nodeTitle: string;
+  parentDocumentId: string | null;
+  crossDocDegree: number;
+  connectedDocCount: number;
+  maxScore: number;
+  avgScore: number;
+};
+
+export async function getTopBridgeNodes(
+  limit: number = 20,
+  minScore?: number,
+): Promise<BridgeNodeRow[]> {
+  const db = await ensureDatabase();
+
+  const scoreFilter = minScore != null ? `AND e.score >= ${minScore}` : '';
+
+  const sql = `
+    WITH node_docs AS (
+      SELECT id, COALESCE(parent_document_id, id) AS doc_id, title FROM nodes
+    ),
+    cross_edges AS (
+      SELECT e.source_id AS node_id, nd_tgt.doc_id AS other_doc, e.score
+      FROM edges e
+      JOIN node_docs nd_src ON nd_src.id = e.source_id
+      JOIN node_docs nd_tgt ON nd_tgt.id = e.target_id
+      WHERE nd_src.doc_id != nd_tgt.doc_id AND e.status = 'accepted' ${scoreFilter}
+      UNION ALL
+      SELECT e.target_id AS node_id, nd_src.doc_id AS other_doc, e.score
+      FROM edges e
+      JOIN node_docs nd_src ON nd_src.id = e.source_id
+      JOIN node_docs nd_tgt ON nd_tgt.id = e.target_id
+      WHERE nd_src.doc_id != nd_tgt.doc_id AND e.status = 'accepted' ${scoreFilter}
+    )
+    SELECT
+      ce.node_id,
+      nd.title AS node_title,
+      nd.doc_id AS parent_document_id,
+      COUNT(*) AS cross_doc_degree,
+      COUNT(DISTINCT ce.other_doc) AS connected_doc_count,
+      MAX(ce.score) AS max_score,
+      AVG(ce.score) AS avg_score
+    FROM cross_edges ce
+    JOIN node_docs nd ON nd.id = ce.node_id
+    GROUP BY ce.node_id
+    ORDER BY connected_doc_count DESC, cross_doc_degree DESC
+    LIMIT :limit
+  `;
+
+  const stmt = db.prepare(sql);
+  stmt.bind({ ':limit': limit });
+
+  const results: BridgeNodeRow[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      nodeId: row.node_id as string,
+      nodeTitle: row.node_title as string,
+      parentDocumentId: (row.parent_document_id as string) || null,
+      crossDocDegree: row.cross_doc_degree as number,
+      connectedDocCount: row.connected_doc_count as number,
+      maxScore: row.max_score as number,
+      avgScore: row.avg_score as number,
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export type CrossDocEdgeRow = {
+  edgeNodeId: string;
+  edgeNodeTitle: string;
+  edgeDocId: string | null;
+  edgeDocTitle: string | null;
+  score: number;
+};
+
+export async function getCrossDocEdgesForNode(
+  nodeId: string,
+  limit: number = 5,
+): Promise<CrossDocEdgeRow[]> {
+  const db = await ensureDatabase();
+
+  const sql = `
+    WITH node_docs AS (
+      SELECT id, COALESCE(parent_document_id, id) AS doc_id, title FROM nodes
+    )
+    SELECT
+      other.id AS edge_node_id,
+      other.title AS edge_node_title,
+      nd_other.doc_id AS edge_doc_id,
+      d.title AS edge_doc_title,
+      e.score
+    FROM edges e
+    JOIN node_docs nd_self ON nd_self.id = :nodeId
+    JOIN nodes other ON other.id = CASE WHEN e.source_id = :nodeId THEN e.target_id ELSE e.source_id END
+    JOIN node_docs nd_other ON nd_other.id = other.id
+    LEFT JOIN documents d ON d.id = nd_other.doc_id
+    WHERE (e.source_id = :nodeId OR e.target_id = :nodeId)
+      AND e.status = 'accepted'
+      AND nd_self.doc_id != nd_other.doc_id
+    ORDER BY e.score DESC
+    LIMIT :limit
+  `;
+
+  const stmt = db.prepare(sql);
+  stmt.bind({ ':nodeId': nodeId, ':limit': limit });
+
+  const results: CrossDocEdgeRow[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      edgeNodeId: row.edge_node_id as string,
+      edgeNodeTitle: row.edge_node_title as string,
+      edgeDocId: (row.edge_doc_id as string) || null,
+      edgeDocTitle: (row.edge_doc_title as string) || null,
+      score: row.score as number,
+    });
+  }
+  stmt.free();
+  return results;
+}
+
 export async function closeDb(): Promise<void> {
   await persist();
   database?.close();

@@ -181,6 +181,7 @@ export function getGlobalTldr(version: string): GlobalTldr {
       'suggest',
       'context',
       'path',
+      'bridges',
     ],
   };
 }
@@ -998,5 +999,24 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
       'forest lint --type orphan_tag',
     ],
     rel: ['tags.list', 'tags.rename', 'tags.stats'],
+  },
+
+  bridges: {
+    cmd: 'bridges',
+    p: 'Find nodes that bridge across different documents (cross-document connectors)',
+    in: [],
+    out: ['bridge_nodes', 'cross_doc_connections'],
+    fx: 'none',
+    fl: [
+      { n: 'limit', t: 'int', d: 20, desc: 'number of bridge nodes to show' },
+      { n: 'minScore', t: 'float', desc: 'minimum edge score to consider' },
+      { n: 'json', t: 'bool', d: false, desc: 'emit JSON output' },
+    ],
+    ex: [
+      'forest bridges',
+      'forest bridges --limit 10 --minScore 0.5',
+      'forest bridges --json',
+    ],
+    rel: ['explore', 'edges', 'documents', 'import'],
   },
 };

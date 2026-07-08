@@ -73,6 +73,18 @@ Project-tag behavior (`project/<name>` shared tags; legacy `project:<name>` tags
 
 Hashtags in note text support `/` (example: `#link/chapter-1-arc`).
 
+## Bridge Nodes (`forest bridges`)
+
+Where bridge *tags* are an explicit connection you create, bridge *nodes* are connectors Forest **discovers** for you: nodes whose accepted edges reach into multiple *different* documents. They surface the passages that tie your imported sources together.
+
+```bash
+forest bridges                          # top cross-document connectors
+forest bridges --limit 10 --minScore 0.5 # only strong edges
+forest bridges --json                    # machine-readable
+```
+
+Each result is ranked by how many distinct documents it connects (then by total cross-document edge count) and lists its strongest cross-document links. Requires at least two imported documents to produce results. Also available in the web UI ("Bridges") and via `GET /api/v1/bridges`.
+
 ## Temporal Analysis
 
 Forest persists graph snapshots and can diff graph state over time.

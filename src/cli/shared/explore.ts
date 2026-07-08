@@ -140,6 +140,7 @@ export async function buildNeighborhoodPayload(
           snippet: node.body.slice(0, 280),
           createdAt: node.createdAt,
           updatedAt: node.updatedAt,
+          parentDocumentId: node.parentDocumentId ?? null,
         };
       }),
     edges: neighborhood.edges.map((edge) => ({

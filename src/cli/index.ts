@@ -16,6 +16,7 @@ import { createContextCommand } from './commands/context';
 import { createServeCommand } from './commands/serve';
 import { createConfigCommand } from './commands/config';
 import { createVersionCommand, displayVersion, getVersion } from './commands/version';
+import { createBridgesCommand } from './commands/bridges';
 import { createLintCommand } from './commands/lint';
 import {
   createDiffCommand,
@@ -60,6 +61,7 @@ export async function createForestCli() {
   cli.command(createServeCommand(clerc));
   cli.command(createConfigCommand(clerc));
   cli.command(createVersionCommand(clerc));
+  cli.command(createBridgesCommand(clerc));
   cli.command(createLintCommand(clerc));
   cli.command(createDiffCommand(clerc));
   cli.command(createGrowthCommand(clerc));

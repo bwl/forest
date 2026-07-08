@@ -81,9 +81,21 @@ export const exportRoutes = new Elysia({ prefix: '/api/v1' })
       try {
         const includeBody = parseQueryBoolean(query.body as string | undefined, true);
         const includeEdges = parseQueryBoolean(query.edges as string | undefined, true);
+        const minScore = query.minScore ? parseFloat(query.minScore as string) : undefined;
+        const edgeLimit = query.edgeLimit ? parseInt(query.edgeLimit as string, 10) : undefined;
 
         const nodes = await listNodes();
-        const edges = includeEdges ? await listEdges('all') : [];
+        let edges = includeEdges ? await listEdges('accepted') : [];
+
+        // Server-side edge filtering
+        if (typeof minScore === 'number' && !isNaN(minScore)) {
+          edges = edges.filter((e) => e.score >= minScore);
+        }
+        if (typeof edgeLimit === 'number' && !isNaN(edgeLimit) && edgeLimit > 0) {
+          // Keep top edges by score
+          edges.sort((a, b) => b.score - a.score);
+          edges = edges.slice(0, edgeLimit);
+        }
 
         const payload = {
           nodes: nodes.map((node) => ({
@@ -94,6 +106,7 @@ export const exportRoutes = new Elysia({ prefix: '/api/v1' })
             tokenCounts: node.tokenCounts,
             createdAt: node.createdAt,
             updatedAt: node.updatedAt,
+            parentDocumentId: node.parentDocumentId ?? null,
           })),
           edges: edges.map((edge) => ({
             id: edge.id,
@@ -101,7 +114,7 @@ export const exportRoutes = new Elysia({ prefix: '/api/v1' })
             targetId: edge.targetId,
             status: edge.status,
             score: edge.score,
-            metadata: edge.metadata,
+            edgeType: edge.edgeType ?? 'semantic',
             createdAt: edge.createdAt,
             updatedAt: edge.updatedAt,
           })),

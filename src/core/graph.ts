@@ -2,10 +2,18 @@
  * Graph algorithms for Forest
  * - Path finding (BFS)
  * - Cluster detection (future)
- * - Bridge node detection (future)
+ * - Bridge node detection
  */
 
-import { listEdges, getNodeById, EdgeRecord, NodeRecord } from '../lib/db';
+import {
+  listEdges,
+  getNodeById,
+  EdgeRecord,
+  NodeRecord,
+  getTopBridgeNodes,
+  getCrossDocEdgesForNode,
+  getDocumentById,
+} from '../lib/db';
 
 export type PathStep = {
   nodeId: string;
@@ -131,4 +139,73 @@ async function buildPathResult(
     totalScore,
     hopCount: edges.length,
   };
+}
+
+// ── Bridge node detection ──────────────────────────────────────────────
+
+export type BridgeConnection = {
+  nodeId: string;
+  nodeTitle: string;
+  documentId: string | null;
+  documentTitle: string | null;
+  score: number;
+};
+
+export type BridgeNode = {
+  nodeId: string;
+  nodeTitle: string;
+  documentId: string | null;
+  documentTitle: string | null;
+  crossDocDegree: number;
+  connectedDocCount: number;
+  maxScore: number;
+  avgScore: number;
+  topConnections: BridgeConnection[];
+};
+
+export type BridgesOptions = { limit?: number; minScore?: number };
+export type BridgesResult = { bridges: BridgeNode[]; total: number };
+
+export async function findBridgesCore(
+  options?: BridgesOptions,
+): Promise<BridgesResult> {
+  const limit = options?.limit ?? 20;
+  const minScore = options?.minScore;
+
+  const rows = await getTopBridgeNodes(limit, minScore);
+
+  const bridges: BridgeNode[] = await Promise.all(
+    rows.map(async (row) => {
+      const crossEdges = await getCrossDocEdgesForNode(row.nodeId, 3);
+
+      // Resolve document title for the bridge node itself
+      let documentTitle: string | null = null;
+      if (row.parentDocumentId) {
+        const doc = await getDocumentById(row.parentDocumentId);
+        documentTitle = doc?.title ?? null;
+      }
+
+      const topConnections: BridgeConnection[] = crossEdges.map((ce) => ({
+        nodeId: ce.edgeNodeId,
+        nodeTitle: ce.edgeNodeTitle,
+        documentId: ce.edgeDocId,
+        documentTitle: ce.edgeDocTitle,
+        score: ce.score,
+      }));
+
+      return {
+        nodeId: row.nodeId,
+        nodeTitle: row.nodeTitle,
+        documentId: row.parentDocumentId,
+        documentTitle,
+        crossDocDegree: row.crossDocDegree,
+        connectedDocCount: row.connectedDocCount,
+        maxScore: row.maxScore,
+        avgScore: row.avgScore,
+        topConnections,
+      };
+    }),
+  );
+
+  return { bridges, total: bridges.length };
 }

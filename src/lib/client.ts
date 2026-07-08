@@ -513,6 +513,33 @@ export interface PathResult {
   hopCount: number;
 }
 
+// ── Bridge types ──────────────────────────────────────────────────────
+
+export interface BridgeConnectionRemote {
+  nodeId: string;
+  nodeTitle: string;
+  documentId: string | null;
+  documentTitle: string | null;
+  score: number;
+}
+
+export interface BridgeNodeRemote {
+  nodeId: string;
+  nodeTitle: string;
+  documentId: string | null;
+  documentTitle: string | null;
+  crossDocDegree: number;
+  connectedDocCount: number;
+  maxScore: number;
+  avgScore: number;
+  topConnections: BridgeConnectionRemote[];
+}
+
+export interface BridgesResultRemote {
+  bridges: BridgeNodeRemote[];
+  total: number;
+}
+
 // ── Link types ────────────────────────────────────────────────────────
 
 export interface LinkNodesInput {
@@ -1013,6 +1040,17 @@ export class ForestClient implements IForestBackend {
   async findPath(from: string, to: string): Promise<PathResult> {
     return this.request<PathResult>('GET', '/api/v1/graph/path', {
       query: { from, to },
+    });
+  }
+
+  // ── Bridges ────────────────────────────────────────────────────────
+
+  async getBridges(opts?: { limit?: number; minScore?: number }): Promise<BridgesResultRemote> {
+    return this.request<BridgesResultRemote>('GET', '/api/v1/bridges', {
+      query: {
+        limit: opts?.limit,
+        minScore: opts?.minScore,
+      },
     });
   }
 
