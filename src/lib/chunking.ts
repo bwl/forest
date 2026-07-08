@@ -114,9 +114,9 @@ function chunkByHeaders(text: string, maxTokens: number): DocumentChunk[] {
             chunkIndex++;
           }
 
-          // Start new chunk with last line
+          // Start new chunk with last line (keep original heading —
+          // the [N/Total] position marker disambiguates continuations)
           currentChunk = [lines[i]];
-          currentHeading = `${currentHeading} (cont.)`;
         }
       }
     }
@@ -222,8 +222,10 @@ function chunkBySize(text: string, maxTokens: number, overlap: number): Document
     }
 
     // Move start forward, accounting for overlap
-    start = end - overlap;
-    if (start >= text.length) break;
+    // Guard: if overlap >= remaining, start wouldn't advance → break
+    const nextStart = end - overlap;
+    if (nextStart <= start) break;
+    start = nextStart;
   }
 
   // Update totalChunks
