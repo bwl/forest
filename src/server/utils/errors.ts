@@ -1,3 +1,5 @@
+import { getVersion } from '../../cli/commands/version';
+
 export type ErrorCode =
   | 'NODE_NOT_FOUND'
   | 'EDGE_NOT_FOUND'
@@ -102,7 +104,7 @@ export function createErrorResponse(error: unknown) {
       error: error.toJSON(),
       meta: {
         timestamp: new Date().toISOString(),
-        version: '0.6.0',
+        version: getVersion(),
       },
     };
   }
@@ -117,7 +119,7 @@ export function createErrorResponse(error: unknown) {
     },
     meta: {
       timestamp: new Date().toISOString(),
-      version: '0.6.0',
+      version: getVersion(),
     },
   };
 }

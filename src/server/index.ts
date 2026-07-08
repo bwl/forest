@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
 import { swagger } from '@elysiajs/swagger';
+import { getVersion } from '../cli/commands/version';
 
 import { healthRoutes } from './routes/health';
 import { statsRoutes } from './routes/stats';
@@ -33,6 +34,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
   const port = options.port ?? DEFAULT_PORT;
   const hostname = options.hostname ?? DEFAULT_HOSTNAME;
   const apiKey = process.env.FOREST_API_KEY;
+  const version = getVersion();
 
   const app = new Elysia()
     .use(cors())
@@ -47,7 +49,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         return {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Missing or invalid Authorization header', details: {} },
-          meta: { timestamp: new Date().toISOString(), version: '0.6.0' },
+          meta: { timestamp: new Date().toISOString(), version },
         };
       }
 
@@ -57,7 +59,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         return {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'Invalid API key', details: {} },
-          meta: { timestamp: new Date().toISOString(), version: '0.6.0' },
+          meta: { timestamp: new Date().toISOString(), version },
         };
       }
     })
@@ -66,7 +68,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
         documentation: {
           info: {
             title: 'Forest API',
-            version: '0.6.0',
+            version,
             description: 'Graph-native knowledge base server',
           },
           tags: [
@@ -84,7 +86,7 @@ export function createServer(options: { port?: number; hostname?: string } = {})
     )
     .get('/', () => ({
       name: 'Forest API',
-      version: '0.6.0',
+      version,
       documentation: '/swagger',
     }))
     .use(healthRoutes)

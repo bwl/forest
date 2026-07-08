@@ -6,6 +6,7 @@ import {
   ValidationError,
   ForestError,
 } from './errors';
+import { getVersion } from '../../cli/commands/version';
 
 export type SuccessResponse<T> = {
   success: true;
@@ -29,7 +30,7 @@ export function createSuccessResponse<T>(data: T): SuccessResponse<T> {
     data,
     meta: {
       timestamp: new Date().toISOString(),
-      version: '0.6.0',
+      version: getVersion(),
     },
   };
 }

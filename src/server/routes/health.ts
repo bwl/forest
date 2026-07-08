@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia';
 import { getHealthReport, isHealthy } from '../../core/health';
+import { getVersion } from '../../cli/commands/version';
 
 export const healthRoutes = new Elysia({ prefix: '/api/v1' })
   .get(
@@ -33,7 +34,7 @@ export const healthRoutes = new Elysia({ prefix: '/api/v1' })
         },
         meta: {
           timestamp: new Date().toISOString(),
-          version: '0.6.0',
+          version: getVersion(),
         },
       };
     },
