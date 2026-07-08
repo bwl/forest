@@ -11,7 +11,7 @@ type ServeFlags = {
 };
 
 const DEFAULT_PORT = 3000;
-const DEFAULT_HOST = '::'; // Dual-stack: IPv4 and IPv6
+const DEFAULT_HOST = '127.0.0.1';
 
 export function createServeCommand(clerc: ClercModule) {
   return clerc.defineCommand(
@@ -26,7 +26,7 @@ export function createServeCommand(clerc: ClercModule) {
         },
         host: {
           type: String,
-          description: 'Host to bind to (:: for dual-stack IPv4/IPv6, 0.0.0.0 for IPv4 only)',
+          description: 'Host to bind to (use 0.0.0.0 or :: only with FOREST_API_KEY set)',
           default: DEFAULT_HOST,
         },
         tldr: {

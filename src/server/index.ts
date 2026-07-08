@@ -18,7 +18,8 @@ import { websocketRoute } from './routes/websocket';
 import { webRoutes } from './routes/web';
 
 const DEFAULT_PORT = 3000;
-const DEFAULT_HOSTNAME = '::'; // Dual-stack: listens on both IPv4 and IPv6
+const DEFAULT_HOSTNAME = '127.0.0.1';
+const ALLOW_UNAUTHENTICATED_PUBLIC_ENV = 'FOREST_ALLOW_UNAUTHENTICATED_PUBLIC';
 
 /** Routes that do not require authentication */
 const PUBLIC_PATHS = new Set(['/', '/api/v1/health']);
@@ -30,11 +31,29 @@ function isPublicPath(path: string): boolean {
   return false;
 }
 
+function isPublicHostname(hostname: string): boolean {
+  return hostname === '::' || hostname === '0.0.0.0';
+}
+
+function assertSafeServerConfig(hostname: string, apiKey: string | undefined) {
+  if (!isPublicHostname(hostname)) return;
+  if (apiKey) return;
+  if (process.env[ALLOW_UNAUTHENTICATED_PUBLIC_ENV] === '1') return;
+
+  throw new Error(
+    `Refusing to serve unauthenticated Forest API on ${hostname}. ` +
+      'Set FOREST_API_KEY or bind to 127.0.0.1. ' +
+      `To override for a trusted network, set ${ALLOW_UNAUTHENTICATED_PUBLIC_ENV}=1.`,
+  );
+}
+
 export function createServer(options: { port?: number; hostname?: string } = {}) {
   const port = options.port ?? DEFAULT_PORT;
   const hostname = options.hostname ?? DEFAULT_HOSTNAME;
   const apiKey = process.env.FOREST_API_KEY;
   const version = getVersion();
+
+  assertSafeServerConfig(hostname, apiKey);
 
   const app = new Elysia()
     .use(cors())
@@ -118,6 +137,8 @@ export async function startServer(options: { port?: number; hostname?: string } 
   console.log(`📚 API docs available at http://${displayHost}:${port}/swagger`);
   if (process.env.FOREST_API_KEY) {
     console.log(`🔒 Bearer token auth enabled`);
+  } else if (isPublicHostname(hostname)) {
+    console.warn(`⚠️  Bearer token auth disabled on public bind`);
   }
   if (hostname === '::') {
     console.log(`   (Dual-stack mode: IPv4 and IPv6 enabled)`);

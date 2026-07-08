@@ -416,12 +416,12 @@ export const COMMAND_TLDR: Record<string, CommandTldr> = {
     fx: 'network:bind',
     fl: [
       { n: 'port', t: 'int', d: 3000, desc: 'server port' },
-      { n: 'host', t: 'str', d: '::', desc: 'bind hostname (:: = dual-stack IPv4/IPv6)' },
+      { n: 'host', t: 'str', d: '127.0.0.1', desc: 'bind hostname (public binds require auth)' },
     ],
     ex: [
       'forest serve',
       'forest serve --port 8080',
-      'forest serve --host 0.0.0.0',
+      'FOREST_API_KEY=secret forest serve --host 0.0.0.0',
       'FOREST_PORT=3000 forest serve',
     ],
     rel: ['health', 'stats'],
