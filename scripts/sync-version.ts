@@ -17,6 +17,19 @@ function writeJson(p: string, data: unknown) {
   fs.writeFileSync(p, content, 'utf8');
 }
 
+function syncJsonVersionIfExists(p: string): boolean {
+  if (!fs.existsSync(p)) {
+    console.log(`Skipped ${p} (not found)`);
+    return false;
+  }
+
+  const data = readJson(p);
+  data.version = version;
+  writeJson(p, data);
+  console.log(`Updated ${p} → ${version}`);
+  return true;
+}
+
 const repoRoot = path.resolve(__dirname, '..');
 const versionFile = path.join(repoRoot, 'VERSION');
 
@@ -40,17 +53,8 @@ console.log(`Updated ${pkgPath} → ${version}`);
 
 // Update Tauri conf version
 const tauriConfPath = path.join(repoRoot, 'forest-desktop', 'src-tauri', 'tauri.conf.json');
-const tauri = readJson(tauriConfPath);
-tauri.version = version;
-writeJson(tauriConfPath, tauri);
-console.log(`Updated ${tauriConfPath} → ${version}`);
+syncJsonVersionIfExists(tauriConfPath);
 
 // Optional: keep forest-desktop package.json in sync too (non-critical)
 const desktopPkgPath = path.join(repoRoot, 'forest-desktop', 'package.json');
-if (fs.existsSync(desktopPkgPath)) {
-  const desktopPkg = readJson(desktopPkgPath);
-  desktopPkg.version = version;
-  writeJson(desktopPkgPath, desktopPkg);
-  console.log(`Updated ${desktopPkgPath} → ${version}`);
-}
-
+syncJsonVersionIfExists(desktopPkgPath);
