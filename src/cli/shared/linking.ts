@@ -161,7 +161,7 @@ type EdgeCandidate = {
 };
 
 function buildEdgeCandidates(node: NodeRecord, others: NodeRecord[], context: ReturnType<typeof buildTagIdfContext>): EdgeCandidate[] {
-  return others.map((other) => {
+  return others.filter((other) => other.id !== node.id).map((other) => {
     const computed = computeEdgeScore(node, other, context);
     const status = classifyEdgeScores(computed.semanticScore, computed.tagScore, computed.sharedTags);
     const [sourceId, targetId] = normalizeEdgePair(node.id, other.id);

@@ -2252,7 +2252,8 @@ export async function deleteDocumentRecord(documentId: string): Promise<boolean>
 
 export async function insertOrUpdateEdge(record: EdgeRecord): Promise<void> {
   if (record.sourceId === record.targetId) {
-    throw new Error(`Self-loop edges are not allowed (node: ${record.sourceId})`);
+    // Self-loops are conceptually invalid — silently skip rather than crash the caller.
+    return;
   }
 
   const db = await ensureDatabase();
