@@ -4,7 +4,7 @@ import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { colorize } from '../formatters';
 import { getBackend } from '../shared/remote';
 
-import type { HandlerContext } from '@clerc/core';
+import type { CommandHandlerContext as HandlerContext } from '@clerc/core';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;

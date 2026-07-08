@@ -1,2 +1,0 @@
-declare module '@xenova/transformers';
-

@@ -42,7 +42,7 @@ export async function createForestCli() {
     .scriptName('forest')
     .description('Graph-native knowledge base CLI')
     .version(getVersion())
-    .use(helpPlugin({ renderers: createGroupedHelpRenderer() }))
+    .use(helpPlugin({ renderers: createGroupedHelpRenderer() } as any))
     .use(friendlyErrorPlugin())
     .use(strictFlagsPlugin())
     .use(notFoundPlugin())

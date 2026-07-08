@@ -3,7 +3,6 @@ import { getVersion } from './version';
 import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { getBackend } from '../shared/remote';
 
-import type { HandlerContext } from '@clerc/core';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;

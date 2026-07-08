@@ -11,7 +11,7 @@
     "dev": "bun run src/index.ts",
     "dev:server": "bun run src/server/index.ts",
     "start": "bun run dist/index.js",
-    "test": "bun test"
+    "test": "bun test src"
   },
   "keywords": [
     "graph",
@@ -23,12 +23,12 @@
   "license": "MIT",
   "dependencies": {
     "@clack/prompts": "^0.7.0",
-    "@elysiajs/cors": "^1.1.1",
-    "@elysiajs/swagger": "^1.1.5",
-    "@xenova/transformers": "^2.17.2",
+    "@elysiajs/cors": "^1.4.2",
+    "@elysiajs/swagger": "^1.3.1",
     "chalk": "^4.1.2",
-    "clerc": "^0.44.0",
-    "elysia": "^1.1.22",
+    "clerc": "^1.3.1",
+    "elysia": "^1.4.28",
+    "file-type": "^22.0.1",
     "graphology": "^0.25.1",
     "marked": "^15.0.7",
     "marked-terminal": "^7.3.0",
@@ -39,7 +39,6 @@
     "@types/marked-terminal": "^6.1.1",
     "@types/node": "^20.11.20",
     "@types/sql.js": "^1.4.9",
-    "ts-node": "^10.9.2",
     "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   }

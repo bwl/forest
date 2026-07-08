@@ -7,7 +7,7 @@ import { COMMAND_TLDR, emitTldrAndExit } from '../tldr';
 import { getBackend } from '../shared/remote';
 import { registerExportObsidianCommand } from './obsidian';
 
-import type { HandlerContext } from '@clerc/core';
+import type { CommandHandlerContext as HandlerContext } from '@clerc/core';
 
 type ClercModule = typeof import('clerc');
 type ClercInstance = ReturnType<ClercModule['Clerc']['create']>;
