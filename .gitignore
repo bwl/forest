@@ -63,3 +63,10 @@ forest-desktop/dist/
 # Local Claude settings
 .claude/settings.local.json
 forest-desktop/.claude/settings.local.json
+
+# Agent tool state
+.ivo/
+.karl/
+
+# Local import corpora / binaries (test data, not part of the repo)
+epub/
