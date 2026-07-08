@@ -21,7 +21,7 @@ import {
   endBatch,
 } from '../lib/db';
 import { extractTags, tokenize, pickTitle } from '../lib/text';
-import { computeEmbeddingForNode } from '../lib/embeddings';
+import { computeEmbeddingForNode, embedBatch } from '../lib/embeddings';
 import { linkAgainstExisting } from '../cli/shared/linking';
 import { chunkDocument, extractDocumentTitle, ChunkingOptions, DocumentChunk } from '../lib/chunking';
 
@@ -114,7 +114,6 @@ async function _importDocumentCoreInner(
   if (chunks.length === 0) {
     throw new Error('Document produced no chunks - content may be empty');
   }
-
   // Create root/parent node if requested
   let rootNode: NodeRecord | null = null;
   const rootId = randomUUID();
@@ -159,19 +158,9 @@ ${firstChunkPreview}${chunks[0].body.length > 500 ? '...' : ''}
     await insertNode(rootNode);
   }
 
-  // Compute embeddings for all chunks concurrently (limit 3 parallel calls)
-  const EMBED_CONCURRENCY = 3;
-  const chunkEmbeddings: (number[] | undefined)[] = new Array(chunks.length);
-
-  for (let i = 0; i < chunks.length; i += EMBED_CONCURRENCY) {
-    const batch = chunks.slice(i, i + EMBED_CONCURRENCY);
-    const results = await Promise.all(
-      batch.map((chunk) => computeEmbeddingForNode({ title: chunk.title, body: chunk.body }))
-    );
-    for (let j = 0; j < results.length; j++) {
-      chunkEmbeddings[i + j] = results[j];
-    }
-  }
+  // Batch-embed all chunks (sends multiple texts per API call)
+  const chunkTexts = chunks.map((chunk) => `${chunk.title}\n${chunk.body}`);
+  const chunkEmbeddings = await embedBatch(chunkTexts);
 
   // Create nodes for each chunk
   const chunkNodes: ChunkNodeInfo[] = [];
