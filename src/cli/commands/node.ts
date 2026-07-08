@@ -1164,8 +1164,25 @@ export async function runNodeSynthesize(ids: string[] | undefined, flags: NodeSy
 }
 
 export async function runNodeImport(flags: NodeImportFlags) {
-  const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
-  const documentText = bodyResult.value;
+  let documentText: string | undefined;
+  let epubTitle: string | undefined;
+
+  // EPUB preprocessing: extract to markdown before normal pipeline
+  if (flags.file && flags.file.toLowerCase().endsWith('.epub')) {
+    const { extractEpubToMarkdown } = await import('../../lib/epub');
+    console.log(`Extracting EPUB: ${flags.file}`);
+    const epub = extractEpubToMarkdown(flags.file);
+    documentText = epub.markdown;
+    epubTitle = epub.title;
+    console.log(`  "${epub.title}" by ${epub.author} — ${epub.chapterCount} chapters, ${documentText.length} chars`);
+
+    // Default to hybrid strategy for EPUBs (chapters + size splitting)
+    if (!flags.chunkStrategy) flags.chunkStrategy = 'hybrid';
+    if (!flags.maxTokens) flags.maxTokens = 1000;
+  } else {
+    const bodyResult = await resolveBodyInput(undefined, flags.file, flags.stdin);
+    documentText = bodyResult.value;
+  }
 
   if (!documentText || documentText.trim().length === 0) {
     console.error('✖ No document content provided. Use --file or --stdin.');
@@ -1186,7 +1203,7 @@ export async function runNodeImport(flags: NodeImportFlags) {
   const backend = getBackend();
   const result = await backend.importDocument({
     body: documentText,
-    title: flags.title,
+    title: flags.title || epubTitle,
     tags,
     chunkStrategy: flags.chunkStrategy,
     maxTokens: flags.maxTokens,
